@@ -1221,6 +1221,7 @@ target_link_libraries(core PRIVATE
     OpenSSL::SSL
     fmt::fmt
     nlohmann_json::nlohmann_json
+    glaze::glaze
     RenderDoc::API
     ZLIB::ZLIB)
 
