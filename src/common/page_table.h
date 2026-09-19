@@ -42,11 +42,16 @@ struct PageTable {
         u64 next_offset{};
     };
 
-    /// Masks out bits reserved for attribute tagging.
-    static constexpr u64 ATTRIBUTE_MASK = ((1ULL << 44) - 1) << 12;
+    /// Number of pointer bits kept in an entry.
+    static constexpr u64 POINTER_BITS = 44;
 
-    /// Specifies sign bit for page table entries.
-    static constexpr u64 SIGN_BIT = 45 + 12; // 44 bits of data + page offset
+    /// Masks out bits reserved for attribute tagging.
+    static constexpr u64 ATTRIBUTE_MASK = ((1ULL << POINTER_BITS) - 1) << 12;
+
+    /// Sign bit of the packed pointer: the top bit of ATTRIBUTE_MASK.
+    static constexpr u64 SIGN_BIT = 12 + POINTER_BITS - 1;
+    static_assert(SIGN_BIT == 55);
+    static_assert((ATTRIBUTE_MASK >> SIGN_BIT) == 1, "SIGN_BIT must be the top bit of the mask");
 
     /**
      * Atomic tuple of host pointer, page type, and block id.
@@ -112,7 +117,7 @@ struct PageTable {
         [[nodiscard]] static uintptr_t ExtractPointer(Data raw, bool ignore_marked = false) noexcept {
             return raw.marked && !ignore_marked ? 0
                 // shift raw.page's fake sign bit to the actual sign bit, then sign extend
-                : ((s64)(raw.page << (64 - 44))) >> (64 - 44 - 12);
+                : ((s64)(raw.page << (64 - POINTER_BITS))) >> (64 - POINTER_BITS - 12);
         }
 
         [[nodiscard]] static u16 ExtractBlock(Data raw) noexcept {

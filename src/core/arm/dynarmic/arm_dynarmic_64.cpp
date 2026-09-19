@@ -222,6 +222,7 @@ void ArmDynarmic64::MakeJit(Common::PageTable* page_table, std::size_t address_s
             // Systems like FreeBSD allocate memory really low by default, and since we pack our page table entries,
             // we have to manually sign extend when our actual pointer is negative.
             config.page_table_sign_extension = std::uint8_t(Common::PageTable::SIGN_BIT);
+            LOG_INFO(Core_ARM, "Page table entries are sign extended (backing memory below the guest address space)");
         }
     }
 
