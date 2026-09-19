@@ -33,6 +33,11 @@ std::optional<std::chrono::nanoseconds> HostCallbackTemplate(s64 time,
 
 struct ScopeInit final {
     ScopeInit() {
+        // Catch2 runs the tests in any order, so reset the callbacks' state for each one.
+        callbacks_ran_flags.reset();
+        delays.fill(0);
+        expected_callback = 0;
+
         core_timing.SetMulticore(true);
         core_timing.Initialize([]() {});
     }
@@ -62,8 +67,6 @@ TEST_CASE("CoreTiming[BasicOrder]", "[core]") {
         Core::Timing::CreateEvent("callbackD", HostCallbackTemplate<3>),
         Core::Timing::CreateEvent("callbackE", HostCallbackTemplate<4>),
     };
-
-    expected_callback = 0;
 
     core_timing.SyncPause(true);
 
@@ -105,8 +108,6 @@ TEST_CASE("CoreTiming[BasicOrderNoPausing]", "[core]") {
 
     core_timing.SyncPause(true);
     core_timing.SyncPause(false);
-
-    expected_callback = 0;
 
     const u64 start = core_timing.GetGlobalTimeNs().count();
     const u64 one_micro = 1000U;
