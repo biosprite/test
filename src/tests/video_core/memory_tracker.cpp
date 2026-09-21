@@ -31,21 +31,16 @@ public:
     void UpdatePagesCachedCount(DAddr addr, size_t size, s32 delta) {
         ++update_calls;
         calls.emplace_back(addr, size, delta);
-        const u64 page_start{addr >> Core::DEVICE_PAGEBITS};
-        const u64 page_end{(addr + size + Core::DEVICE_PAGESIZE - 1) >> Core::DEVICE_PAGEBITS};
-        for (u64 page = page_start; page < page_end; ++page) {
-            int& value = page_table[page];
-            value += delta;
-            if (value == 0) {
-                page_table.erase(page);
-            } else if (value < 0) {
-                throw std::logic_error{"negative page"};
-            }
-        }
+        ApplyDelta(addr, size, delta);
     }
 
+    // The word manager reports through this, never through UpdatePagesCachedCount.
     void UpdatePagesCachedBatch(std::span<const std::pair<DAddr, size_t>> ranges, s32 delta) {
-        // TODO: for now assume fine?
+        ++update_calls;
+        for (const auto& [addr, size] : ranges) {
+            calls.emplace_back(addr, size, delta);
+            ApplyDelta(addr, size, delta);
+        }
     }
 
     [[nodiscard]] size_t UpdateCalls() const noexcept { return update_calls; }
@@ -65,6 +60,20 @@ public:
     }
 
 private:
+    void ApplyDelta(DAddr addr, size_t size, s32 delta) {
+        const u64 page_start{addr >> Core::DEVICE_PAGEBITS};
+        const u64 page_end{(addr + size + Core::DEVICE_PAGESIZE - 1) >> Core::DEVICE_PAGEBITS};
+        for (u64 page = page_start; page < page_end; ++page) {
+            int& value = page_table[page];
+            value += delta;
+            if (value == 0) {
+                page_table.erase(page);
+            } else if (value < 0) {
+                throw std::logic_error{"negative page"};
+            }
+        }
+    }
+
     ::Common::unordered_map<u64, int> page_table;
     std::vector<std::tuple<DAddr, u64, int>> calls;
     size_t update_calls = 0;
@@ -239,7 +248,7 @@ TEST_CASE("MemoryTracker: Partial page upload", "[video_core]") {
     REQUIRE(num == 2);
 }
 
-TEST_CASE("MemoryTracker: Partial page upload with multiple words on the right") {
+TEST_CASE("MemoryTracker: Partial page upload with multiple words on the right", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD * 9);
@@ -446,7 +455,7 @@ TEST_CASE("MemoryTracker: Single page in large region", "[video_core]") {
     REQUIRE(memory_track->IsRegionCpuModified(c + WORD * 12 + PAGE * 8, PAGE * 2));
 }
 
-TEST_CASE("MemoryTracker: Wrap word regions") {
+TEST_CASE("MemoryTracker: Wrap word regions", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD * 32);
@@ -468,7 +477,7 @@ TEST_CASE("MemoryTracker: Wrap word regions") {
     REQUIRE(!memory_track->IsRegionCpuModified(c + PAGE * 128, WORD * 16));
 }
 
-TEST_CASE("MemoryTracker: Unaligned page region query") {
+TEST_CASE("MemoryTracker: Unaligned page region query", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD);
@@ -479,7 +488,7 @@ TEST_CASE("MemoryTracker: Unaligned page region query") {
     REQUIRE(memory_track->IsRegionCpuModified(c + 4000, 1));
 }
 
-TEST_CASE("MemoryTracker: Cached write") {
+TEST_CASE("MemoryTracker: Cached write", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD);
@@ -491,7 +500,7 @@ TEST_CASE("MemoryTracker: Cached write") {
     REQUIRE(rasterizer.Count() == 0);
 }
 
-TEST_CASE("MemoryTracker: Multiple cached write") {
+TEST_CASE("MemoryTracker: Multiple cached write", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD);
@@ -506,7 +515,7 @@ TEST_CASE("MemoryTracker: Multiple cached write") {
     REQUIRE(rasterizer.Count() == 0);
 }
 
-TEST_CASE("MemoryTracker: Cached write unmarked") {
+TEST_CASE("MemoryTracker: Cached write unmarked", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD);
@@ -519,7 +528,7 @@ TEST_CASE("MemoryTracker: Cached write unmarked") {
     REQUIRE(rasterizer.Count() == 0);
 }
 
-TEST_CASE("MemoryTracker: Cached write iterated") {
+TEST_CASE("MemoryTracker: Cached write iterated", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD);
@@ -534,7 +543,7 @@ TEST_CASE("MemoryTracker: Cached write iterated") {
     REQUIRE(rasterizer.Count() == 0);
 }
 
-TEST_CASE("MemoryTracker: Cached write downloads") {
+TEST_CASE("MemoryTracker: Cached write downloads", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD);
@@ -557,23 +566,48 @@ TEST_CASE("MemoryTracker: Cached write downloads") {
     REQUIRE(rasterizer.Count() == 0);
 }
 
-TEST_CASE("MemoryTracker: FlushCachedWrites batching") {
+TEST_CASE("MemoryTracker: FlushCachedWrites batching", "[video_core]") {
     RasterizerInterface rasterizer;
     std::optional<MemoryTracker> memory_track(rasterizer);
     memory_track->UnmarkRegionAsCpuModified(c, WORD * 2);
+    REQUIRE(rasterizer.UpdateCalls() == 1);
+    // Each cached write untracks its page at once, so the flush has nothing left to notify.
     memory_track->CachedCpuWrite(c + PAGE, PAGE);
     memory_track->CachedCpuWrite(c + PAGE * 2, PAGE);
     memory_track->CachedCpuWrite(c + PAGE * 4, PAGE);
-    REQUIRE(rasterizer.UpdateCalls() == 0);
+    REQUIRE(rasterizer.UpdateCalls() == 4);
+    REQUIRE(rasterizer.Count() == 125);
     memory_track->FlushCachedWrites();
-    // Now we expect a single batch call (coalesced ranges) to the device memory manager
-    REQUIRE(rasterizer.UpdateCalls() == 1);
-    const auto& calls = rasterizer.UpdateCallsList();
-    REQUIRE(std::get<0>(calls[0]) == c + PAGE);
-    REQUIRE(std::get<1>(calls[0]) == PAGE * 3);
+    REQUIRE(rasterizer.UpdateCalls() == 4);
+    REQUIRE(rasterizer.Count() == 125);
 }
 
-TEST_CASE("DeviceMemoryManager: UpdatePagesCachedBatch basic") {
+TEST_CASE("MemoryTracker: Batched notification coalescing", "[video_core]") {
+    RasterizerInterface rasterizer;
+    std::optional<MemoryTracker> memory_track(rasterizer);
+    memory_track->UnmarkRegionAsCpuModified(c, WORD);
+    REQUIRE(rasterizer.Count() == 64);
+    memory_track->MarkRegionAsCpuModified(c + PAGE, PAGE * 2);
+    memory_track->MarkRegionAsCpuModified(c + PAGE * 4, PAGE);
+    const size_t calls_before = rasterizer.UpdateCalls();
+    REQUIRE(rasterizer.Count() == 61);
+    // One call for the three pages: the two adjacent ones coalesced, the far one apart.
+    memory_track->UnmarkRegionAsCpuModified(c, WORD);
+    REQUIRE(rasterizer.UpdateCalls() == calls_before + 1);
+    const auto& calls = rasterizer.UpdateCallsList();
+    REQUIRE(calls.size() >= 2);
+    const auto& second_last = calls[calls.size() - 2];
+    const auto& last = calls[calls.size() - 1];
+    REQUIRE(std::get<0>(second_last) == c + PAGE);
+    REQUIRE(std::get<1>(second_last) == PAGE * 2);
+    REQUIRE(std::get<2>(second_last) == 1);
+    REQUIRE(std::get<0>(last) == c + PAGE * 4);
+    REQUIRE(std::get<1>(last) == PAGE);
+    REQUIRE(std::get<2>(last) == 1);
+    REQUIRE(rasterizer.Count() == 64);
+}
+
+TEST_CASE("DeviceMemoryManager: UpdatePagesCachedBatch basic", "[video_core]") {
     Core::DeviceMemory device_memory;
     Tegra::MaxwellDeviceMemoryManager manager(device_memory);
     // empty should be a no-op
