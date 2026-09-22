@@ -81,11 +81,13 @@ protected:
     /// Called when a configuration change affects the minimal size of the window
     void OnMinimalClientAreaChangeRequest(std::pair<u32, u32> minimal_size) override;
 
+    void UpdateTitlebar();
+
     /// Periodic changer of titlebar (independent of event loop)
-    SDL_TimerID titlebar_timer;
+    SDL_TimerID titlebar_timer{};
 
     // Mouse resetter once it
-    SDL_TimerID mouse_timer;
+    SDL_TimerID mouse_timer{};
 
     /// Is the window still open?
     bool is_open = true;

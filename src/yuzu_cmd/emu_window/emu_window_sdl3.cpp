@@ -4,6 +4,8 @@
 // SPDX-FileCopyrightText: 2016 Citra Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <cstdint>
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_timer.h>
 #ifdef __EMSCRIPTEN__
@@ -23,6 +25,21 @@
 #include "yuzu_cmd/emu_window/emu_window_sdl3.h"
 #include "yuzu_cmd/yuzu_icon.h"
 
+namespace {
+Uint32 periodic_event_base = 0;
+
+constexpr Uint32 PeriodicTitlebar = 0;
+constexpr Uint32 PeriodicMouse = 1;
+
+/// Runs on SDL's timer thread: post an event, never touch the window.
+Uint32 SDLCALL PostPeriodic(void* userdata, SDL_TimerID, Uint32 interval) {
+    SDL_Event event{};
+    event.type = periodic_event_base + Uint32(reinterpret_cast<std::uintptr_t>(userdata));
+    SDL_PushEvent(&event);
+    return interval;
+}
+} // Anonymous namespace
+
 EmuWindow_SDL3::EmuWindow_SDL3(InputCommon::InputSubsystem* input_subsystem_, Core::System& system_)
     : input_subsystem{input_subsystem_}, system{system_} {
     input_subsystem->Initialize();
@@ -30,18 +47,15 @@ EmuWindow_SDL3::EmuWindow_SDL3(InputCommon::InputSubsystem* input_subsystem_, Co
         LOG_CRITICAL(Frontend, "Failed to initialize SDL3: {}, Exiting...", SDL_GetError());
         exit(1);
     }
-    titlebar_timer = SDL_AddTimer(2000, [](void *userdata, SDL_TimerID, Uint32) -> Uint32 {
-        auto* this_ = (EmuWindow_SDL3*)userdata;
-        auto const results = this_->system.GetAndResetPerfStats();
-        auto const title = fmt::format("{} | {}-{} | FPS: {:.0f} ({:.0f}%)", Common::g_build_fullname, Common::g_scm_branch, Common::g_scm_desc, results.average_game_fps, results.emulation_speed * 100.0f);
-        SDL_SetWindowTitle(this_->render_window, title.c_str());
-        return 2000;
-    }, this);
-    mouse_timer = SDL_AddTimer(100, [](void *userdata, SDL_TimerID, Uint32) -> Uint32 {
-        auto* this_ = (EmuWindow_SDL3*)userdata;
-        this_->input_subsystem->GetMouse()->NotifyChanged();
-        return 100;
-    }, this);
+    periodic_event_base = SDL_RegisterEvents(2);
+    if (periodic_event_base == 0) {
+        LOG_ERROR(Frontend, "No event types left for the periodic window jobs: {}", SDL_GetError());
+        return;
+    }
+    titlebar_timer = SDL_AddTimer(2000, &PostPeriodic,
+                                  reinterpret_cast<void*>(std::uintptr_t{PeriodicTitlebar}));
+    mouse_timer =
+        SDL_AddTimer(100, &PostPeriodic, reinterpret_cast<void*>(std::uintptr_t{PeriodicMouse}));
 }
 
 EmuWindow_SDL3::~EmuWindow_SDL3() {
@@ -50,6 +64,14 @@ EmuWindow_SDL3::~EmuWindow_SDL3() {
     system.HIDCore().UnloadInputDevices();
     input_subsystem->Shutdown();
     SDL_Quit();
+}
+
+void EmuWindow_SDL3::UpdateTitlebar() {
+    const auto results = system.GetAndResetPerfStats();
+    const auto title = fmt::format("{} | {}-{} | FPS: {:.0f} ({:.0f}%)", Common::g_build_fullname,
+                                   Common::g_scm_branch, Common::g_scm_desc,
+                                   results.average_game_fps, results.emulation_speed * 100.0f);
+    SDL_SetWindowTitle(render_window, title.c_str());
 }
 
 InputCommon::MouseButton EmuWindow_SDL3::SDLButtonToMouseButton(u32 button) const {
@@ -183,6 +205,17 @@ void EmuWindow_SDL3::Fullscreen() {
 }
 
 void EmuWindow_SDL3::OnEvent(SDL_Event& event) {
+    // Timer ticks; their types are registered at run time, so they can't be case labels.
+    if (periodic_event_base != 0 && event.type >= periodic_event_base &&
+        event.type <= periodic_event_base + PeriodicMouse) {
+        if (event.type == periodic_event_base + PeriodicTitlebar) {
+            UpdateTitlebar();
+        } else {
+            input_subsystem->GetMouse()->NotifyChanged();
+        }
+        return;
+    }
+
     // Notice how we skip the "update title" aspect on most events
     // this is because some WMs do NOT like changing titles while resizing
     // so let's just... not do that, thanks :)
