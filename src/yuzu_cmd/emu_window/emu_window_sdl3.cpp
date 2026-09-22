@@ -175,7 +175,10 @@ void EmuWindow_SDL3::Fullscreen() {
         if (const SDL_DisplayMode* display_mode_ptr = SDL_GetDesktopDisplayMode(SDL_GetDisplayForWindow(render_window))) {
             display_mode = *display_mode_ptr;
             SDL_SetWindowSize(render_window, display_mode.w, display_mode.h);
-            SDL_SetWindowFullscreenMode(render_window, &display_mode);
+            if (!SDL_SetWindowFullscreenMode(render_window, &display_mode)) {
+                LOG_WARNING(Frontend, "Exclusive fullscreen mode was refused: {}",
+                            SDL_GetError());
+            }
         } else {
             LOG_ERROR(Frontend, "SDL_GetDesktopDisplayMode failed: {}", SDL_GetError());
         }
