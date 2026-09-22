@@ -31,6 +31,11 @@ EmuWindow_SDL3_VK::EmuWindow_SDL3_VK(InputCommon::InputSubsystem* input_subsyste
                          Layout::ScreenUndocked::Height,
                          SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 
+    if (render_window == nullptr) {
+        LOG_CRITICAL(Frontend, "Failed to create SDL3 window! {}", SDL_GetError());
+        exit(1);
+    }
+
     const SDL_PropertiesID window_props = SDL_GetWindowProperties(render_window);
 
     SetWindowIcon();
@@ -81,7 +86,11 @@ EmuWindow_SDL3_VK::EmuWindow_SDL3_VK(InputCommon::InputSubsystem* input_subsyste
         window_info.type = Core::Frontend::WindowSystemType::Android;
         window_info.render_surface = android_window;
     } else {
-        LOG_CRITICAL(Frontend, "Unable to determine native window backend from SDL properties");
+        const char* const video_driver = SDL_GetCurrentVideoDriver();
+        LOG_CRITICAL(Frontend,
+                     "Unable to determine native window backend from SDL properties, video "
+                     "driver is {}",
+                     video_driver ? video_driver : "none");
         std::exit(EXIT_FAILURE);
     }
 
