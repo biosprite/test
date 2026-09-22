@@ -15,6 +15,7 @@
 #include <emscripten.h>
 #endif
 #define SDL_MAIN_USE_CALLBACKS 1
+#include <SDL3/SDL_hints.h>
 #include <SDL3/SDL_main.h>
 
 #include <fmt/ostream.h>
@@ -323,6 +324,11 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     void(state->system.Run());
     if (state->system.DebuggerEnabled())
         state->system.InitializeDebugger();
+    // SDL_AppIterate only checks whether the window is open; sleep until an event instead.
+    if (!SDL_SetHint(SDL_HINT_MAIN_CALLBACK_RATE, "waitevent")) {
+        LOG_WARNING(Frontend, "SDL_MAIN_CALLBACK_RATE kept its environment value: {}",
+                    SDL_GetError());
+    }
     // Set last: the early returns above leave a System that must not be torn down.
     *appstate = state;
     return SDL_APP_CONTINUE;
