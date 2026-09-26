@@ -2760,3 +2760,33 @@ TEST_CASE("A64: FRINT through the soft-float fallback", "[a64]") {
     REQUIRE(jit.GetVector(10) == Vector{0, 0});                  // 0.0
     REQUIRE((jit.GetFpsr() & 0x10) != 0);                        // FRINTX raised Inexact
 }
+
+TEST_CASE("A64: SQSHLU saturates 8/16/64-bit lanes", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    env.code_mem.emplace_back(0x2f0b6420);  // SQSHLU V0.8B, V1.8B, #3
+    env.code_mem.emplace_back(0x2f146462);  // SQSHLU V2.4H, V3.4H, #4
+    env.code_mem.emplace_back(0x6f4064a4);  // SQSHLU V4.2D, V5.2D, #0
+    env.code_mem.emplace_back(0x7f5864e6);  // SQSHLU D6, D7, #24
+    env.code_mem.emplace_back(0x14000000);  // B .
+
+    jit.SetVector(1, {0x8ecb02792c32fe49, 0});
+    jit.SetVector(3, {0x80007fff10000fff, 0});
+    jit.SetVector(5, {0xef319b929116dc5a, 0x362758dfbfb5c4db});
+    jit.SetVector(7, {0x00000000bf800000, 0});
+    jit.SetFpsr(0);
+    jit.SetPC(0);
+
+    env.ticks_left = 5;
+    CheckedRun([&]() { jit.Run(); });
+
+    // Positive lanes that overflow saturate to all ones, negative lanes become zero.
+    REQUIRE(jit.GetVector(0) == Vector{0x000010ffffff00ff, 0});
+    REQUIRE(jit.GetVector(2) == Vector{0x0000fffffffffff0, 0});
+    REQUIRE(jit.GetVector(4) == Vector{0, 0x362758dfbfb5c4db});
+    REQUIRE(jit.GetVector(6) == Vector{0x00bf800000000000, 0});
+    REQUIRE(FP::FPSR{jit.GetFpsr()}.QC());
+}
