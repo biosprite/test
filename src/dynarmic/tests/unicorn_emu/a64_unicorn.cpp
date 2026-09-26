@@ -6,11 +6,17 @@
  * SPDX-License-Identifier: 0BSD
  */
 
+#include <stdexcept>
 #include <fmt/format.h>
 #include "dynarmic/tests/unicorn_emu/a64_unicorn.h"
-#include "common/assert.h"
 
-#define CHECKED(expr) do if ((expr)) ASSERT(false && "Call " #expr " failed with error\n"); while (0)
+// Throws, so a failing Unicorn call fails the test instead of a soft assert nobody sees.
+#define CHECKED(expr)                                                                         \
+    do {                                                                                      \
+        if (auto const cerr_ = (expr))                                                        \
+            throw std::runtime_error(fmt::format("Call " #expr " failed with error {} ({})", \
+                                                 static_cast<int>(cerr_), uc_strerror(cerr_))); \
+    } while (0)
 
 constexpr u64 BEGIN_ADDRESS = 0;
 constexpr u64 END_ADDRESS = ~u64(0);
@@ -18,6 +24,8 @@ constexpr u64 END_ADDRESS = ~u64(0);
 A64Unicorn::A64Unicorn(A64TestEnv& testenv)
         : testenv(testenv) {
     CHECKED(uc_open(UC_ARCH_ARM64, UC_MODE_ARM, &uc));
+    // Unicorn 2 defaults to a Cortex-A72; "max" has the v8.x extensions dynarmic decodes.
+    CHECKED(uc_ctl_set_cpu_model(uc, UC_CPU_ARM64_MAX));
     u64 fpv = 3 << 20;
     CHECKED(uc_reg_write(uc, UC_ARM64_REG_CPACR_EL1, &fpv));
     CHECKED(uc_hook_add(uc, &intr_hook, UC_HOOK_INTR, (void*)InterruptHook, this, BEGIN_ADDRESS, END_ADDRESS));
@@ -26,14 +34,19 @@ A64Unicorn::A64Unicorn(A64TestEnv& testenv)
 }
 
 A64Unicorn::~A64Unicorn() {
-    ClearPageCache();
-    CHECKED(uc_hook_del(uc, intr_hook));
-    CHECKED(uc_hook_del(uc, mem_invalid_hook));
-    CHECKED(uc_close(uc));
+    for (const auto& page : pages)
+        uc_mem_unmap(uc, page->address, 4096);
+    uc_hook_del(uc, intr_hook);
+    uc_hook_del(uc, mem_invalid_hook);
+    uc_hook_del(uc, mem_write_prot_hook);
+    uc_close(uc);
 }
 
 void A64Unicorn::Run() {
     while (testenv.ticks_left > 0) {
+        // Outside code_mem the JIT fetches B . while Unicorn would fetch data bytes; stop here.
+        if (!testenv.IsInCodeMem(GetPC()))
+            return;
         CHECKED(uc_emu_start(uc, GetPC(), END_ADDRESS, 0, 1));
         testenv.ticks_left--;
         if (!testenv.interrupts.empty() || testenv.code_mem_modified_by_guest) {
@@ -166,11 +179,11 @@ void A64Unicorn::DumpMemoryInformation() {
 void A64Unicorn::InterruptHook(uc_engine* uc, u32 int_number, void* user_data) {
     auto* this_ = static_cast<A64Unicorn*>(user_data);
 
-    u32 esr = 0;
-    //CHECKED(uc_reg_read(uc, UC_ARM64_REG_ESR_EL0, &esr));
+    u64 esr = 0;
+    uc_reg_read(uc, UC_ARM64_REG_ESR_EL1, &esr);
 
-    auto ec = esr >> 26;
-    auto iss = esr & 0xFFFFFF;
+    auto ec = (esr >> 26) & 0x3F;
+    auto iss = esr & 0x1FFFFFF;
 
     switch (ec) {
     case 0x15:  // SVC
@@ -202,7 +215,11 @@ bool A64Unicorn::UnmappedMemoryHook(uc_engine* uc, uc_mem_type /*type*/, u64 sta
         uc_err err = uc_mem_map_ptr(uc, base_address, page->data.size(), permissions, page->data.data());
         if (err == UC_ERR_MAP)
             return;  // page already exists
-        CHECKED(err);
+        if (err != UC_ERR_OK) {
+            // Never throw through Unicorn's C frames; the test sees this as an interrupt.
+            this_->testenv.interrupts.emplace_back(fmt::format("uc_mem_map_ptr({:#x}) failed: {}", base_address, uc_strerror(err)));
+            return;
+        }
 
         this_->pages.emplace_back(std::move(page));
     };

@@ -8,6 +8,7 @@
 
 #include "dynarmic/tests/fuzz_util.h"
 
+#include <cstdlib>
 #include <cstring>
 
 #include <fmt/format.h>
@@ -36,6 +37,23 @@ u32 RandomFpcr() {
     fpcr.RMode(static_cast<FP::RoundingMode>(RandInt(0, 3)));
     fpcr.FZ16(RandInt(0, 1) == 0);
     return fpcr.Value();
+}
+
+size_t FuzzIterations(size_t default_count) {
+    static const double scale = [] {
+        const char* env = std::getenv("DYNARMIC_FUZZ_SCALE");
+        return env ? std::strtod(env, nullptr) : 1.0;
+    }();
+    const double scaled = static_cast<double>(default_count) * scale;
+    return scaled < 1.0 ? 1 : static_cast<size_t>(scaled);
+}
+
+bool FuzzKeepGoing() {
+    static const bool keep_going = [] {
+        const char* env = std::getenv("DYNARMIC_FUZZ_KEEP_GOING");
+        return env && env[0] != '\0' && env[0] != '0';
+    }();
+    return keep_going;
 }
 
 InstructionGenerator::InstructionGenerator(const char* format) {

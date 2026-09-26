@@ -75,6 +75,8 @@ private:
     static void InterruptHook(uc_engine* uc, u32 interrupt, void* user_data);
     static bool UnmappedMemoryHook(uc_engine* uc, uc_mem_type type, u32 addr, int size, u64 value, void* user_data);
     static bool MemoryWriteHook(uc_engine* uc, uc_mem_type type, u32 addr, int size, u64 value, void* user_data);
+    bool GeneratePage(u32 base_address);
+    void RunSteps();
 
     struct Page {
         u32 address;
@@ -86,6 +88,7 @@ private:
     uc_hook intr_hook{};
     uc_hook mem_invalid_hook{};
     uc_hook mem_write_prot_hook{};
+    size_t pages_mapped_by_hook = 0;
 
     std::vector<std::unique_ptr<Page>> pages;
 };

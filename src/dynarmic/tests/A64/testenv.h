@@ -8,6 +8,9 @@
 
 #pragma once
 
+#include <string>
+#include <vector>
+
 #include "common/container/unordered_map.h"
 #include "common/assert.h"
 #include "common/common_types.h"
@@ -23,6 +26,10 @@ public:
     u64 ticks_left = 0;
     u64 code_mem_start_address = 0;
     bool code_mem_modified_by_guest = false;
+    std::vector<std::string> interrupts;
+    // Fuzz runs record exceptions and stop instead of aborting the process.
+    bool record_exceptions = false;
+    std::vector<std::string> exceptions;
 
     bool IsInCodeMem(u64 vaddr) const {
         return vaddr >= code_mem_start_address && vaddr < code_mem_start_address + code_mem.size() * 4;
@@ -119,8 +126,11 @@ public:
         UNREACHABLE(); //ASSERT(false && "CallSVC({})", swi);
     }
 
-    void ExceptionRaised(u64 pc, Dynarmic::A64::Exception /*exception*/) override {
-        UNREACHABLE(); //ASSERT(false && "ExceptionRaised({:016x})", pc);
+    void ExceptionRaised(u64 pc, Dynarmic::A64::Exception exception) override {
+        if (!record_exceptions)
+            UNREACHABLE(); //ASSERT(false && "ExceptionRaised({:016x})", pc);
+        exceptions.push_back("exception " + std::to_string(static_cast<int>(exception)) + " at pc " + std::to_string(pc));
+        ticks_left = 0;
     }
 
     void AddTicks(std::uint64_t ticks) override {

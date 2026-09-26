@@ -6,6 +6,7 @@ add_executable(dynarmic_tests
     fp/mantissa_util_tests.cpp
     fp/unpacked_tests.cpp
     rand_int.h
+    rand_int_seed.cpp
     # A32
     A32/test_arm_instructions.cpp
     A32/test_coprocessor.cpp
@@ -36,6 +37,7 @@ if (DYNARMIC_TESTS_USE_UNICORN)
         unicorn_emu/a32_unicorn.h
         # A64
         A64/fuzz_with_unicorn.cpp
+        A64/unicorn_harness.h
         A64/verify_unicorn.cpp
         unicorn_emu/a64_unicorn.cpp
         unicorn_emu/a64_unicorn.h

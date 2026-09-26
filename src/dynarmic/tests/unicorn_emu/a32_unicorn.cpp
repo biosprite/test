@@ -6,14 +6,20 @@
  * SPDX-License-Identifier: 0BSD
  */
 
+#include <stdexcept>
 #include <type_traits>
 #include <fmt/format.h>
 #include "dynarmic/mcl/bit.hpp"
 #include "dynarmic/tests/unicorn_emu/a32_unicorn.h"
-#include "common/assert.h"
 #include "dynarmic/tests/A32/testenv.h"
 
-#define CHECKED(expr) do if ((expr)) ASSERT(false && "Call " #expr " failed with error\n"); while (0)
+// Throws, so a failing Unicorn call fails the test instead of a soft assert nobody sees.
+#define CHECKED(expr)                                                                         \
+    do {                                                                                      \
+        if (auto const cerr_ = (expr))                                                        \
+            throw std::runtime_error(fmt::format("Call " #expr " failed with error {} ({})", \
+                                                 static_cast<int>(cerr_), uc_strerror(cerr_))); \
+    } while (0)
 
 constexpr u32 BEGIN_ADDRESS = 0;
 constexpr u32 END_ADDRESS = ~u32(0);
@@ -24,6 +30,8 @@ A32Unicorn<TestEnvironment>::A32Unicorn(TestEnvironment& testenv)
     constexpr uc_mode open_mode = std::is_same_v<TestEnvironment, ArmTestEnv> ? UC_MODE_ARM : UC_MODE_THUMB;
 
     CHECKED(uc_open(UC_ARCH_ARM, open_mode, &uc));
+    // Unicorn 2 defaults to a Cortex-A15 (ARMv7); "max" adds the ARMv8 AArch32 instructions.
+    CHECKED(uc_ctl_set_cpu_model(uc, UC_CPU_ARM_MAX));
     CHECKED(uc_hook_add(uc, &intr_hook, UC_HOOK_INTR, (void*)InterruptHook, this, BEGIN_ADDRESS, END_ADDRESS));
     CHECKED(uc_hook_add(uc, &mem_invalid_hook, UC_HOOK_MEM_INVALID, (void*)UnmappedMemoryHook, this, BEGIN_ADDRESS, END_ADDRESS));
     CHECKED(uc_hook_add(uc, &mem_write_prot_hook, UC_HOOK_MEM_WRITE, (void*)MemoryWriteHook, this, BEGIN_ADDRESS, END_ADDRESS));
@@ -31,14 +39,16 @@ A32Unicorn<TestEnvironment>::A32Unicorn(TestEnvironment& testenv)
 
 template<class TestEnvironment>
 A32Unicorn<TestEnvironment>::~A32Unicorn() {
-    ClearPageCache();
-    CHECKED(uc_hook_del(uc, intr_hook));
-    CHECKED(uc_hook_del(uc, mem_invalid_hook));
-    CHECKED(uc_close(uc));
+    for (const auto& page : pages)
+        uc_mem_unmap(uc, page->address, 4096);
+    uc_hook_del(uc, intr_hook);
+    uc_hook_del(uc, mem_invalid_hook);
+    uc_hook_del(uc, mem_write_prot_hook);
+    uc_close(uc);
 }
 
 template<class TestEnvironment>
-void A32Unicorn<TestEnvironment>::Run() {
+void A32Unicorn<TestEnvironment>::RunSteps() {
     // Thumb execution mode requires the LSB to be set to 1.
     constexpr u64 pc_mask = std::is_same_v<TestEnvironment, ArmTestEnv> ? 0 : 1;
     while (testenv.ticks_left > 0) {
@@ -47,13 +57,46 @@ void A32Unicorn<TestEnvironment>::Run() {
             return;
         }
         if (auto cerr_ = uc_emu_start(uc, pc, END_ADDRESS, 0, 1)) {
-            fmt::print("uc_emu_start failed @ {:08x} (code = {:08x}) with error {} ({})", pc, *testenv.MemoryReadCode(pc), static_cast<size_t>(cerr_), uc_strerror(cerr_));
-            throw "A32Unicorn::Run() failure";
+            // An UNDEFINED instruction stops Unicorn here; report it like an interrupt.
+            testenv.interrupts.emplace_back(fmt::format("uc_emu_start failed @ {:08x} (code = {:08x}) with error {} ({})", pc, *testenv.MemoryReadCode(pc & ~1u), static_cast<size_t>(cerr_), uc_strerror(cerr_)));
+            return;
         }
         testenv.ticks_left--;
         if (!testenv.interrupts.empty() || testenv.code_mem_modified_by_guest) {
             return;
         }
+    }
+}
+
+template<class TestEnvironment>
+void A32Unicorn<TestEnvironment>::Run() {
+    // Unicorn 2.1.4 leaves ITSTATE set after an IT block in which the invalid-memory hook had
+    // to map a page, so a run that mapped pages is repeated with those pages already mapped.
+    const RegisterArray regs = GetRegisters();
+    const ExtRegArray ext_regs = GetExtRegs();
+    const u32 cpsr = GetCpsr();
+    const u32 fpscr = GetFpscr();
+    const u64 ticks_left = testenv.ticks_left;
+    const auto modified_memory = testenv.modified_memory;
+    for (size_t pass = 0;; ++pass) {
+        pages_mapped_by_hook = 0;
+        RunSteps();
+        if (pages_mapped_by_hook == 0 || pass == 3)
+            break;
+        testenv.ticks_left = ticks_left;
+        testenv.modified_memory = modified_memory;
+        testenv.interrupts.clear();
+        testenv.code_mem_modified_by_guest = false;
+        std::vector<u32> addresses;
+        for (const auto& page : pages)
+            addresses.push_back(page->address);
+        ClearPageCache();
+        for (const u32 address : addresses)
+            GeneratePage(address);
+        SetCpsr(cpsr);
+        SetRegisters(regs);
+        SetExtRegs(ext_regs);
+        SetFpscr(fpscr);
     }
 
     const bool T = mcl::bit::get_bit<5>(GetCpsr());
@@ -238,6 +281,9 @@ void A32Unicorn<TestEnvironment>::ClearPageCache() {
         CHECKED(uc_mem_unmap(uc, page->address, 4096));
     }
     pages.clear();
+    // Unicorn 2.1.4 fails with UC_ERR_MAP when the invalid-memory hook maps the last page of
+    // the 32-bit space, so that one page is mapped up front.
+    GeneratePage(0xFFFFF000);
 }
 
 template<class TestEnvironment>
@@ -274,31 +320,35 @@ void A32Unicorn<TestEnvironment>::InterruptHook(uc_engine* /*uc*/, u32 int_numbe
 }
 
 template<class TestEnvironment>
-bool A32Unicorn<TestEnvironment>::UnmappedMemoryHook(uc_engine* uc, uc_mem_type /*type*/, u32 start_address, int size, u64 /*value*/, void* user_data) {
+bool A32Unicorn<TestEnvironment>::GeneratePage(u32 base_address) {
+    const u32 permissions = [&]() -> u32 {
+        if (base_address < testenv.code_mem.size() * sizeof(typename TestEnvironment::InstructionType)) {
+            return UC_PROT_READ | UC_PROT_EXEC;
+        }
+        return UC_PROT_READ;
+    }();
+
+    auto page = std::make_unique<Page>();
+    page->address = base_address;
+    for (size_t i = 0; i < page->data.size(); ++i)
+        page->data[i] = u8(testenv.MemoryRead(u32(base_address + i), sizeof(u8)));
+
+    uc_err err = uc_mem_map_ptr(uc, base_address, page->data.size(), permissions, page->data.data());
+    if (err == UC_ERR_MAP)
+        return false;  // page already exists
+    if (err != UC_ERR_OK) {
+        // Never throw through Unicorn's C frames; the test sees this as an interrupt.
+        testenv.interrupts.emplace_back(fmt::format("uc_mem_map_ptr({:#x}) failed: {}", base_address, uc_strerror(err)));
+        return false;
+    }
+
+    pages.emplace_back(std::move(page));
+    return true;
+}
+
+template<class TestEnvironment>
+bool A32Unicorn<TestEnvironment>::UnmappedMemoryHook(uc_engine* /*uc*/, uc_mem_type /*type*/, u32 start_address, int size, u64 /*value*/, void* user_data) {
     auto* this_ = static_cast<A32Unicorn*>(user_data);
-
-    const auto generate_page = [&](u32 base_address) {
-        // printf("generate_page(%x)\n", base_address);
-
-        const u32 permissions = [&]() -> u32 {
-            if (base_address < this_->testenv.code_mem.size() * sizeof(typename TestEnvironment::InstructionType)) {
-                return UC_PROT_READ | UC_PROT_EXEC;
-            }
-            return UC_PROT_READ;
-        }();
-
-        auto page = std::make_unique<Page>();
-        page->address = base_address;
-        for (size_t i = 0; i < page->data.size(); ++i)
-            page->data[i] = u8(this_->testenv.MemoryRead(u32(base_address + i), sizeof(u8)));
-
-        uc_err err = uc_mem_map_ptr(uc, base_address, page->data.size(), permissions, page->data.data());
-        if (err == UC_ERR_MAP)
-            return;  // page already exists
-        CHECKED(err);
-
-        this_->pages.emplace_back(std::move(page));
-    };
 
     const auto is_in_range = [](u32 addr, u32 start, u32 end) {
         if (start <= end)
@@ -311,7 +361,7 @@ bool A32Unicorn<TestEnvironment>::UnmappedMemoryHook(uc_engine* uc, uc_mem_type 
 
     u32 current_address = start_address_page;
     do {
-        generate_page(current_address);
+        this_->pages_mapped_by_hook += this_->GeneratePage(current_address);
         current_address += 0x1000;
     } while (is_in_range(current_address, start_address_page, end_address) && current_address != start_address_page);
 

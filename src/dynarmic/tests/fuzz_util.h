@@ -19,6 +19,14 @@ std::ostream& operator<<(std::ostream& o, Vector vec);
 Vector RandomVector();
 u32 RandomFpcr();
 
+// DYNARMIC_FUZZ_SCALE=<x> multiplies every fuzz loop's iteration count (at least 1 iteration).
+size_t FuzzIterations(size_t default_count);
+// DYNARMIC_FUZZ_KEEP_GOING=1 logs every mismatch and fails once at the end of the test case.
+bool FuzzKeepGoing();
+
+// How a fuzz mismatch is reported: not at all (minimizing), the state only, or with IR/disassembly.
+enum class FuzzReport { Quiet, Brief, Full };
+
 struct InstructionGenerator final {
 public:
     explicit InstructionGenerator(const char* format);

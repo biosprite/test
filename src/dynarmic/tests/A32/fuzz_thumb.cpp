@@ -249,7 +249,7 @@ void FuzzJitThumb32(const size_t instruction_count, const size_t instructions_to
     }
 }
 
-TEST_CASE("Fuzz Thumb instructions set 1", "[JitX64][Thumb][Thumb16]") {
+TEST_CASE("Fuzz Thumb instructions set 1", "[JitX64][Thumb][Thumb16][unicorn]") {
     const std::array instructions = {
         ThumbInstGen("00000xxxxxxxxxxx"),                                                // LSL <Rd>, <Rm>, #<imm5>
         ThumbInstGen("00001xxxxxxxxxxx"),                                                // LSR <Rd>, <Rm>, #<imm5>
@@ -317,7 +317,7 @@ TEST_CASE("Fuzz Thumb instructions set 1", "[JitX64][Thumb][Thumb16]") {
 #endif
 }
 
-TEST_CASE("Fuzz Thumb instructions set 2 (affects PC)", "[JitX64][Thumb][Thumb16]") {
+TEST_CASE("Fuzz Thumb instructions set 2 (affects PC)", "[JitX64][Thumb][Thumb16][unicorn]") {
     const std::array instructions = {
     // TODO: We currently can't test BX/BLX as we have
     //       no way of preventing the unpredictable
@@ -360,7 +360,7 @@ TEST_CASE("Fuzz Thumb instructions set 2 (affects PC)", "[JitX64][Thumb][Thumb16
     FuzzJitThumb16(1, 1, 10000, instruction_select);
 }
 
-TEST_CASE("Fuzz Thumb32 instructions set", "[JitX64][Thumb][Thumb32]") {
+TEST_CASE("Fuzz Thumb32 instructions set", "[JitX64][Thumb][Thumb32][unicorn]") {
     const auto three_reg_not_r15 = [](u32 inst) {
         const auto d = mcl::bit::get_bits<8, 11>(inst);
         const auto m = mcl::bit::get_bits<0, 3>(inst);
@@ -503,7 +503,7 @@ TEST_CASE("Fuzz Thumb32 instructions set", "[JitX64][Thumb][Thumb32]") {
     }
 }
 
-TEST_CASE("Verify fix for off by one error in MemoryRead<32> worked", "[Thumb][Thumb16]") {
+TEST_CASE("Verify fix for off by one error in MemoryRead<32> worked", "[Thumb][Thumb16][unicorn]") {
     ThumbTestEnv test_env;
 
     // Prepare test subjects

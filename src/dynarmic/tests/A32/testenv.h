@@ -40,6 +40,9 @@ public:
     std::vector<InstructionType> code_mem;
     std::map<u32, u8> modified_memory;
     std::vector<std::string> interrupts;
+    // Fuzz runs record exceptions and stop, since a block can branch onto an undefined encoding.
+    bool record_exceptions = false;
+    std::vector<std::string> exceptions;
 
     void PadCodeMem() {
         do {
@@ -111,8 +114,11 @@ public:
         UNREACHABLE(); //ASSERT(false && "CallSVC({})", swi);
     }
 
-    void ExceptionRaised(u32 pc, Dynarmic::A32::Exception /*exception*/) override {
-        UNREACHABLE(); //ASSERT(false && "ExceptionRaised({:08x}) code = {:08x}", pc, *MemoryReadCode(pc));
+    void ExceptionRaised(u32 pc, Dynarmic::A32::Exception exception) override {
+        if (!record_exceptions)
+            UNREACHABLE(); //ASSERT(false && "ExceptionRaised({:08x}) code = {:08x}", pc, *MemoryReadCode(pc));
+        exceptions.push_back("exception " + std::to_string(static_cast<int>(exception)) + " at pc " + std::to_string(pc));
+        ticks_left = 0;
     }
 
     void AddTicks(std::uint64_t ticks) override {
