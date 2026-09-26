@@ -866,3 +866,26 @@ TEST_CASE("arm: SHA1H clears the rest of the destination", "[arm][A32]") {
     REQUIRE(jit.ExtRegs()[22] == 0);
     REQUIRE(jit.ExtRegs()[23] == 0);
 }
+
+TEST_CASE("arm: sdiv and udiv by zero", "[arm][A32]") {
+    ArmTestEnv test_env;
+    A32::Jit jit{GetUserConfig(&test_env)};
+    test_env.code_mem = {
+        0xe712f011,  // sdiv r2, r1, r0
+        0xe733f011,  // udiv r3, r1, r0
+        0xeafffffe,  // b +#0
+    };
+
+    jit.Regs()[0] = 0;
+    jit.Regs()[1] = 0x12345678;
+    jit.Regs()[2] = 0xdeadbeef;
+    jit.Regs()[3] = 0xdeadbeef;
+
+    jit.SetCpsr(0x000001d0);  // User-mode
+
+    test_env.ticks_left = 3;
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.Regs()[2] == 0);
+    REQUIRE(jit.Regs()[3] == 0);
+}

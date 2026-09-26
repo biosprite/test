@@ -2696,3 +2696,30 @@ TEST_CASE("A64: SM3", "[a64]") {
         CHECK(jit.GetVector(0) == Vector{0x30010fe70da43740, 0x6702425b4a3a05d4});
     }
 }
+
+TEST_CASE("A64: SDIV and UDIV by zero", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    env.code_mem.emplace_back(0x1ac20c20);  // SDIV W0, W1, W2
+    env.code_mem.emplace_back(0x9ac20c23);  // SDIV X3, X1, X2
+    env.code_mem.emplace_back(0x1ac20824);  // UDIV W4, W1, W2
+    env.code_mem.emplace_back(0x14000000);  // B .
+
+    jit.SetRegister(0, 0xdeadbeef);
+    jit.SetRegister(1, 0x12345678);
+    jit.SetRegister(2, 0);
+    jit.SetRegister(3, 0xdeadbeef);
+    jit.SetRegister(4, 0xdeadbeef);
+    jit.SetPC(0);
+
+    env.ticks_left = 4;
+    CheckedRun([&]() { jit.Run(); });
+
+    // Division by zero gives zero, whatever the dividend.
+    REQUIRE(jit.GetRegister(0) == 0);
+    REQUIRE(jit.GetRegister(3) == 0);
+    REQUIRE(jit.GetRegister(4) == 0);
+}
