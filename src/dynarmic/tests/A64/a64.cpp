@@ -2790,3 +2790,31 @@ TEST_CASE("A64: SQSHLU saturates 8/16/64-bit lanes", "[a64]") {
     REQUIRE(jit.GetVector(6) == Vector{0x00bf800000000000, 0});
     REQUIRE(FP::FPSR{jit.GetFpsr()}.QC());
 }
+
+TEST_CASE("A64: FCVTZS and FCVTZU (vector) with 64 fraction bits", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    // Without SSE4.1 these go through the soft-float fallback (DYNARMIC_HOST_FEATURES=0).
+    env.code_mem.emplace_back(0x4f40fc20);  // FCVTZS V0.2D, V1.2D, #64
+    env.code_mem.emplace_back(0x6f40fc62);  // FCVTZU V2.2D, V3.2D, #64
+    env.code_mem.emplace_back(0x4f40fca4);  // FCVTZS V4.2D, V5.2D, #64
+    env.code_mem.emplace_back(0x6f40fca6);  // FCVTZU V6.2D, V5.2D, #64
+    env.code_mem.emplace_back(0x14000000);  // B .
+
+    jit.SetVector(1, {0x3fd0000000000000, 0xbfe0000000000000});  // 0.25, -0.5
+    jit.SetVector(3, {0x3fe8000000000000, 0x3c00000000000000});  // 0.75, 2^-63
+    jit.SetVector(5, {0x3ff0000000000000, 0xbff0000000000000});  // 1.0, -1.0
+    jit.SetPC(0);
+
+    env.ticks_left = 5;
+    CheckedRun([&]() { jit.Run(); });
+
+    // Each lane times 2^64, toward zero; 1.0 and -1.0 saturate.
+    REQUIRE(jit.GetVector(0) == Vector{0x4000000000000000, 0x8000000000000000});
+    REQUIRE(jit.GetVector(2) == Vector{0xc000000000000000, 0x0000000000000002});
+    REQUIRE(jit.GetVector(4) == Vector{0x7fffffffffffffff, 0x8000000000000000});
+    REQUIRE(jit.GetVector(6) == Vector{0xffffffffffffffff, 0});
+}
