@@ -37,6 +37,7 @@ if (DYNARMIC_TESTS_USE_UNICORN)
         unicorn_emu/a32_unicorn.h
         # A64
         A64/fuzz_with_unicorn.cpp
+        A64/ryujinx_unicorn.cpp
         A64/unicorn_harness.h
         A64/verify_unicorn.cpp
         unicorn_emu/a64_unicorn.cpp
