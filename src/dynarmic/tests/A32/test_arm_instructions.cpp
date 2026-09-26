@@ -889,3 +889,29 @@ TEST_CASE("arm: sdiv and udiv by zero", "[arm][A32]") {
     REQUIRE(jit.Regs()[2] == 0);
     REQUIRE(jit.Regs()[3] == 0);
 }
+
+TEST_CASE("arm: vrintx and vrinta through the soft-float fallback", "[arm][A32]") {
+    ArmTestEnv test_env;
+    A32::Jit jit{GetUserConfig(&test_env)};
+    test_env.code_mem = {
+        0xeeb70b41,  // vrintx.f64 d0, d1
+        0xfeb82b43,  // vrinta.f64 d2, d3
+        0xeafffffe,  // b +#0
+    };
+
+    jit.ExtRegs()[2] = 0x33333333;  // d1 = 0.3
+    jit.ExtRegs()[3] = 0x3fd33333;
+    jit.ExtRegs()[6] = 0x00000000;  // d3 = 2.5
+    jit.ExtRegs()[7] = 0x40040000;
+    jit.SetFpscr(0);  // round to nearest
+
+    jit.SetCpsr(0x000001d0);  // User-mode
+
+    test_env.ticks_left = 3;
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.ExtRegs()[0] == 0);  // 0.0
+    REQUIRE(jit.ExtRegs()[1] == 0);
+    REQUIRE(jit.ExtRegs()[4] == 0);  // 3.0, ties away from zero
+    REQUIRE(jit.ExtRegs()[5] == 0x40080000);
+}

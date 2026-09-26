@@ -2723,3 +2723,40 @@ TEST_CASE("A64: SDIV and UDIV by zero", "[a64]") {
     REQUIRE(jit.GetRegister(3) == 0);
     REQUIRE(jit.GetRegister(4) == 0);
 }
+
+TEST_CASE("A64: FRINT through the soft-float fallback", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    // FRINTX, FRINTA and every half-precision FRINT skip ROUNDSD/ROUNDSS on any host.
+    env.code_mem.emplace_back(0x1e674020);  // FRINTX D0, D1
+    env.code_mem.emplace_back(0x1e664062);  // FRINTA D2, D3
+    env.code_mem.emplace_back(0x1e2640a4);  // FRINTA S4, S5
+    env.code_mem.emplace_back(0x1ee4c0e6);  // FRINTP H6, H7
+    env.code_mem.emplace_back(0x1ee54128);  // FRINTM H8, H9
+    env.code_mem.emplace_back(0x1ee7416a);  // FRINTX H10, H11
+    env.code_mem.emplace_back(0x14000000);  // B .
+
+    jit.SetVector(1, {0x3fd3333333333333, 0});  // 0.3
+    jit.SetVector(3, {0x4004000000000000, 0});  // 2.5
+    jit.SetVector(5, {0xbf000000, 0});          // -0.5f
+    jit.SetVector(7, {0x0478, 0});              // 6.8e-5 (half)
+    jit.SetVector(9, {0xa75c, 0});              // -0.0287 (half)
+    jit.SetVector(11, {0x3421, 0});             // 0.258 (half)
+    jit.SetFpcr(0);                             // round to nearest
+    jit.SetFpsr(0);
+    jit.SetPC(0);
+
+    env.ticks_left = 7;
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.GetVector(0) == Vector{0, 0});                   // 0.0, from FPCR's rounding
+    REQUIRE(jit.GetVector(2) == Vector{0x4008000000000000, 0});  // 3.0, ties away from zero
+    REQUIRE(jit.GetVector(4) == Vector{0xbf800000, 0});          // -1.0f
+    REQUIRE(jit.GetVector(6) == Vector{0x3c00, 0});              // 1.0
+    REQUIRE(jit.GetVector(8) == Vector{0xbc00, 0});              // -1.0
+    REQUIRE(jit.GetVector(10) == Vector{0, 0});                  // 0.0
+    REQUIRE((jit.GetFpsr() & 0x10) != 0);                        // FRINTX raised Inexact
+}
