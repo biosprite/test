@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <vector>
 #include <queue>
+#include <unordered_map>
 
 #include "common/settings.h"
 #include "shader_recompiler/exception.h"
@@ -54,6 +56,191 @@ void RemoveUnreachableBlocks(IR::Program& program) {
     const auto end{program.blocks.end()};
     const auto pred{[](IR::Block* block) { return block->ImmPredecessors().empty(); }};
     program.blocks.erase(std::remove_if(begin, end, pred), end);
+}
+
+void PrivatizeInvocationSharedMemory(IR::Program& program) {
+    if (program.stage != Stage::Compute || program.shared_memory_size == 0 ||
+        program.workgroup_size[0] == 0 || program.workgroup_size[1] != 1 ||
+        program.workgroup_size[2] != 1) {
+        return;
+    }
+
+    // Prove byte addresses as stride * local_invocation_id.x + offset. Every intermediate
+    // must be non-wrapping; low-bit extracts are identities only when the whole range fits.
+    using Address = std::pair<u64, u64>;
+    const u64 max_x{program.workgroup_size[0] - 1ULL};
+    constexpr u64 max_u32{(std::numeric_limits<u32>::max)()};
+    std::unordered_map<const IR::Inst*, std::optional<Address>> addresses;
+    const auto checked_address = [&](Address address) -> std::optional<Address> {
+        if (address.first > max_u32 || address.second > max_u32 ||
+            address.first * max_x + address.second > max_u32) {
+            return std::nullopt;
+        }
+        return address;
+    };
+    const auto prove_address = [&](auto&& self, IR::Value value,
+                                   u32 depth) -> std::optional<Address> {
+        if (value.IsImmediate()) {
+            if (value.Type() != IR::Type::U32) {
+                return std::nullopt;
+            }
+            return Address{0, value.U32()};
+        }
+        const IR::Inst* const inst{value.InstRecursive()};
+        if (depth == 64) {
+            return std::nullopt;
+        }
+        // An unfinished entry rejects indirect cycles rather than assuming they are invariant.
+        if (const auto [it, inserted]{addresses.emplace(inst, std::nullopt)}; !inserted) {
+            return it->second;
+        }
+        const auto result = [&]() -> std::optional<Address> {
+            switch (inst->GetOpcode()) {
+            case IR::Opcode::CompositeExtractU32x3: {
+                const IR::Inst* const vector{inst->Arg(0).TryInstRecursive()};
+                if (!vector || vector->GetOpcode() != IR::Opcode::LocalInvocationId ||
+                    !inst->Arg(1).IsImmediate() || inst->Arg(1).U32() > 2) {
+                    return std::nullopt;
+                }
+                return Address{inst->Arg(1).U32() == 0 ? 1 : 0, 0};
+            }
+            case IR::Opcode::IAdd32: {
+                const auto lhs{self(self, inst->Arg(0), depth + 1)};
+                const auto rhs{self(self, inst->Arg(1), depth + 1)};
+                if (!lhs || !rhs) {
+                    return std::nullopt;
+                }
+                return checked_address({lhs->first + rhs->first, lhs->second + rhs->second});
+            }
+            case IR::Opcode::IMul32: {
+                IR::Value operand{inst->Arg(0)};
+                IR::Value factor{inst->Arg(1)};
+                if (operand.IsImmediate()) {
+                    std::swap(operand, factor);
+                }
+                if (!factor.IsImmediate()) {
+                    return std::nullopt;
+                }
+                const auto address{self(self, operand, depth + 1)};
+                if (!address) {
+                    return std::nullopt;
+                }
+                return checked_address(
+                    {address->first * factor.U32(), address->second * factor.U32()});
+            }
+            case IR::Opcode::BitFieldUExtract: {
+                if (!inst->Arg(1).IsImmediate() || inst->Arg(1).U32() != 0 ||
+                    !inst->Arg(2).IsImmediate() || inst->Arg(2).U32() == 0 ||
+                    inst->Arg(2).U32() > 32) {
+                    return std::nullopt;
+                }
+                const auto address{self(self, inst->Arg(0), depth + 1)};
+                if (!address || address->first * max_x + address->second >=
+                                    (u64{1} << inst->Arg(2).U32())) {
+                    return std::nullopt;
+                }
+                return address;
+            }
+            case IR::Opcode::Phi: {
+                std::optional<Address> same;
+                for (size_t index = 0; index < inst->NumArgs(); ++index) {
+                    const IR::Value arg{inst->Arg(index)};
+                    if (arg.TryInstRecursive() == inst) {
+                        continue;
+                    }
+                    const auto address{self(self, arg, depth + 1)};
+                    if (!address || (same && *same != *address)) {
+                        return std::nullopt;
+                    }
+                    same = address;
+                }
+                return same;
+            }
+            default:
+                return std::nullopt;
+            }
+        }();
+        addresses[inst] = result;
+        return result;
+    };
+
+    const u64 local_base{(static_cast<u64>(program.local_memory_size) + 3) & ~u64{3}};
+    std::vector<std::pair<IR::Inst*, u32>> accesses;
+    u64 stride{};
+    u64 scratch_size{};
+    for (IR::Block* const block : program.post_order_blocks) {
+        for (IR::Inst& inst : block->Instructions()) {
+            switch (inst.GetOpcode()) {
+            case IR::Opcode::LoadLocal:
+            case IR::Opcode::WriteLocal:
+                // Appended storage must not turn an existing out-of-bounds local access
+                // into an alias of the scratch. Dynamic local indices are not proven here.
+                if (!inst.Arg(0).IsImmediate() || inst.Arg(0).U32() >= local_base / 4) {
+                    return;
+                }
+                continue;
+            case IR::Opcode::LoadSharedU32:
+            case IR::Opcode::WriteSharedU32:
+                break;
+            case IR::Opcode::LoadSharedU8:
+            case IR::Opcode::LoadSharedS8:
+            case IR::Opcode::LoadSharedU16:
+            case IR::Opcode::LoadSharedS16:
+            case IR::Opcode::LoadSharedU64:
+            case IR::Opcode::LoadSharedU128:
+            case IR::Opcode::WriteSharedU8:
+            case IR::Opcode::WriteSharedU16:
+            case IR::Opcode::WriteSharedU64:
+            case IR::Opcode::WriteSharedU128:
+            case IR::Opcode::SharedAtomicIAdd32:
+            case IR::Opcode::SharedAtomicSMin32:
+            case IR::Opcode::SharedAtomicUMin32:
+            case IR::Opcode::SharedAtomicSMax32:
+            case IR::Opcode::SharedAtomicUMax32:
+            case IR::Opcode::SharedAtomicInc32:
+            case IR::Opcode::SharedAtomicDec32:
+            case IR::Opcode::SharedAtomicAnd32:
+            case IR::Opcode::SharedAtomicOr32:
+            case IR::Opcode::SharedAtomicXor32:
+            case IR::Opcode::SharedAtomicExchange32:
+            case IR::Opcode::SharedAtomicExchange64:
+            case IR::Opcode::SharedAtomicExchange32x2:
+                return;
+            default:
+                continue;
+            }
+            const auto address{prove_address(prove_address, inst.Arg(0), 0)};
+            if (!address) {
+                return;
+            }
+            const auto [access_stride, offset]{*address};
+            const u64 max_address{access_stride * max_x + offset};
+            if (access_stride == 0 || access_stride % 4 != 0 || offset % 4 != 0 ||
+                offset + 4 > access_stride || (stride != 0 && stride != access_stride) ||
+                max_address > static_cast<u64>((std::numeric_limits<s32>::max)()) ||
+                max_address + 4 > program.shared_memory_size) {
+                return;
+            }
+            stride = access_stride;
+            scratch_size = (std::max)(scratch_size, offset + 4);
+            accesses.emplace_back(&inst, static_cast<u32>(offset));
+        }
+    }
+    // Keep both the private byte size and the backend's u32 DivCeil(size, 4) non-wrapping.
+    if (accesses.empty() || local_base + scratch_size > max_u32 - 3) {
+        return;
+    }
+    // Nothing is changed until every reachable shared/local access has passed the proof.
+    // Local IR takes word indices, unlike shared IR's byte addresses. Keep barriers and
+    // address producers intact; ordinary DCE can remove producers with no remaining uses.
+    for (const auto& [inst, offset] : accesses) {
+        inst->ReplaceOpcode(inst->GetOpcode() == IR::Opcode::LoadSharedU32
+                                ? IR::Opcode::LoadLocal
+                                : IR::Opcode::WriteLocal);
+        inst->SetArg(0, IR::Value{static_cast<u32>((local_base + offset) / 4)});
+    }
+    program.local_memory_size = static_cast<u32>(local_base + scratch_size);
+    program.shared_memory_size = 0;
 }
 
 void CollectInterpolationInfo(Environment& env, IR::Program& program) {
@@ -389,6 +576,7 @@ IR::Program TranslateProgram(ObjectPool<IR::Inst>& inst_pool, ObjectPool<IR::Blo
     Optimization::SsaRewritePass(program);
 
     Optimization::ConstantPropagationPass(env, program);
+    PrivatizeInvocationSharedMemory(program);
 
     Optimization::PositionPass(env, program);
 

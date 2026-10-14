@@ -122,6 +122,9 @@ GPUVAddr MemoryManager::PageTableOp(GPUVAddr gpu_addr, [[maybe_unused]] DAddr de
             const DAddr current_dev_addr = dev_addr + offset;
             const auto index = PageEntryIndex(current_gpu_addr, false);
             const u32 sub_value = static_cast<u32>(current_dev_addr >> cpu_page_bits);
+            if (current_entry_type == entry_type && page_table[index] != sub_value) {
+                rasterizer->ModifyGPUMemory(unique_identifier, current_gpu_addr, page_size);
+            }
             page_table[index] = sub_value;
         }
         remaining_size -= page_size;
@@ -143,6 +146,9 @@ GPUVAddr MemoryManager::BigPageTableOp(GPUVAddr gpu_addr, [[maybe_unused]] DAddr
             const DAddr current_dev_addr = dev_addr + offset;
             const auto index = PageEntryIndex(current_gpu_addr, true);
             const u32 sub_value = static_cast<u32>(current_dev_addr >> cpu_page_bits);
+            if (current_entry_type == entry_type && big_page_table_dev[index] != sub_value) {
+                rasterizer->ModifyGPUMemory(unique_identifier, current_gpu_addr, big_page_size);
+            }
             big_page_table_dev.Set(index, sub_value);
             const bool is_continuous = ([&] {
                 uintptr_t base_ptr{

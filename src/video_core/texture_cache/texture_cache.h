@@ -547,12 +547,26 @@ ImageViewId TextureCache<P>::VisitImageView(u32 index, bool compute) {
     auto const map_index = index | (compute ? Common::SlotId::TAGGED_VALUE : 0);
     // Is new (on the tegra engine side)?
     auto const [descriptor, is_new] = table.Read(*gpu_memory, index);
-    if (is_new) {
+    const auto is_remapped = [this](ImageViewId view_id) {
+        if (!view_id) {
+            return false;
+        }
+        const ImageId image_id = slot_image_views[view_id].image_id;
+        return image_id && True(slot_images[image_id].flags & ImageFlagBits::Remapped);
+    };
+    const auto it = channel_state->image_view_ids.find(map_index);
+    if (is_new || is_remapped(it->second)) {
+        if (!compute) {
+            ++texture_bindings_serial;
+        }
         if (IsValidEntry(*gpu_memory, descriptor)) {
             // Is new (registered view) on the texture cache side?
             const auto [pair, is_new_tc] = channel_state->image_views.try_emplace(descriptor);
-            if (is_new_tc)
+            if (is_new_tc || is_remapped(pair->second)) {
+                // Image creation can delete overlaps and erase their descriptor-cache entries.
+                pair->second = {};
                 pair->second = CreateImageView(descriptor);
+            }
             PrepareImageView(pair->second, false, false);
             channel_state->image_view_ids.insert_or_assign(map_index, pair->second);
             return pair->second;
@@ -560,7 +574,6 @@ ImageViewId TextureCache<P>::VisitImageView(u32 index, bool compute) {
         channel_state->image_view_ids.insert_or_assign(map_index, NULL_IMAGE_VIEW_ID);
         return NULL_IMAGE_VIEW_ID;
     }
-    auto const it = channel_state->image_view_ids.find(map_index);
     if (it->second != NULL_IMAGE_VIEW_ID)
         PrepareImageView(it->second, false, false);
     return it->second;
