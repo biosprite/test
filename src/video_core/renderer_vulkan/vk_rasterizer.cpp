@@ -237,6 +237,52 @@ RasterizerVulkan::~RasterizerVulkan() {
     scheduler.Finish();
 }
 
+void RasterizerVulkan::OnGpuWrittenCommandData() {
+    gpu_written_command_data_pending = true;
+}
+
+void RasterizerVulkan::OrderPendingGpuWrites(bool for_graphics) {
+    if (gpu_written_command_data_pending) {
+        // Waiting for the GPU used to make every earlier GPU write visible before GPU-written
+        // command arguments were consumed. Keep that ordering on the GPU without the CPU wait:
+        // tilers such as Adreno fetch indirect arguments outside the shader caches.
+        gpu_written_command_data_pending = false;
+        compute_writes_need_graphics_barrier = false;
+        scheduler.RequestOutsideRenderPassOperationContext();
+        scheduler.Record([](vk::CommandBuffer cmdbuf) {
+            static constexpr VkMemoryBarrier ALL_WRITES{
+                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+                .pNext = nullptr,
+                .srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+            };
+            cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                                   VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, ALL_WRITES);
+        });
+        return;
+    }
+    if (for_graphics && compute_writes_need_graphics_barrier) {
+        // Guest compute can produce indirect draw commands, index/vertex data or storage data
+        // that the following draws read. Nothing else orders those shader writes before graphics
+        // reads; drivers that fetch indirect commands outside the shader cache (Adreno) otherwise
+        // read the previous values.
+        compute_writes_need_graphics_barrier = false;
+        scheduler.RequestOutsideRenderPassOperationContext();
+        scheduler.Record([](vk::CommandBuffer cmdbuf) {
+            static constexpr VkMemoryBarrier COMPUTE_TO_GRAPHICS{
+                .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+                .pNext = nullptr,
+                .srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT,
+                .dstAccessMask = VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_INDEX_READ_BIT |
+                                 VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT |
+                                 VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+            };
+            cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                                   VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT, 0, COMPUTE_TO_GRAPHICS);
+        });
+    }
+}
+
 template <typename Func>
 void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func) {
 
@@ -251,6 +297,7 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func) {
         return;
     }
     std::scoped_lock lock{buffer_cache.mutex, texture_cache.mutex};
+    OrderPendingGpuWrites(true);
     // update engine as channel may be different.
     pipeline->SetEngine(maxwell3d, gpu_memory);
     attribute_handle_pipeline = nullptr;
@@ -693,6 +740,7 @@ void RasterizerVulkan::DispatchCompute() {
         return;
     }
     std::scoped_lock lock{texture_cache.mutex, buffer_cache.mutex};
+    OrderPendingGpuWrites(false);
     if (!pipeline->Configure(*kepler_compute, *gpu_memory, scheduler, buffer_cache,
                              texture_cache)) {
         return;
@@ -714,6 +762,7 @@ void RasterizerVulkan::DispatchCompute() {
             }
             cmdbuf.DispatchIndirect(indirect_buffer, indirect_offset);
         });
+        compute_writes_need_graphics_barrier = true;
         return;
     }
     const std::array<u32, 3> dim{qmd.grid_dim_x, qmd.grid_dim_y, qmd.grid_dim_z};
@@ -736,6 +785,7 @@ void RasterizerVulkan::DispatchCompute() {
         }
         cmdbuf.Dispatch(dim[0], dim[1], dim[2]);
     });
+    compute_writes_need_graphics_barrier = true;
 
     // Log compute dispatch
     if (GPU::Logging::IsActive() &&

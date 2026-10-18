@@ -120,6 +120,10 @@ public:
         return true;
     }
 
+    /// The commands being parsed carry arguments the GPU wrote, and they are consumed without
+    /// waiting for the GPU. Order every earlier GPU write before the work that follows.
+    virtual void OnGpuWrittenCommandData() {}
+
     virtual bool OnCPUWrite(PAddr addr, u64 size) = 0;
 
     /// Sync memory between guest and host.
