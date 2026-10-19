@@ -595,6 +595,8 @@
     <string name="skip_cpu_inner_invalidation_description">Skips certain CPU-side cache invalidations during memory updates, reducing CPU usage and improving it\'s performance. This may cause glitches or crashes on some games.</string>
     <string name="fix_bloom_effects">Fix Bloom Effects</string>
     <string name="fix_bloom_effects_description">Removes bloom in Burnout.</string>
+    <string name="fix_fp16_denormals">Fix FP16 Denormals</string>
+    <string name="fix_fp16_denormals_description">Keeps tiny half-precision values that Adreno A6XX - A7XX flushes to zero. Fixes white engage attacks in Fire Emblem Engage, where it is on automatically. Costs some GPU performance.</string>
     <string name="emulate_bgr565">Emulate BGR565</string>
     <string name="emulate_bgr565_description">Fixes problems with inverted colors in games or strange artifacts or strange shadows.</string>
     <string name="rescale_hack">Enable Legacy Rescale Pass</string>

@@ -651,6 +651,9 @@ struct Values {
     SwitchableSetting<bool> fix_bloom_effects{linkage, false, "fix_bloom_effects",
                                                      Category::RendererHacks};
 
+    SwitchableSetting<bool> fix_fp16_denormals{linkage, false, "fix_fp16_denormals",
+                                               Category::RendererHacks};
+
     SwitchableSetting<bool> emulate_bgr565{linkage, false, "emulate_bgr565",
                                             Category::RendererHacks};
 
@@ -945,6 +948,9 @@ struct Values {
 
     // Per-game overrides
     bool use_squashed_iterated_blend;
+    // Turn fix_fp16_denormals on for the running title unless the player set it for that game
+    // (set at load, never saved).
+    bool fix_fp16_denormals_by_title{};
 
 };
 
@@ -970,6 +976,7 @@ bool IsDMALevelSafe();
 bool IsGPUFenceBehaviorDefault();
 bool IsGPUFenceBehaviorBalanced();
 bool IsGPUFenceBehaviorAccurate();
+bool IsFp16DenormalFixEnabled();
 
 bool IsFastmemEnabled();
 void SetNceEnabled(bool is_64bit);

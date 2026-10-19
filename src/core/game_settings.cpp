@@ -122,9 +122,15 @@ EnvironmentInfo DetectEnvironment(const VideoCore::RendererBase& renderer) {
 void LoadOverrides(std::uint64_t program_id, const VideoCore::RendererBase& renderer) {
     const auto env = DetectEnvironment(renderer);
 
+    Settings::values.fix_fp16_denormals_by_title = false;
     switch (static_cast<TitleID>(program_id)) {
         case TitleID::NinjaGaidenRagebound:
             Settings::values.use_squashed_iterated_blend = true;
+            break;
+        case TitleID::FireEmblemEngage:
+            // Its engage attacks divide by an fp16 subnormal; flushed to zero it turns the
+            // bloom NaN and the screen white.
+            Settings::values.fix_fp16_denormals_by_title = true;
             break;
         default:
             break;
