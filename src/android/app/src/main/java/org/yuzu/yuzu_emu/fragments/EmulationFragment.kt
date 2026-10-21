@@ -1173,6 +1173,7 @@ class EmulationFragment : Fragment(), SurfaceHolder.Callback {
             val container = binding.quickSettingsSheet.findViewById<ViewGroup>(R.id.quick_settings_container)
             val isSharpnessFilterSelected = isSharpnessScalingFilterSelected()
 
+            container.isSaveFromParentEnabled = false
             container.removeAllViews()
 
             if (shouldUseCustom) {
