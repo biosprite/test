@@ -364,6 +364,10 @@ void EmulationSession::ShutdownEmulation() {
         m_next_program_index = -1;
     }
 
+    if (m_load_result == Core::SystemResultStatus::Success) {
+        NotifyApplicationBackgrounded(true);
+    }
+
     m_is_running = false;
 
     // Unload user input.
@@ -384,6 +388,27 @@ void EmulationSession::ShutdownEmulation() {
 
     // Tear down the render window.
     m_window.reset();
+}
+
+void EmulationSession::NotifyApplicationBackgrounded(bool resume_if_paused) {
+    m_system.NotifyApplicationBackgrounded(resume_if_paused);
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(1000);
+    while (m_system.IsApplicationFocusStateChangedPending() &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+}
+
+void EmulationSession::BackgroundEmulation() {
+    std::scoped_lock lock(m_mutex);
+
+    if (m_load_result != Core::SystemResultStatus::Success || !m_is_running) {
+        return;
+    }
+
+    NotifyApplicationBackgrounded(false);
 }
 
 void EmulationSession::PauseEmulation() {
@@ -933,6 +958,10 @@ void Java_org_yuzu_yuzu_1emu_NativeLibrary_unpauseEmulation(JNIEnv* env, jclass 
 
 void Java_org_yuzu_yuzu_1emu_NativeLibrary_pauseEmulation(JNIEnv* env, jclass clazz) {
     EmulationSession::GetInstance().PauseEmulation();
+}
+
+void Java_org_yuzu_yuzu_1emu_NativeLibrary_backgroundEmulation(JNIEnv* env, jclass clazz) {
+    EmulationSession::GetInstance().BackgroundEmulation();
 }
 
 void Java_org_yuzu_yuzu_1emu_NativeLibrary_stopEmulation(JNIEnv* env, jclass clazz) {

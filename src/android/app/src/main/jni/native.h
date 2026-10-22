@@ -42,6 +42,8 @@ public:
     bool IsRunning() const;
     bool IsPaused() const;
     void PauseEmulation();
+    void NotifyApplicationBackgrounded(bool resume_if_paused);
+    void BackgroundEmulation();
     void UnPauseEmulation();
     void HaltEmulation();
     void RunEmulation();

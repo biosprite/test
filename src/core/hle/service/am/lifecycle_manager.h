@@ -52,6 +52,10 @@ public:
         return m_is_application;
     }
 
+    bool HasPendingFocusStateChanged() const {
+        return m_has_focus_state_changed;
+    }
+
     bool GetForcedSuspend() {
         return m_forced_suspend;
     }

@@ -39,27 +39,28 @@ AppletMessage LifecycleManager::PopMessageInOrderOfPriority() {
         return AppletMessage::Resume;
     }
 
+    if (m_is_application && m_has_focus_state_changed) {
+        // Applications receive focus-state changes regardless of the guest's notification opt-in.
+        m_has_focus_state_changed = false;
+        return AppletMessage::FocusStateChanged;
+    }
+
     if (m_has_acknowledged_exit != m_has_requested_exit) {
         m_has_acknowledged_exit = m_has_requested_exit;
         return AppletMessage::Exit;
     }
 
-    if (m_focus_state_changed_notification_enabled) {
-        if (!m_is_application) {
-            if (m_requested_focus_state != m_acknowledged_focus_state) {
-                m_acknowledged_focus_state = m_requested_focus_state;
-                switch (m_requested_focus_state) {
-                case FocusState::InFocus:
-                    return AppletMessage::ChangeIntoForeground;
-                case FocusState::NotInFocus:
-                    return AppletMessage::ChangeIntoBackground;
-                default:
-                    ASSERT(false);
-                }
+    if (!m_is_application && m_focus_state_changed_notification_enabled) {
+        if (m_requested_focus_state != m_acknowledged_focus_state) {
+            m_acknowledged_focus_state = m_requested_focus_state;
+            switch (m_requested_focus_state) {
+            case FocusState::InFocus:
+                return AppletMessage::ChangeIntoForeground;
+            case FocusState::NotInFocus:
+                return AppletMessage::ChangeIntoBackground;
+            default:
+                ASSERT(false);
             }
-        } else if (m_has_focus_state_changed) {
-            m_has_focus_state_changed = false;
-            return AppletMessage::FocusStateChanged;
         }
     }
 
@@ -123,14 +124,14 @@ AppletMessage LifecycleManager::PopMessageInOrderOfPriority() {
 }
 
 bool LifecycleManager::ShouldSignalSystemEvent() {
-    if (m_focus_state_changed_notification_enabled) {
-        if (!m_is_application) {
-            if (m_requested_focus_state != m_acknowledged_focus_state) {
-                return true;
-            }
-        } else if (m_has_focus_state_changed) {
+    if (!m_is_application) {
+        if (m_focus_state_changed_notification_enabled &&
+            m_requested_focus_state != m_acknowledged_focus_state) {
             return true;
         }
+    } else if (m_has_focus_state_changed) {
+        // Matches PopMessageInOrderOfPriority(), which reports this message to the application.
+        return true;
     }
 
     return !m_unordered_messages.empty() || m_has_resume ||

@@ -54,7 +54,8 @@ public:
 
 public:
     void OnOperationModeChanged();
-    void OnExitRequested();
+    void OnApplicationBackgrounded();
+    bool IsApplicationFocusStateChangedPending();
     void OnHomeButtonPressed(ButtonPressDuration type);
     void OnSystemButtonPress(SystemButtonType type);
     void OnCaptureButtonPressed(ButtonPressDuration type) {}

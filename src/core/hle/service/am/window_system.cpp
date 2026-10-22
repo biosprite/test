@@ -199,13 +199,26 @@ void WindowSystem::OnOperationModeChanged() {
     }
 }
 
-void WindowSystem::OnExitRequested() {
+void WindowSystem::OnApplicationBackgrounded() {
     std::scoped_lock lk{m_lock};
 
-    for (const auto& [aruid, applet] : m_applets) {
-        std::scoped_lock lk2{applet->lock};
-        applet->lifecycle_manager.RequestExit(m_system.Kernel());
+    if (m_application == nullptr) {
+        return;
     }
+
+    std::scoped_lock lk2{m_application->lock};
+    m_application->lifecycle_manager.SetFocusState(m_system.Kernel(), FocusState::NotInFocus);
+}
+
+bool WindowSystem::IsApplicationFocusStateChangedPending() {
+    std::scoped_lock lk{m_lock};
+
+    if (m_application == nullptr) {
+        return false;
+    }
+
+    std::scoped_lock lk2{m_application->lock};
+    return m_application->lifecycle_manager.HasPendingFocusStateChanged();
 }
 
 void WindowSystem::SendButtonAppletMessageLocked(AppletMessage message) {

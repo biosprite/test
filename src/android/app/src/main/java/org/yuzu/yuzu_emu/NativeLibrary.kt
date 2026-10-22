@@ -190,6 +190,11 @@ object NativeLibrary {
     external fun pauseEmulation()
 
     /**
+     * Delivers the focus-state change titles persist their state on.
+     */
+    external fun backgroundEmulation()
+
+    /**
      * Stops emulation.
      */
     external fun stopEmulation()

@@ -2153,10 +2153,21 @@ bool MainWindow::OnShutdownBegin() {
         perf_overlay = nullptr;
     }
 
+    RequestGameExit();
+
+    {
+        using namespace std::chrono;
+        const auto deadline = steady_clock::now() + milliseconds(1000);
+        while (QtCommon::system->IsApplicationFocusStateChangedPending() &&
+               steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(milliseconds(5));
+        }
+        // The title writes from its own thread a few frames after the notification.
+        std::this_thread::sleep_for(milliseconds(250));
+    }
+
     QtCommon::system->SetShuttingDown(true);
     discord_rpc->Pause();
-
-    RequestGameExit();
     QtCommon::emu_thread->disconnect();
     QtCommon::emu_thread->SetRunning(true);
 
@@ -4699,7 +4710,7 @@ void MainWindow::RequestGameExit() {
         return;
 
     QtCommon::system->SetExitRequested(true);
-    QtCommon::system->GetAppletManager().RequestExit();
+    QtCommon::system->NotifyApplicationBackgrounded(true);
 }
 
 void MainWindow::filterBarSetChecked(bool state) {

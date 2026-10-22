@@ -179,6 +179,10 @@ public:
 
     /// Shutdown the main emulated process.
     void ShutdownMainProcess();
+    /// Delivers the focus-state change titles persist their state on. Call it while the machine is
+    /// still running, then wait for IsApplicationFocusStateChangedPending() before tearing down.
+    void NotifyApplicationBackgrounded(bool resume_if_paused);
+    [[nodiscard]] bool IsApplicationFocusStateChangedPending();
 
     /// Check if the core is shutting down.
     [[nodiscard]] bool IsShuttingDown() const;

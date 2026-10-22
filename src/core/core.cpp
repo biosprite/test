@@ -3,6 +3,7 @@
 
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <utility>
 
@@ -40,6 +41,7 @@
 #include "core/hle/service/am/applet_manager.h"
 #include "core/hle/service/am/frontend/applets.h"
 #include "core/hle/service/am/process_creation.h"
+#include "core/hle/service/am/window_system.h"
 #include "core/hle/service/apm/apm_controller.h"
 #include "core/hle/service/filesystem/filesystem.h"
 #include "core/hle/service/glue/glue_manager.h"
@@ -392,6 +394,26 @@ struct System::Impl {
         return SystemResultStatus::Success;
     }
 
+    void NotifyApplicationBackgrounded(bool resume_if_paused) {
+        if (!is_powered_on) {
+            return;
+        }
+
+        if (resume_if_paused && IsPaused()) {
+            Run();
+        }
+
+        if (Service::AM::WindowSystem* const window_system = applet_manager.GetWindowSystem();
+            window_system != nullptr) {
+            window_system->OnApplicationBackgrounded();
+        }
+    }
+
+    bool IsApplicationFocusStateChangedPending() {
+        Service::AM::WindowSystem* const window_system = applet_manager.GetWindowSystem();
+        return window_system != nullptr && window_system->IsApplicationFocusStateChangedPending();
+    }
+
     void ShutdownMainProcess() {
         SetShuttingDown(true);
         Common::ADPF::Shutdown();
@@ -556,6 +578,14 @@ bool System::IsPaused() const {
 
 void System::ShutdownMainProcess() {
     impl->ShutdownMainProcess();
+}
+
+void System::NotifyApplicationBackgrounded(bool resume_if_paused) {
+    impl->NotifyApplicationBackgrounded(resume_if_paused);
+}
+
+bool System::IsApplicationFocusStateChangedPending() {
+    return impl->IsApplicationFocusStateChangedPending();
 }
 
 bool System::IsShuttingDown() const {

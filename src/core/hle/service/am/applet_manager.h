@@ -44,7 +44,6 @@ public:
 
     void CreateAndInsertByFrontendAppletParameters(std::unique_ptr<Process> process,
                                                    const FrontendAppletParameters& params);
-    void RequestExit();
     void OperationModeChanged();
 
 public:
