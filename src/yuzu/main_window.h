@@ -563,6 +563,8 @@ private:
 
     QActionGroup* game_size_actions;
     std::vector<QAction*> runtime_cheat_actions;
+    /// Title id of the running game, used to persist its cheat states
+    u64 current_title_id = 0;
 
     /// The console modes' engine: assigns the connected controllers to players, on a timer
     QTimer console_mode_timer;

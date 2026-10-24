@@ -1912,10 +1912,25 @@ void MainWindow::ConnectWidgetEvents() {
             &MultiplayerState::UpdateThemedIcons);
 }
 
+namespace {
+
+/// Cheat enabled states are remembered per game and per cheat name: names are the stable
+/// identity across sessions (the runtime ids are per-session indices).
+QString CheatStateFile() {
+    return QString::fromStdString(Common::FS::PathToUTF8String(
+        Common::FS::GetEdenPath(Common::FS::EdenPath::ConfigDir) / "cheat_state.ini"));
+}
+
+} // Anonymous namespace
+
 void MainWindow::RefreshRuntimeCheats() {
     ClearRuntimeCheats();
 
     const auto cheats = QtCommon::system->GetRuntimeCheats();
+    const QString title_group =
+        QStringLiteral("cheats_%1").arg(current_title_id, 16, 16, QChar(u'0'));
+    QSettings cheat_state{CheatStateFile(), QSettings::IniFormat};
+    cheat_state.beginGroup(title_group);
     auto* disable_all = ui->menu_Cheats->addAction(tr("Disable All Cheats"));
     connect(disable_all, &QAction::triggered, this, [this] {
         for (auto* action : runtime_cheat_actions) {
@@ -1941,16 +1956,30 @@ void MainWindow::RefreshRuntimeCheats() {
                                                 : QString::fromUtf8(cheat.name);
         auto* action = ui->menu_Cheats->addAction(name);
         action->setCheckable(true);
-        action->setChecked(cheat.enabled || cheat.is_master);
         action->setEnabled(!cheat.is_master);
-        connect(action, &QAction::toggled, this, [action, id = cheat.id](bool enabled) {
-            if (!QtCommon::system->SetCheatEnabled(id, enabled)) {
-                const QSignalBlocker blocker{action};
-                action->setChecked(!enabled);
+        bool checked = cheat.enabled || cheat.is_master;
+        if (!cheat.is_master && cheat_state.contains(name)) {
+            // Restore the remembered state for this session
+            checked = cheat_state.value(name).toBool();
+            if (checked != cheat.enabled && !QtCommon::system->SetCheatEnabled(cheat.id, checked)) {
+                checked = cheat.enabled;
             }
-        });
+        }
+        action->setChecked(checked);
+        connect(action, &QAction::toggled, this,
+                [action, id = cheat.id, name, title_group](bool enabled) {
+                    if (!QtCommon::system->SetCheatEnabled(id, enabled)) {
+                        const QSignalBlocker blocker{action};
+                        action->setChecked(!enabled);
+                        return;
+                    }
+                    QSettings state{CheatStateFile(), QSettings::IniFormat};
+                    state.beginGroup(title_group);
+                    state.setValue(name, enabled);
+                });
         runtime_cheat_actions.push_back(action);
     }
+    cheat_state.endGroup();
 
     ui->menu_Cheats->menuAction()->setVisible(!runtime_cheat_actions.empty());
 }
@@ -7580,6 +7609,7 @@ void MainWindow::BootGame(const QString& filename, Service::AM::FrontendAppletPa
     SaveAllConfigValues();
 
     u64 title_id{0};
+    current_title_id = 0;
 
     last_filename_booted = filename;
 
@@ -7590,6 +7620,7 @@ void MainWindow::BootGame(const QString& filename, Service::AM::FrontendAppletPa
 
     if (loader != nullptr && loader->ReadProgramId(title_id) == Loader::ResultStatus::Success &&
         type == StartGameType::Normal) {
+        current_title_id = title_id;
         // Load per game settings
         const auto file_path =
             std::filesystem::path{Common::U16StringFromBuffer(filename.utf16(), filename.size())};
