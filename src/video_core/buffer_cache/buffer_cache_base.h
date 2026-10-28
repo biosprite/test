@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <chrono>
+#include <condition_variable>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -309,6 +311,17 @@ public:
     void PopAsyncFlushes();
     void PopAsyncBuffers();
 
+    /// True when every GPU write in the region is in an async download already recorded, and none
+    /// came after it: popping that download (PopAsyncFlushes) gives the region to the guest.
+    [[nodiscard]] bool IsRegionAwaitingAsyncDownload(DAddr addr, size_t size);
+
+    /// Async downloads popped so far.
+    [[nodiscard]] u64 AsyncDownloadsPopped();
+
+    /// Waits, without the cache mutex, until more than [popped] async downloads have been popped.
+    /// Returns false on timeout.
+    bool WaitAsyncDownloadPopped(u64 popped, std::chrono::milliseconds timeout);
+
     bool DMACopy(GPUVAddr src_address, GPUVAddr dest_address, u64 amount);
 
     bool DMAClear(GPUVAddr src_address, u64 amount, u32 value);
@@ -340,6 +353,10 @@ public:
     }
 
     std::recursive_mutex mutex;
+
+    /// Counts the GPU buffer writes recorded (MarkWrittenBuffer), so a barrier can tell whether any
+    /// came after the previous one.
+    u64 gpu_write_serial = 0;
     Runtime& runtime;
     bool any_buffer_uploaded = false;
 
@@ -464,7 +481,10 @@ private:
 
     void DownloadBufferMemory(Buffer& buffer_id);
 
-    void DownloadBufferMemory(Buffer& buffer_id, DAddr device_addr, u64 size);
+    /// [unlock_while_waiting]: the caller holds `mutex` exactly once and keeps no state across
+    /// the call, so it is released while the GPU runs the download.
+    void DownloadBufferMemory(Buffer& buffer_id, DAddr device_addr, u64 size,
+                              bool unlock_while_waiting = false);
 
     void DeleteBuffer(BufferId buffer_id, bool do_not_mark = false);
 
@@ -514,6 +534,8 @@ private:
     MemoryTracker memory_tracker;
     Common::RangeSet<DAddr> uncommitted_gpu_modified_ranges;
     Common::RangeSet<DAddr> gpu_modified_ranges;
+    /// Taken from gpu_modified_ranges by a download whose data is not in guest memory yet.
+    Common::RangeSet<DAddr> downloading_ranges;
     std::deque<Common::RangeSet<DAddr>> committed_gpu_modified_ranges;
 
     // Async Buffers
@@ -523,6 +545,10 @@ private:
     std::optional<Async_Buffer> current_buffer;
 
     std::deque<Async_Buffer> async_buffers_death_ring;
+
+    std::mutex async_pop_mutex;
+    std::condition_variable async_pop_cv;
+    u64 async_pops = 0;
 
     size_t immediate_buffer_capacity = 0;
     Common::ScratchBuffer<u8> immediate_buffer_alloc;

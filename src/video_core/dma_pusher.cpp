@@ -88,18 +88,24 @@ bool DmaPusher::Step() {
             }
         }
         const bool use_safe = Settings::IsDMALevelDefault() ? Settings::IsGPULevelHigh() : Settings::IsDMALevelSafe();
-        if (use_safe && macro_arguments_only) {
+        // Commands the GPU wrote itself (FINAL FANTASY RESONANCE builds part of its command
+        // stream with GPU copies) only exist in the buffer cache; an unsafe read would run stale
+        // guest memory as commands. Only these segments pay for the download.
+        const bool gpu_written = !use_safe && memory_manager.IsMemoryDirty(dma_state.dma_get, header.size * sizeof(u32), VideoCommon::CacheType::BufferCache);
+        if (macro_arguments_only && (use_safe || gpu_written)) {
             // GPU-written macro arguments (e.g. indirect draws built by a compute pass) need no
             // synchronous download here: the macro is marked dirty above, so HLE indirect draws
             // read them on the GPU, and every macro that consumes them on the CPU refreshes them
             // with a flushing read first. Query results are not covered by the dirty check.
+            // Pokemon Scarlet's overworld sends GPU-built indirect draws this way every frame; a
+            // download here drained the GPU queue each time.
             memory_manager.FlushRegion(dma_state.dma_get, header.size * sizeof(u32), VideoCommon::CacheType::QueryCache);
             if (subchannels[dma_state.subchannel]->current_dirty) {
                 rasterizer->OnGpuWrittenCommandData();
             }
             Tegra::Memory::GpuGuestMemory<Tegra::CommandHeader, Tegra::Memory::GuestMemoryFlags::UnsafeRead>headers(memory_manager, dma_state.dma_get, header.size, &command_headers);
             ProcessCommands(headers);
-        } else if (use_safe) {
+        } else if (use_safe || gpu_written) {
             Tegra::Memory::GpuGuestMemory<Tegra::CommandHeader, Tegra::Memory::GuestMemoryFlags::SafeRead>headers(memory_manager, dma_state.dma_get, header.size, &command_headers);
             ProcessCommands(headers);
         } else {

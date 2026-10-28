@@ -120,6 +120,18 @@ public:
         return true;
     }
 
+    /// Waits for an async download already recorded with the GPU writes in a region to reach guest
+    /// memory, so a CPU write to the region needs no download of its own. Returns false, without
+    /// waiting, when no such download holds them all.
+    virtual bool WaitForPendingDownload(DAddr addr, u64 size) {
+        return false;
+    }
+
+    /// True when an async download already recorded holds every GPU write in the region.
+    virtual bool IsRegionAwaitingDownload(DAddr addr, u64 size) {
+        return false;
+    }
+
     /// The commands being parsed carry arguments the GPU wrote, and they are consumed without
     /// waiting for the GPU. Order every earlier GPU write before the work that follows.
     virtual void OnGpuWrittenCommandData() {}

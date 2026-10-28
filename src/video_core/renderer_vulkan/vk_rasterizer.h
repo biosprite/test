@@ -7,6 +7,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 
 #include <boost/container/static_vector.hpp>
 
@@ -107,6 +108,8 @@ public:
     void InnerInvalidation(std::span<const std::pair<DAddr, std::size_t>> sequences) override;
     void OnCacheInvalidation(DAddr addr, u64 size) override;
     bool TryCacheInvalidation(DAddr addr, u64 size) override;
+    bool WaitForPendingDownload(DAddr addr, u64 size) override;
+    bool IsRegionAwaitingDownload(DAddr addr, u64 size) override;
     void OnGpuWrittenCommandData() override;
     bool OnCPUWrite(DAddr addr, u64 size) override;
     void InvalidateGPUCache() override;
@@ -157,7 +160,7 @@ private:
     static constexpr VkDeviceSize DEFAULT_BUFFER_SIZE = 4 * sizeof(float);
 
     template <typename Func>
-    void PrepareDraw(bool is_indexed, Func&&);
+    void PrepareDraw(bool is_indexed, bool is_indirect, Func&&);
 
     /// A stretch of a draw whose vertices all carry the same texture handle.
     struct AttributeHandleRun {
@@ -248,11 +251,17 @@ private:
     /// A guest compute dispatch may have written buffers that later draws read as indirect
     /// commands, indices, vertices or shader data; barrier once before the next draw.
     bool compute_writes_need_graphics_barrier = false;
+    /// Guest threads waiting for the cache locks in an NCE write fault; see LockCaches.
+    std::atomic<u32> guest_cache_waiters{0};
     /// GPU-written command arguments were parsed without waiting for the GPU (which used to make
-    /// every earlier GPU write visible); the next draw or dispatch needs a full memory barrier.
+    /// every earlier GPU write visible); the next indirect draw or dispatch needs a full memory
+    /// barrier.
     bool gpu_written_command_data_pending = false;
+    /// buffer_cache.gpu_write_serial at the last full barrier.
+    u64 ordered_gpu_write_serial = 0;
     /// Records the barriers owed by the two flags above; dispatches only need the full one.
-    void OrderPendingGpuWrites(bool for_graphics);
+    /// [reads_command_data]: the work fetches its arguments from GPU memory.
+    void OrderPendingGpuWrites(bool for_graphics, bool reads_command_data);
 
 };
 

@@ -229,15 +229,47 @@ struct GPU::Impl {
     void InvalidateRegion(DAddr addr, u64 size, bool preserve_gpu_writes) {
         if (preserve_gpu_writes) {
             VideoCore::RasterizerInterface* rasterizer = renderer->ReadRasterizer();
-            if (!rasterizer->TryCacheInvalidation(addr, size)) {
-                const u64 fence = RequestSyncOperation([rasterizer, addr, size] {
+            // Deciding and invalidating in one step keeps a concurrently recorded GPU write from
+            // being disowned without its download.
+            //
+            // GPU writes that a fence's async download already holds reach guest memory when the
+            // fence thread pops it. Waiting for that leaves the GPU thread running; a download
+            // recorded here instead drains the whole queue on the GPU thread with the cache locks
+            // held (2-12 ms each, about twice a frame in Pokemon Scarlet's overworld).
+            bool may_defer = true;
+            for (;;) {
+                if (rasterizer->TryCacheInvalidation(addr, size)) {
+                    return;
+                }
+                if (rasterizer->WaitForPendingDownload(addr, size)) {
+                    continue;
+                }
+                // GPU-written bytes share the page: download them on the GPU thread, in order with
+                // the writes, before the CPU's version of the page takes over. The GPU thread
+                // defers to a fence's async download once: one it already reached, or else one it
+                // signals now (the writes recorded so far would go at the next fence anyway). A
+                // range the GPU keeps rewriting still ends with the download below.
+                bool flushed = false;
+                const u64 fence = RequestSyncOperation([rasterizer, addr, size, may_defer, &flushed] {
+                    if (may_defer) {
+                        if (!rasterizer->IsRegionAwaitingDownload(addr, size)) {
+                            rasterizer->SignalReference();
+                        }
+                        if (rasterizer->IsRegionAwaitingDownload(addr, size)) {
+                            return;
+                        }
+                    }
                     rasterizer->FlushRegion(addr, size, VideoCommon::CacheType::BufferCache);
                     rasterizer->OnCacheInvalidation(addr, size);
+                    flushed = true;
                 });
                 gpu_thread.TickGPU(is_async);
                 WaitForSyncOperation(fence);
+                if (flushed) {
+                    return;
+                }
+                may_defer = false;
             }
-            return;
         }
         gpu_thread.InvalidateRegion(addr, size);
     }

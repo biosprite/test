@@ -184,7 +184,7 @@ std::optional<VideoCore::RasterizerDownloadArea> BufferCache<P>::GetFlushArea(DA
 template <class P>
 void BufferCache<P>::DownloadMemory(DAddr device_addr, u64 size) {
     ForEachBufferInRange(device_addr, size, [&](BufferId, Buffer& buffer) {
-        DownloadBufferMemory(buffer, device_addr, size);
+        DownloadBufferMemory(buffer, device_addr, size, true);
     });
 }
 
@@ -718,6 +718,13 @@ void BufferCache<P>::PopAsyncBuffers() {
     if (async_buffers.empty()) {
         return;
     }
+    SCOPE_EXIT {
+        {
+            std::scoped_lock lock{async_pop_mutex};
+            ++async_pops;
+        }
+        async_pop_cv.notify_all();
+    };
     if (!async_buffers.front().has_value()) {
         async_buffers.pop_front();
         return;
@@ -771,9 +778,41 @@ void BufferCache<P>::PopAsyncBuffers() {
 }
 
 template <class P>
+bool BufferCache<P>::IsRegionAwaitingAsyncDownload(DAddr addr, size_t size) {
+    bool any = false;
+    bool all = true;
+    gpu_modified_ranges.ForEachInRange(addr, size, [&](DAddr start, DAddr end) {
+        any = true;
+        bool downloading = false;
+        async_downloads.ForEachInRange(start, end - start,
+                                       [&](DAddr, DAddr, s32) { downloading = true; });
+        bool newer = uncommitted_gpu_modified_ranges.FirstOverlapInRange(start, end - start)
+                         .has_value();
+        for (const auto& pending : committed_gpu_modified_ranges) {
+            newer = newer || pending.FirstOverlapInRange(start, end - start).has_value();
+        }
+        all = all && downloading && !newer;
+    });
+    return any && all;
+}
+
+template <class P>
+u64 BufferCache<P>::AsyncDownloadsPopped() {
+    std::scoped_lock lock{async_pop_mutex};
+    return async_pops;
+}
+
+template <class P>
+bool BufferCache<P>::WaitAsyncDownloadPopped(u64 popped, std::chrono::milliseconds timeout) {
+    std::unique_lock lock{async_pop_mutex};
+    return async_pop_cv.wait_for(lock, timeout, [&] { return async_pops > popped; });
+}
+
+template <class P>
 bool BufferCache<P>::IsRegionGpuModified(DAddr addr, size_t size) {
     bool is_dirty = false;
     gpu_modified_ranges.ForEachInRange(addr, size, [&](DAddr, DAddr) { is_dirty = true; });
+    downloading_ranges.ForEachInRange(addr, size, [&](DAddr, DAddr) { is_dirty = true; });
     return is_dirty;
 }
 
@@ -1592,6 +1631,7 @@ void BufferCache<P>::MarkWrittenBuffer(BufferId buffer_id, DAddr device_addr, u3
     memory_tracker.MarkRegionAsGpuModified(device_addr, size);
     gpu_modified_ranges.Add(device_addr, size);
     uncommitted_gpu_modified_ranges.Add(device_addr, size);
+    ++gpu_write_serial;
 }
 
 template <class P>
@@ -1965,7 +2005,8 @@ void BufferCache<P>::DownloadBufferMemory(Buffer& buffer) {
 }
 
 template <class P>
-void BufferCache<P>::DownloadBufferMemory(Buffer& buffer, DAddr device_addr, u64 size) {
+void BufferCache<P>::DownloadBufferMemory(Buffer& buffer, DAddr device_addr, u64 size,
+                                          bool unlock_while_waiting) {
     boost::container::small_vector<BufferCopy, 1> copies;
     u64 total_size_bytes = 0;
     u64 largest_copy = 0;
@@ -2007,7 +2048,20 @@ void BufferCache<P>::DownloadBufferMemory(Buffer& buffer, DAddr device_addr, u64
         runtime.PreCopyBarrier();
         runtime.CopyBuffer(download_staging.buffer, buffer, copies_span, false);
         runtime.PostDownloadBarrier();
-        runtime.Finish();
+        if (unlock_while_waiting) {
+            // The wait drains the whole queue (milliseconds). Guest threads take this mutex on
+            // every NCE write fault, so holding it stalled all of them. The ranges stay reported as
+            // GPU-modified until their data is in guest memory, so a CPU write to them in the
+            // meantime still waits for this download (it queues behind it on the GPU thread).
+            for (const BufferCopy& copy : copies) {
+                downloading_ranges.Add(buffer.CpuAddr() + copy.src_offset, copy.size);
+            }
+            mutex.unlock();
+            runtime.Finish();
+            mutex.lock();
+        } else {
+            runtime.Finish();
+        }
         if constexpr (!IS_OPENGL) {
             runtime.InvalidateDownload(download_staging);
         }
@@ -2017,6 +2071,9 @@ void BufferCache<P>::DownloadBufferMemory(Buffer& buffer, DAddr device_addr, u64
             const u64 dst_offset = copy.dst_offset - download_staging.offset;
             const u8* copy_mapped_memory = mapped_memory + dst_offset;
             device_memory.WriteBlockUnsafe(copy_device_addr, copy_mapped_memory, copy.size);
+            if (unlock_while_waiting) {
+                downloading_ranges.Subtract(copy_device_addr, copy.size);
+            }
         }
     } else {
         const std::span<u8> immediate_buffer = ImmediateBuffer(largest_copy);

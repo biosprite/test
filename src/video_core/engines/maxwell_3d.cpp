@@ -223,9 +223,9 @@ void Maxwell3D::ProcessMacro(Core::System& system, u32 method, const u32* base_s
 }
 
 void Maxwell3D::RefreshParametersImpl() {
-    if (!Settings::IsGPULevelHigh()) {
-        return;
-    }
+    // Only parameters marked dirty get here. GPU-written macro arguments are read without a
+    // download at every accuracy level (DmaPusher::Step), so this flushing read is what a macro
+    // consuming them on the CPU relies on.
     size_t current_index = 0;
     for (auto& segment : macro_segments) {
         if (segment.first == 0) {

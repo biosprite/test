@@ -6,8 +6,11 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
+#include <cstring>
 #include <memory>
 #include <mutex>
+#include <thread>
 
 #include <fmt/format.h>
 
@@ -199,6 +202,42 @@ bool IsPrimitiveRestartSupported(const Device& device, VkPrimitiveTopology topol
             (topology == VK_PRIMITIVE_TOPOLOGY_PATCH_LIST &&
              device.IsPatchListPrimitiveRestartSupported()));
 }
+/// Takes the cache locks for the GPU thread, which takes them for every draw and pushbuffer
+/// segment. Guest threads hold them for microseconds on NCE write faults, but blocking on that put
+/// the GPU thread to sleep (a futex wakeup costs far more than the hold), and relocking right after
+/// each draw starved a guest that was being woken. Step aside while a guest waits and spin through
+/// short holds; block only after spin_limit.
+template <typename... Mutexes>
+void LockCaches(const std::atomic<u32>& guest_waiters, Mutexes&... mutexes) {
+    const auto try_lock = [&] {
+        if (guest_waiters.load(std::memory_order_acquire) != 0) {
+            return false;
+        }
+        if constexpr (sizeof...(Mutexes) == 1) {
+            return (mutexes.try_lock() && ...);
+        } else {
+            return std::try_lock(mutexes...) == -1;
+        }
+    };
+    // Uncontended, which is nearly always: no clock read (a system call on some Android kernels).
+    if (try_lock()) {
+        return;
+    }
+    constexpr auto spin_limit = std::chrono::microseconds{200};
+    const auto start = std::chrono::steady_clock::now();
+    do {
+        std::this_thread::yield();
+        if (try_lock()) {
+            return;
+        }
+    } while (std::chrono::steady_clock::now() - start < spin_limit);
+    if constexpr (sizeof...(Mutexes) == 1) {
+        (mutexes.lock(), ...);
+    } else {
+        std::lock(mutexes...);
+    }
+}
+
 } // Anonymous namespace
 
 RasterizerVulkan::RasterizerVulkan(Core::Frontend::EmuWindow& emu_window_, Tegra::GPU& gpu_,
@@ -241,13 +280,24 @@ void RasterizerVulkan::OnGpuWrittenCommandData() {
     gpu_written_command_data_pending = true;
 }
 
-void RasterizerVulkan::OrderPendingGpuWrites(bool for_graphics) {
-    if (gpu_written_command_data_pending) {
+void RasterizerVulkan::OrderPendingGpuWrites(bool for_graphics, bool reads_command_data) {
+    // The barrier below ends the render pass (on Adreno a tile store and reload), so only work that
+    // fetches its arguments on the GPU pays for it: macros consuming GPU-written arguments on the
+    // CPU refresh them with a flushing read. Copies, fills and uploads already end in barriers that
+    // cover indirect reads and compute writes get the one further down, so what can still be
+    // unordered is a buffer write recorded since the previous full barrier (MarkWrittenBuffer).
+    // Pokemon Scarlet's ~270 GPU-built indirect draws a frame each broke the pass without this.
+    if (gpu_written_command_data_pending && reads_command_data &&
+        buffer_cache.gpu_write_serial == ordered_gpu_write_serial) {
+        gpu_written_command_data_pending = false;
+    }
+    if (gpu_written_command_data_pending && reads_command_data) {
         // Waiting for the GPU used to make every earlier GPU write visible before GPU-written
         // command arguments were consumed. Keep that ordering on the GPU without the CPU wait:
         // tilers such as Adreno fetch indirect arguments outside the shader caches.
         gpu_written_command_data_pending = false;
         compute_writes_need_graphics_barrier = false;
+        ordered_gpu_write_serial = buffer_cache.gpu_write_serial;
         scheduler.RequestOutsideRenderPassOperationContext();
         scheduler.Record([](vk::CommandBuffer cmdbuf) {
             static constexpr VkMemoryBarrier ALL_WRITES{
@@ -284,7 +334,7 @@ void RasterizerVulkan::OrderPendingGpuWrites(bool for_graphics) {
 }
 
 template <typename Func>
-void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func) {
+void RasterizerVulkan::PrepareDraw(bool is_indexed, bool is_indirect, Func&& draw_func) {
 
     SCOPE_EXIT {
         gpu.TickWork();
@@ -296,8 +346,9 @@ void RasterizerVulkan::PrepareDraw(bool is_indexed, Func&& draw_func) {
     if (!pipeline) {
         return;
     }
-    std::scoped_lock lock{buffer_cache.mutex, texture_cache.mutex};
-    OrderPendingGpuWrites(true);
+    LockCaches(guest_cache_waiters, buffer_cache.mutex, texture_cache.mutex);
+    std::scoped_lock lock{std::adopt_lock, buffer_cache.mutex, texture_cache.mutex};
+    OrderPendingGpuWrites(true, is_indirect);
     // update engine as channel may be different.
     pipeline->SetEngine(maxwell3d, gpu_memory);
     attribute_handle_pipeline = nullptr;
@@ -385,7 +436,7 @@ void RasterizerVulkan::Draw(bool is_indexed, u32 instance_count) {
     SCOPE_EXIT {
         split_attribute_handles = false;
     };
-    PrepareDraw(is_indexed, [this, is_indexed, instance_count] {
+    PrepareDraw(is_indexed, false, [this, is_indexed, instance_count] {
         const auto& draw_state = maxwell3d->draw_manager.draw_state;
         const u32 num_instances{instance_count};
         const DrawParams draw_params{MakeDrawParams(draw_state, num_instances, is_indexed)};
@@ -444,7 +495,7 @@ void RasterizerVulkan::Draw(bool is_indexed, u32 instance_count) {
 void RasterizerVulkan::DrawIndirect() {
     const auto& params = maxwell3d->draw_manager.indirect_state;
     buffer_cache.SetDrawIndirect(&params);
-    PrepareDraw(params.is_indexed, [this, &params] {
+    PrepareDraw(params.is_indexed, true, [this, &params] {
         const auto indirect_buffer = buffer_cache.GetDrawIndirectBuffer();
         const auto& buffer = indirect_buffer.first;
         const auto& offset = indirect_buffer.second;
@@ -739,8 +790,9 @@ void RasterizerVulkan::DispatchCompute() {
     if (!pipeline) {
         return;
     }
-    std::scoped_lock lock{texture_cache.mutex, buffer_cache.mutex};
-    OrderPendingGpuWrites(false);
+    LockCaches(guest_cache_waiters, texture_cache.mutex, buffer_cache.mutex);
+    std::scoped_lock lock{std::adopt_lock, texture_cache.mutex, buffer_cache.mutex};
+    OrderPendingGpuWrites(false, true);
     if (!pipeline->Configure(*kepler_compute, *gpu_memory, scheduler, buffer_cache,
                              texture_cache)) {
         return;
@@ -846,7 +898,8 @@ void RasterizerVulkan::FlushRegion(DAddr addr, u64 size, VideoCommon::CacheType 
 
 bool RasterizerVulkan::MustFlushRegion(DAddr addr, u64 size, VideoCommon::CacheType which) {
     if ((True(which & VideoCommon::CacheType::BufferCache))) {
-        std::scoped_lock lock{buffer_cache.mutex};
+        LockCaches(guest_cache_waiters, buffer_cache.mutex);
+        std::scoped_lock lock{std::adopt_lock, buffer_cache.mutex};
         if (buffer_cache.IsRegionGpuModified(addr, size)) {
             return true;
         }
@@ -899,13 +952,15 @@ void RasterizerVulkan::InvalidateRegion(DAddr addr, u64 size, VideoCommon::Cache
 
 void RasterizerVulkan::InnerInvalidation(std::span<const std::pair<DAddr, std::size_t>> sequences) {
     {
-        std::scoped_lock lock{texture_cache.mutex};
+        LockCaches(guest_cache_waiters, texture_cache.mutex);
+        std::scoped_lock lock{std::adopt_lock, texture_cache.mutex};
         for (const auto& [addr, size] : sequences) {
             texture_cache.WriteMemory(addr, size);
         }
     }
     {
-        std::scoped_lock lock{buffer_cache.mutex};
+        LockCaches(guest_cache_waiters, buffer_cache.mutex);
+        std::scoped_lock lock{std::adopt_lock, buffer_cache.mutex};
         for (const auto& [addr, size] : sequences) {
             buffer_cache.WriteMemory(addr, size);
         }
@@ -953,13 +1008,37 @@ void RasterizerVulkan::OnCacheInvalidation(DAddr addr, u64 size) {
 bool RasterizerVulkan::TryCacheInvalidation(DAddr addr, u64 size) {
     if (addr == 0 || size == 0) return true;
     {
-        std::scoped_lock lock{buffer_cache.mutex, texture_cache.mutex};
-        if (buffer_cache.IsRegionGpuModified(addr, size)) return false;
+        // The GPU thread records GPU writes under these same locks, so none can land between the
+        // check and the invalidation and be dropped without a download.
+        guest_cache_waiters.fetch_add(1, std::memory_order_acq_rel);
+        std::scoped_lock lock{texture_cache.mutex, buffer_cache.mutex};
+        guest_cache_waiters.fetch_sub(1, std::memory_order_acq_rel);
+        if (buffer_cache.IsRegionGpuModified(addr, size)) {
+            return false;
+        }
         texture_cache.WriteMemory(addr, size);
         buffer_cache.WriteMemory(addr, size);
     }
     pipeline_cache.InvalidateRegion(addr, size);
     return true;
+}
+
+bool RasterizerVulkan::WaitForPendingDownload(DAddr addr, u64 size) {
+    u64 popped = 0;
+    {
+        std::scoped_lock lock{buffer_cache.mutex};
+        if (!buffer_cache.IsRegionAwaitingAsyncDownload(addr, size)) {
+            return false;
+        }
+        popped = buffer_cache.AsyncDownloadsPopped();
+    }
+    // The fence thread pops it once its fence signals; the timeout only guards against a stall.
+    return buffer_cache.WaitAsyncDownloadPopped(popped, std::chrono::milliseconds{100});
+}
+
+bool RasterizerVulkan::IsRegionAwaitingDownload(DAddr addr, u64 size) {
+    std::scoped_lock lock{buffer_cache.mutex};
+    return buffer_cache.IsRegionAwaitingAsyncDownload(addr, size);
 }
 
 void RasterizerVulkan::InvalidateGPUCache() {
