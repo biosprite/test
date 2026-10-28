@@ -176,6 +176,7 @@ void TextureCache<P>::TickFrame() {
     if (total_used_memory > minimum_memory) {
         RunGarbageCollector();
     }
+    SentenceRemovedFramebuffers();
     sentenced_images.Tick();
     sentenced_framebuffers.Tick();
     sentenced_image_view.Tick();
@@ -791,6 +792,12 @@ bool TextureCache<P>::BlitImage(const Tegra::Engines::Fermi2D::Surface& dst,
         ImageView& src_view = slot_image_views[src_view_id];
         runtime.BlitImage(dst_framebuffer, dst_view, src_view, dst_region, src_region, copy.filter,
                           copy.operation);
+    }
+    // A pitch-linear (forced-flushed) target reaches guest memory only through a preemptive
+    // download, which BindRenderTarget queues for render targets but a 2D-engine blit never did.
+    // Games read such blits back with the CPU (Pokemon Scarlet and Violet's enrollment photo).
+    if (True(slot_image_views[dst_view_id].flags & ImageViewFlagBits::PreemtiveDownload)) {
+        uncommitted_downloads.emplace_back(PendingDownload{true, 0, dst_id});
     }
     return true;
 }
@@ -2359,6 +2366,11 @@ void TextureCache<P>::DeleteImage(ImageId image_id, bool immediate_delete) {
     }
     RemoveImageViewReferences(image_view_ids);
     RemoveFramebuffers(image_view_ids);
+    if (immediate_delete) {
+        // Only the garbage collector deletes immediately, on the render thread, and the views are
+        // destroyed below: realize a deferred clear on their framebuffers first.
+        SentenceRemovedFramebuffers();
+    }
 
     for (const AliasedImage& alias : image.aliased_images) {
         ImageBase& other_image = slot_images[alias.id];
@@ -2423,7 +2435,10 @@ void TextureCache<P>::RemoveImageViewReferences(std::span<const ImageViewId> rem
 
 template <class P>
 void TextureCache<P>::RemoveFramebuffers(std::span<const ImageViewId> removed_views) {
-    runtime.FlushDeferredClear();
+    // Guest threads reach this through UnmapMemory (nvservices) while the render thread owns the
+    // scheduler, so nothing here may record commands: the scheduler's pending deferred clear can
+    // still point at one of these framebuffers. They leave the lookup table now and are moved to
+    // the destruction ring on the render thread (SentenceRemovedFramebuffers).
     auto it = framebuffers.begin();
     while (it != framebuffers.end()) {
         if (it->first.Contains(removed_views)) {
@@ -2433,12 +2448,24 @@ void TextureCache<P>::RemoveFramebuffers(std::span<const ImageViewId> removed_vi
                 last_framebuffer_id = {};
                 last_framebuffer_serial = 0;
             }
-            sentenced_framebuffers.Push(std::move(slot_framebuffers[framebuffer_id]));
+            removed_framebuffers.push_back(framebuffer_id);
             it = framebuffers.erase(it);
         } else {
             ++it;
         }
     }
+}
+
+template <class P>
+void TextureCache<P>::SentenceRemovedFramebuffers() {
+    if (removed_framebuffers.empty()) {
+        return;
+    }
+    runtime.FlushDeferredClear();
+    for (const FramebufferId framebuffer_id : removed_framebuffers) {
+        sentenced_framebuffers.Push(std::move(slot_framebuffers[framebuffer_id]));
+    }
+    removed_framebuffers.clear();
 }
 
 template <class P>

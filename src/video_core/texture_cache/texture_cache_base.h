@@ -385,8 +385,13 @@ private:
     /// Remove image views references from the cache
     void RemoveImageViewReferences(std::span<const ImageViewId> removed_views);
 
-    /// Remove framebuffers using the given image views from the cache
+    /// Remove framebuffers using the given image views from the cache. The objects stay in place
+    /// until SentenceRemovedFramebuffers runs on the render thread.
     void RemoveFramebuffers(std::span<const ImageViewId> removed_views);
+
+    /// Moves framebuffers removed since the last call to the delayed destruction ring, after
+    /// realizing any deferred clear that may still point at them. Render thread only.
+    void SentenceRemovedFramebuffers();
 
     /// Mark an image as modified from the GPU
     void MarkModification(ImageBase& image) noexcept;
@@ -499,6 +504,8 @@ private:
     DelayedDestructionRing<Image, TICKS_TO_DESTROY> sentenced_images;
     DelayedDestructionRing<ImageView, TICKS_TO_DESTROY> sentenced_image_view;
     DelayedDestructionRing<Framebuffer, TICKS_TO_DESTROY> sentenced_framebuffers;
+    /// Removed from `framebuffers` but not yet sentenced; see RemoveFramebuffers.
+    std::vector<FramebufferId> removed_framebuffers;
 
     ::Common::unordered_map<GPUVAddr, ImageAllocId> image_allocs_table;
 
