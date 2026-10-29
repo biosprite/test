@@ -14,6 +14,7 @@
 #include <vector>
 #include <bit>
 #include <numeric>
+#include "common/alignment.h"
 #include "common/cityhash.h"
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
@@ -994,18 +995,17 @@ std::unique_ptr<ComputePipeline> PipelineCache::CreateComputePipeline(
     }
 
     auto program{TranslateProgram(pools.inst, pools.block, env, cfg, host_info)};
-    const VkDriverIdKHR driver_id = device.GetDriverID();
-    const bool needs_shared_mem_clamp =
-        driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY ||
-        driver_id == VK_DRIVER_ID_ARM_PROPRIETARY;
     const u32 max_shared_memory = device.GetMaxComputeSharedMemorySize();
-    if (needs_shared_mem_clamp && program.shared_memory_size > max_shared_memory) {
-        LOG_WARNING(Render_Vulkan,
-                    "Compute shader {:#016x} requests {}KB shared memory but device max is {}KB - clamping",
-                    key.unique_hash,
-                    program.shared_memory_size / 1024,
-                    max_shared_memory / 1024);
-        program.shared_memory_size = max_shared_memory;
+    if (program.shared_memory_size > max_shared_memory) {
+        // Truncating would corrupt the shader, so move its shared memory to a storage buffer
+        LOG_INFO(Render_Vulkan,
+                 "Compute shader {:#016x} uses {} bytes of shared memory but device max is {}, "
+                 "backing it with a storage buffer",
+                 key.unique_hash, program.shared_memory_size, max_shared_memory);
+        program.info.uses_shared_memory_spill = true;
+        program.info.shared_memory_spill_size = Common::AlignUp(program.shared_memory_size, 4U);
+        program.info.uses_workgroup_id = true;
+        program.info.uses_local_invocation_id = true;
     }
     const std::vector<u32> code{EmitSPIRV(profile, program)};
     device.SaveShader(code);

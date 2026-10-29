@@ -94,6 +94,9 @@ void AlphaTest(EmitContext& ctx) {
 } // Anonymous namespace
 
 void EmitPrologue(EmitContext& ctx) {
+    if (ctx.uses_shared_memory_spill) {
+        ctx.OpFunctionCall(ctx.void_id, ctx.shared_spill_acquire_func);
+    }
     if (ctx.stage == Stage::Fragment && ctx.runtime_info.dual_source_blend) {
         // Initialize dual-source blending outputs - prevents MoltenVK crash.
         const Id zero{ctx.Const(0.0f)};
@@ -140,6 +143,9 @@ void EmitPrologue(EmitContext& ctx) {
 }
 
 void EmitEpilogue(EmitContext& ctx) {
+    if (ctx.uses_shared_memory_spill) {
+        ctx.OpFunctionCall(ctx.void_id, ctx.shared_spill_release_func);
+    }
     if (ctx.stage == Stage::VertexB && ctx.runtime_info.convert_depth_mode &&
         !ctx.profile.support_native_ndc) {
         ConvertDepthMode(ctx);

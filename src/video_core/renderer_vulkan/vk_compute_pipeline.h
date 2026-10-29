@@ -28,6 +28,7 @@ class ShaderNotify;
 namespace Vulkan {
 
 class Device;
+class MemoryAllocator;
 class PipelineStatistics;
 class Scheduler;
 
@@ -50,13 +51,16 @@ public:
 
     [[nodiscard]] bool Configure(Tegra::Engines::KeplerCompute& kepler_compute,
                                  Tegra::MemoryManager& gpu_memory, Scheduler& scheduler,
-                                 BufferCache& buffer_cache, TextureCache& texture_cache);
+                                 MemoryAllocator& memory_allocator, BufferCache& buffer_cache,
+                                 TextureCache& texture_cache);
 
     bool IsBound() const noexcept {
         return static_cast<bool>(pipeline);
     }
 
 private:
+    void PrepareSharedMemorySpill(Scheduler& scheduler, MemoryAllocator& memory_allocator);
+
     const Device& device;
     vk::PipelineCache& pipeline_cache;
     GuestDescriptorQueue& guest_descriptor_queue;
@@ -76,6 +80,7 @@ private:
     vk::PipelineLayout pipeline_layout;
     vk::DescriptorUpdateTemplate descriptor_update_template;
     vk::Pipeline pipeline;
+    vk::Buffer shared_spill_buffer;
 
     std::condition_variable build_condvar;
     std::mutex build_mutex;

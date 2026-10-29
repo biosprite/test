@@ -42,6 +42,9 @@ constexpr u32 NUM_TEXTURE_TYPES = 9;
 /// instead of reading it from a constant buffer. The host supplies the handle of each draw run.
 constexpr u32 ATTRIBUTE_HANDLE_CBUF_INDEX = 0xFFFF;
 
+/// Workgroups that can own a shared memory spill slot at the same time
+constexpr u32 SHARED_MEMORY_SPILL_SLOTS = 128;
+
 enum class TexturePixelFormat {
     A8B8G8R8_UNORM,
     A8B8G8R8_SNORM,
@@ -302,6 +305,9 @@ struct Info {
     bool uses_image_buffers{};
     bool uses_shared_increment{};
     bool uses_shared_decrement{};
+    /// Shared memory lives in a host storage buffer because it exceeds the device limit
+    bool uses_shared_memory_spill{};
+    u32 shared_memory_spill_size{};
     bool uses_global_increment{};
     bool uses_global_decrement{};
     bool uses_atomic_f32_add{};

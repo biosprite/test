@@ -470,6 +470,17 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
     const bool is_qualcomm = driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY;
     const bool is_turnip = driver_id == VK_DRIVER_ID_MESA_TURNIP;
 
+    // Every Adreno that upstream Turnip supports has at most 32 KiB of compute shared memory,
+    // but some out-of-tree Turnip builds report 64 KiB and silently corrupt larger shaders.
+    constexpr u32 adreno_shared_memory = 32 * 1024;
+    auto& max_shared_memory = properties.properties.limits.maxComputeSharedMemorySize;
+    if (is_turnip && max_shared_memory > adreno_shared_memory) {
+        LOG_WARNING(Render_Vulkan,
+                    "Turnip reports {} bytes of compute shared memory, limiting to 32 KiB",
+                    max_shared_memory);
+        max_shared_memory = adreno_shared_memory;
+    }
+
     if (!is_suitable)
         LOG_WARNING(Render_Vulkan, "Unsuitable driver - continuing anyways");
 

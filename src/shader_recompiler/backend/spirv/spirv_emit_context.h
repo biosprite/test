@@ -170,6 +170,9 @@ public:
 
     [[nodiscard]] Id Def(const IR::Value& value);
 
+    /// Returns a pointer to the 32-bit shared memory word at index
+    [[nodiscard]] Id SharedWordPointer(Id index);
+
     [[nodiscard]] Id BitOffset8(const IR::Value& offset);
     [[nodiscard]] Id BitOffset16(const IR::Value& offset);
 
@@ -312,6 +315,11 @@ public:
     Id local_memory{};
 
     bool uses_explicit_workgroup_layout{};
+    bool uses_shared_memory_spill{};
+    Id shared_spill_base{};
+    Id shared_spill_slot{};
+    Id shared_spill_acquire_func{};
+    Id shared_spill_release_func{};
     Id shared_memory_u8{};
     Id shared_memory_u16{};
     Id shared_memory_u32{};
@@ -384,6 +392,7 @@ private:
     void DefineInterfaces(const IR::Program& program);
     void DefineLocalMemory(const IR::Program& program);
     void DefineSharedMemory(const IR::Program& program);
+    void DefineSharedMemorySpill(const IR::Program& program);
     void DefineSharedMemoryFunctions(const IR::Program& program);
     void DefineConstantBuffers(const Info& info, u32& binding);
     void DefineConstantBufferIndirectFunctions(const Info& info);

@@ -140,7 +140,7 @@ inline void WriteDescriptorBuffer(const Device& device, const DescriptorBufferLa
            Shader::NumDescriptors(info.texture_buffer_descriptors) +
            Shader::NumDescriptors(info.image_buffer_descriptors) +
            Shader::NumDescriptors(info.texture_descriptors) +
-           Shader::NumDescriptors(info.image_descriptors);
+           Shader::NumDescriptors(info.image_descriptors) + (info.uses_shared_memory_spill ? 1 : 0);
 }
 
 class DescriptorLayoutBuilder {
@@ -273,9 +273,33 @@ public:
         Add(VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, stage, info.image_buffer_descriptors);
         Add(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, stage, info.texture_descriptors);
         Add(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, stage, info.image_descriptors);
+        if (info.uses_shared_memory_spill) {
+            AddSingle(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, stage);
+        }
     }
 
 private:
+    void AddSingle(VkDescriptorType type, VkShaderStageFlags stage) {
+        bindings.push_back({
+            .binding = binding,
+            .descriptorType = type,
+            .descriptorCount = 1,
+            .stageFlags = stage,
+            .pImmutableSamplers = nullptr,
+        });
+        entries.push_back({
+            .dstBinding = binding,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = type,
+            .offset = offset,
+            .stride = sizeof(DescriptorUpdateEntry),
+        });
+        ++binding;
+        ++num_descriptors;
+        offset += sizeof(DescriptorUpdateEntry);
+    }
+
     template <typename Descriptors>
     void Add(VkDescriptorType type, VkShaderStageFlags stage, const Descriptors& descriptors) {
         const size_t num{descriptors.size()};

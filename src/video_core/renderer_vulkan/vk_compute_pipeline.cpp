@@ -20,6 +20,7 @@
 #include "video_core/renderer_vulkan/vk_update_descriptor.h"
 #include "video_core/shader_notify.h"
 #include "video_core/vulkan_common/vulkan_device.h"
+#include "video_core/vulkan_common/vulkan_memory_allocator.h"
 #include "video_core/vulkan_common/vulkan_wrapper.h"
 #include "video_core/gpu_logging/gpu_logging.h"
 #include "common/logging.h"
@@ -54,7 +55,9 @@ ComputePipeline::ComputePipeline(const Device& device_, Scheduler& scheduler, vk
     builder.Add(info, VK_SHADER_STAGE_COMPUTE_BIT);
 
     uses_push_descriptor = builder.CanUsePushDescriptor();
-    uses_descriptor_buffer = builder.CanUseDescriptorBuffer() && descriptor_buffer_ring.IsValid();
+    // The spill buffer is bound as a plain descriptor, so it needs sets or push descriptors
+    uses_descriptor_buffer = !info.uses_shared_memory_spill && builder.CanUseDescriptorBuffer() &&
+                             descriptor_buffer_ring.IsValid();
     descriptor_set_layout =
         builder.CreateDescriptorSetLayout(uses_push_descriptor, uses_descriptor_buffer);
     if (uses_descriptor_buffer) {
@@ -150,7 +153,8 @@ ComputePipeline::ComputePipeline(const Device& device_, Scheduler& scheduler, vk
 
 bool ComputePipeline::Configure(Tegra::Engines::KeplerCompute& kepler_compute,
                                 Tegra::MemoryManager& gpu_memory, Scheduler& scheduler,
-                                BufferCache& buffer_cache, TextureCache& texture_cache) {
+                                MemoryAllocator& memory_allocator, BufferCache& buffer_cache,
+                                TextureCache& texture_cache) {
     guest_descriptor_queue.Acquire(scheduler, num_descriptor_entries, uses_descriptor_buffer);
 
     buffer_cache.SetComputeUniformBufferState(info.constant_buffer_mask, &uniform_buffer_sizes);
@@ -257,6 +261,10 @@ bool ComputePipeline::Configure(Tegra::Engines::KeplerCompute& kepler_compute,
     const VideoCommon::ImageViewInOut* views_it{views.data()};
     PushImageDescriptors(texture_cache, guest_descriptor_queue, info, rescaling, samplers_it,
                          views_it);
+    if (info.uses_shared_memory_spill) {
+        PrepareSharedMemorySpill(scheduler, memory_allocator);
+        guest_descriptor_queue.AddBuffer(*shared_spill_buffer, 0, VK_WHOLE_SIZE);
+    }
 
     if (!is_built.load(std::memory_order::relaxed)) {
         // Wait for the pipeline to be built
@@ -327,6 +335,46 @@ bool ComputePipeline::Configure(Tegra::Engines::KeplerCompute& kepler_compute,
         }
     });
     return true;
+}
+
+void ComputePipeline::PrepareSharedMemorySpill(Scheduler& scheduler,
+                                               MemoryAllocator& memory_allocator) {
+    if (shared_spill_buffer) {
+        return;
+    }
+    // Owner flags and finished counters, then one slot per concurrent workgroup
+    constexpr u32 slots{Shader::SHARED_MEMORY_SPILL_SLOTS};
+    const VkDeviceSize size{static_cast<VkDeviceSize>(slots) *
+                            (2 * sizeof(u32) + info.shared_memory_spill_size)};
+    shared_spill_buffer = memory_allocator.CreateBuffer(
+        VkBufferCreateInfo{
+            .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+            .pNext = nullptr,
+            .flags = 0,
+            .size = size,
+            .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+            .queueFamilyIndexCount = 0,
+            .pQueueFamilyIndices = nullptr,
+        },
+        MemoryUsage::DeviceLocal);
+    LOG_INFO(Render_Vulkan,
+             "Compute shader {:016x} spills {} bytes of shared memory, buffer {} KiB", shader_hash,
+             info.shared_memory_spill_size, size / 1024);
+
+    // Slot flags and counters must start at zero
+    scheduler.RequestOutsideRenderPassOperationContext();
+    scheduler.Record([buffer = *shared_spill_buffer](vk::CommandBuffer cmdbuf) {
+        static constexpr VkMemoryBarrier CLEAR_BARRIER{
+            .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
+            .pNext = nullptr,
+            .srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT,
+            .dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT,
+        };
+        cmdbuf.FillBuffer(buffer, 0, VK_WHOLE_SIZE, 0);
+        cmdbuf.PipelineBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+                               0, CLEAR_BARRIER);
+    });
 }
 
 } // namespace Vulkan

@@ -298,9 +298,11 @@ void DefineConstBuffers(EmitContext& ctx, const Info& info, Id UniformDefinition
     }
 }
 
-void DefineSsbos(EmitContext& ctx, StorageTypeDefinition& type_def,
-                 Id StorageDefinitions::*member_type, const Info& info, u32 binding, Id type,
-                 u32 stride) {
+// Types are deduplicated, so each storage block type must be declared and decorated only once
+void DefineStorageType(EmitContext& ctx, StorageTypeDefinition& type_def, Id type, u32 stride) {
+    if (Sirit::ValidId(type_def.array)) {
+        return;
+    }
     const Id array_type{ctx.TypeRuntimeArray(type)};
     ctx.Decorate(array_type, spv::Decoration::ArrayStride, stride);
 
@@ -308,9 +310,15 @@ void DefineSsbos(EmitContext& ctx, StorageTypeDefinition& type_def,
     ctx.Decorate(struct_type, spv::Decoration::Block);
     ctx.MemberDecorate(struct_type, 0, spv::Decoration::Offset, 0U);
 
-    const Id struct_pointer{ctx.TypePointer(spv::StorageClass::StorageBuffer, struct_type)};
-    type_def.array = struct_pointer;
+    type_def.array = ctx.TypePointer(spv::StorageClass::StorageBuffer, struct_type);
     type_def.element = ctx.TypePointer(spv::StorageClass::StorageBuffer, type);
+}
+
+void DefineSsbos(EmitContext& ctx, StorageTypeDefinition& type_def,
+                 Id StorageDefinitions::*member_type, const Info& info, u32 binding, Id type,
+                 u32 stride) {
+    DefineStorageType(ctx, type_def, type, stride);
+    const Id struct_pointer{type_def.array};
 
     u32 index{};
     for (const StorageBufferDescriptor& desc : info.storage_buffers_descriptors) {
@@ -395,8 +403,9 @@ Id CasLoop(EmitContext& ctx, Operation operation, Id array_pointer, Id element_p
     ctx.OpBranch(continue_block);
 
     ctx.AddLabel(continue_block);
-    const Id word_pointer{is_struct ? ctx.OpAccessChain(element_pointer, base, zero, index)
-                                    : ctx.OpAccessChain(element_pointer, base, index)};
+    const Id word_pointer{is_shared   ? ctx.SharedWordPointer(index)
+                          : is_struct ? ctx.OpAccessChain(element_pointer, base, zero, index)
+                                      : ctx.OpAccessChain(element_pointer, base, index)};
     if (value_type.value == ctx.F32[2].value) {
         const Id u32_value{ctx.OpLoad(ctx.U32[1], word_pointer)};
         const Id value{ctx.OpUnpackHalf2x16(ctx.F32[2], u32_value)};
@@ -485,6 +494,10 @@ EmitContext::EmitContext(const Profile& profile_, const RuntimeInfo& runtime_inf
     DefineImageBuffers(program.info, image_binding);
     DefineTextures(program.info, texture_binding, bindings.texture_scaling_index);
     DefineImages(program.info, image_binding, bindings.image_scaling_index);
+    if (uses_shared_memory_spill) {
+        Decorate(shared_memory_u32, spv::Decoration::Binding, image_binding);
+        ++image_binding;
+    }
     DefineAttributeMemAccess(program.info);
     DefineWriteStorageCasLoopFunction(program.info);
     DefineGlobalMemoryFunctions(program.info);
@@ -601,8 +614,9 @@ void EmitContext::DefineLocalMemory(const IR::Program& program) {
 }
 
 void EmitContext::DefineSharedMemory(const IR::Program& program) {
+    uses_shared_memory_spill = program.info.uses_shared_memory_spill;
     uses_explicit_workgroup_layout =
-        profile.support_explicit_workgroup_layout &&
+        !uses_shared_memory_spill && profile.support_explicit_workgroup_layout &&
         (!program.info.uses_int8 || profile.support_workgroup_layout_8bit_access) &&
         (!program.info.uses_int16 || profile.support_workgroup_layout_16bit_access);
     if (program.shared_memory_size == 0) {
@@ -644,13 +658,17 @@ void EmitContext::DefineSharedMemory(const IR::Program& program) {
         std::tie(shared_memory_u32x4, shared_u32x4, std::ignore) = make(U32[4], 16);
         return;
     }
-    const u32 num_elements{Common::DivCeil(program.shared_memory_size, 4U)};
-    const Id type{TypeArray(U32[1], Const(num_elements))};
-    shared_memory_u32_type = TypePointer(spv::StorageClass::Workgroup, type);
+    if (uses_shared_memory_spill) {
+        DefineSharedMemorySpill(program);
+    } else {
+        const u32 num_elements{Common::DivCeil(program.shared_memory_size, 4U)};
+        const Id type{TypeArray(U32[1], Const(num_elements))};
+        shared_memory_u32_type = TypePointer(spv::StorageClass::Workgroup, type);
 
-    shared_u32 = TypePointer(spv::StorageClass::Workgroup, U32[1]);
-    shared_memory_u32 = AddGlobalVariable(shared_memory_u32_type, spv::StorageClass::Workgroup);
-    interfaces.push_back(shared_memory_u32);
+        shared_u32 = TypePointer(spv::StorageClass::Workgroup, U32[1]);
+        shared_memory_u32 = AddGlobalVariable(shared_memory_u32_type, spv::StorageClass::Workgroup);
+        interfaces.push_back(shared_memory_u32);
+    }
 
     const Id func_type{TypeFunction(void_id, U32[1], U32[1])};
     const auto make_function{[&](u32 mask, u32 size) {
@@ -673,7 +691,7 @@ void EmitContext::DefineSharedMemory(const IR::Program& program) {
         OpBranch(continue_block);
 
         AddLabel(continue_block);
-        const Id word_pointer{OpAccessChain(shared_u32, shared_memory_u32, word_offset)};
+        const Id word_pointer{SharedWordPointer(word_offset)};
         const Id old_value{OpLoad(U32[1], word_pointer)};
         const Id new_value{OpBitFieldInsert(U32[1], old_value, insert_value, bit_offset, count)};
         const Id atomic_res{OpAtomicCompareExchange(U32[1], word_pointer, Const(1U), u32_zero_value,
@@ -692,6 +710,155 @@ void EmitContext::DefineSharedMemory(const IR::Program& program) {
     if (program.info.uses_int16) {
         shared_store_u16_func = make_function(16, 16);
     }
+}
+
+// Backs shared memory with a slot of a host storage buffer when the program needs more than the
+// device has. Buffer layout in words: [slots] owner flags, [slots] finished-invocation counters,
+// then one slot per owner. A workgroup claims a slot on entry and the last invocation to reach an
+// epilogue frees it, so the buffer stays small regardless of the dispatch size.
+void EmitContext::DefineSharedMemorySpill(const IR::Program& program) {
+    constexpr u32 slots{SHARED_MEMORY_SPILL_SLOTS};
+    static_assert(std::has_single_bit(slots));
+    const u32 slot_words{Common::DivCeil(program.shared_memory_size, 4U)};
+    const auto& size{program.workgroup_size};
+    const u32 invocations{size[0] * size[1] * size[2]};
+
+    AddExtension("SPV_KHR_storage_buffer_storage_class");
+    DefineStorageType(*this, storage_types.U32, U32[1], sizeof(u32));
+    shared_memory_u32_type = storage_types.U32.array;
+    shared_u32 = storage_types.U32.element;
+    shared_memory_u32 = AddGlobalVariable(shared_memory_u32_type, spv::StorageClass::StorageBuffer);
+    Name(shared_memory_u32, "shared_spill");
+    Decorate(shared_memory_u32, spv::Decoration::Coherent);
+    Decorate(shared_memory_u32, spv::Decoration::DescriptorSet, 0U);
+
+    const Id private_pointer{TypePointer(spv::StorageClass::Private, U32[1])};
+    const Id workgroup_pointer{TypePointer(spv::StorageClass::Workgroup, U32[1])};
+    shared_spill_base = AddGlobalVariable(private_pointer, spv::StorageClass::Private);
+    shared_spill_slot = AddGlobalVariable(private_pointer, spv::StorageClass::Private);
+    const Id search_index{AddGlobalVariable(private_pointer, spv::StorageClass::Private)};
+    const Id search_tries{AddGlobalVariable(private_pointer, spv::StorageClass::Private)};
+    const Id claimed_slot{AddGlobalVariable(workgroup_pointer, spv::StorageClass::Workgroup)};
+    interfaces.push_back(claimed_slot);
+    if (profile.supported_spirv >= 0x00010400) {
+        interfaces.push_back(shared_memory_u32);
+        interfaces.push_back(shared_spill_base);
+        interfaces.push_back(shared_spill_slot);
+        interfaces.push_back(search_index);
+        interfaces.push_back(search_tries);
+    }
+
+    const auto semantics{[this](spv::MemorySemanticsMask mask) {
+        return Const(static_cast<u32>(mask | spv::MemorySemanticsMask::UniformMemory));
+    }};
+    const Id device_scope{Const(static_cast<u32>(spv::Scope::Device))};
+    const Id workgroup_scope{Const(static_cast<u32>(spv::Scope::Workgroup))};
+    const Id word{u32_zero_value};
+    const auto element{
+        [&](Id index) { return OpAccessChain(shared_u32, shared_memory_u32, word, index); }};
+    const Id void_function{TypeFunction(void_id)};
+
+    shared_spill_acquire_func =
+        OpFunction(void_id, spv::FunctionControlMask::MaskNone, void_function);
+    Name(shared_spill_acquire_func, "shared_spill_acquire");
+    AddLabel();
+    const Id local_id{OpLoad(U32[3], local_invocation_id)};
+    const Id local_index{OpIAdd(
+        U32[1], OpCompositeExtract(U32[1], local_id, 0U),
+        OpIAdd(
+            U32[1], OpIMul(U32[1], OpCompositeExtract(U32[1], local_id, 1U), Const(size[0])),
+            OpIMul(U32[1], OpCompositeExtract(U32[1], local_id, 2U), Const(size[0] * size[1]))))};
+    const Id leader_label{OpLabel()};
+    const Id loop_header{OpLabel()};
+    const Id loop_body{OpLabel()};
+    const Id loop_continue{OpLabel()};
+    const Id loop_merge{OpLabel()};
+    const Id barrier_label{OpLabel()};
+    const Id is_leader{OpIEqual(U1, local_index, u32_zero_value)};
+    OpSelectionMerge(barrier_label, spv::SelectionControlMask::MaskNone);
+    OpBranchConditional(is_leader, leader_label, barrier_label);
+
+    AddLabel(leader_label);
+    const Id group_id{OpLoad(U32[3], workgroup_id)};
+    const Id hash{
+        OpIAdd(U32[1], OpCompositeExtract(U32[1], group_id, 0U),
+               OpIAdd(U32[1], OpIMul(U32[1], OpCompositeExtract(U32[1], group_id, 1U), Const(31U)),
+                      OpIMul(U32[1], OpCompositeExtract(U32[1], group_id, 2U), Const(131U))))};
+    OpStore(search_index, OpBitwiseAnd(U32[1], hash, Const(slots - 1)));
+    OpStore(search_tries, u32_zero_value);
+    OpBranch(loop_header);
+
+    AddLabel(loop_header);
+    OpLoopMerge(loop_merge, loop_continue, spv::LoopControlMask::MaskNone);
+    OpBranch(loop_body);
+
+    AddLabel(loop_body);
+    const Id index{OpLoad(U32[1], search_index)};
+    const Id previous{OpAtomicCompareExchange(
+        U32[1], element(index), device_scope, semantics(spv::MemorySemanticsMask::AcquireRelease),
+        semantics(spv::MemorySemanticsMask::Acquire), Const(1U), u32_zero_value)};
+    const Id tries{OpLoad(U32[1], search_tries)};
+    // Give up waiting after a while and share a slot rather than risk hanging the GPU
+    const Id done{OpLogicalOr(U1, OpIEqual(U1, previous, u32_zero_value),
+                              OpUGreaterThanEqual(U1, tries, Const(slots * 64)))};
+    OpStore(claimed_slot, index);
+    OpStore(search_index, OpBitwiseAnd(U32[1], OpIAdd(U32[1], index, Const(1U)), Const(slots - 1)));
+    OpStore(search_tries, OpIAdd(U32[1], tries, Const(1U)));
+    OpBranch(loop_continue);
+
+    AddLabel(loop_continue);
+    OpBranchConditional(done, loop_merge, loop_header);
+
+    AddLabel(loop_merge);
+    OpBranch(barrier_label);
+
+    AddLabel(barrier_label);
+    OpControlBarrier(workgroup_scope, workgroup_scope,
+                     Const(static_cast<u32>(spv::MemorySemanticsMask::AcquireRelease |
+                                            spv::MemorySemanticsMask::WorkgroupMemory)));
+    const Id slot{OpLoad(U32[1], claimed_slot)};
+    OpStore(shared_spill_slot, slot);
+    OpStore(shared_spill_base,
+            OpIAdd(U32[1], Const(slots * 2), OpIMul(U32[1], slot, Const(slot_words))));
+    OpReturn();
+    OpFunctionEnd();
+
+    shared_spill_release_func =
+        OpFunction(void_id, spv::FunctionControlMask::MaskNone, void_function);
+    Name(shared_spill_release_func, "shared_spill_release");
+    AddLabel();
+    const Id owned_slot{OpLoad(U32[1], shared_spill_slot)};
+    const Id counter{element(OpIAdd(U32[1], owned_slot, Const(slots)))};
+    const Id finished{OpAtomicIAdd(U32[1], counter, device_scope,
+                                   semantics(spv::MemorySemanticsMask::AcquireRelease), Const(1U))};
+    const Id release_label{OpLabel()};
+    const Id end_label{OpLabel()};
+    const Id is_last{OpIEqual(U1, finished, Const(invocations - 1))};
+    OpSelectionMerge(end_label, spv::SelectionControlMask::MaskNone);
+    OpBranchConditional(is_last, release_label, end_label);
+
+    // Sirit encodes OpAtomicStore with a stray result id, so exchange instead
+    AddLabel(release_label);
+    OpAtomicExchange(U32[1], counter, device_scope, u32_zero_value, u32_zero_value);
+    OpAtomicExchange(U32[1], element(owned_slot), device_scope,
+                     semantics(spv::MemorySemanticsMask::Release), u32_zero_value);
+    OpBranch(end_label);
+
+    AddLabel(end_label);
+    OpReturn();
+    OpFunctionEnd();
+}
+
+Id EmitContext::SharedWordPointer(Id index) {
+    if (uses_shared_memory_spill) {
+        const Id base{OpLoad(U32[1], shared_spill_base)};
+        return OpAccessChain(shared_u32, shared_memory_u32, u32_zero_value,
+                             OpIAdd(U32[1], base, index));
+    }
+    if (uses_explicit_workgroup_layout) {
+        return OpAccessChain(shared_u32, shared_memory_u32, u32_zero_value, index);
+    }
+    return OpAccessChain(shared_u32, shared_memory_u32, index);
 }
 
 void EmitContext::DefineSharedMemoryFunctions(const IR::Program& program) {

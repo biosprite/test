@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -18,8 +21,11 @@ void MemoryBarrier(EmitContext& ctx, spv::Scope scope) {
 void EmitBarrier(EmitContext& ctx) {
     const auto execution{spv::Scope::Workgroup};
     const auto memory{spv::Scope::Workgroup};
-    const auto memory_semantics{spv::MemorySemanticsMask::AcquireRelease |
-                                spv::MemorySemanticsMask::WorkgroupMemory};
+    auto memory_semantics{spv::MemorySemanticsMask::AcquireRelease |
+                          spv::MemorySemanticsMask::WorkgroupMemory};
+    if (ctx.uses_shared_memory_spill) {
+        memory_semantics = memory_semantics | spv::MemorySemanticsMask::UniformMemory;
+    }
     ctx.OpControlBarrier(ctx.Const(static_cast<u32>(execution)),
                          ctx.Const(static_cast<u32>(memory)),
                          ctx.Const(static_cast<u32>(memory_semantics)));

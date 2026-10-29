@@ -693,8 +693,8 @@ void RasterizerVulkan::DispatchCompute() {
         return;
     }
     std::scoped_lock lock{texture_cache.mutex, buffer_cache.mutex};
-    if (!pipeline->Configure(*kepler_compute, *gpu_memory, scheduler, buffer_cache,
-                             texture_cache)) {
+    if (!pipeline->Configure(*kepler_compute, *gpu_memory, scheduler, memory_allocator,
+                             buffer_cache, texture_cache)) {
         return;
     }
 
