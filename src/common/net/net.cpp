@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <iostream>
 #include <optional>
 
 #include <boost/algorithm/string/classification.hpp>
@@ -24,9 +25,10 @@
 
 import jacinth;
 
-#define QT_TR_NOOP(x) x
-
 namespace Common::Net {
+
+static constexpr auto DefaultTimeout = std::chrono::seconds{30};
+static constexpr auto DefaultConnectTimeout = std::chrono::seconds{10};
 
 std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
     // TODO(crueter): Need better handling for this as a whole.
@@ -48,6 +50,7 @@ std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
             for (const auto& s : suffixes) {
                 const auto it = std::ranges::find_if(
                     assets, [&s](const Asset& a) -> bool {
+                        std::cout << "ASSET " << a.name << " SUFFIX " << s << std::endl;
                         return a.name.ends_with(s);
                     });
 
@@ -63,9 +66,9 @@ std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
     const auto is_system = std::filesystem::exists(std::filesystem::current_path() / "system.txt");
     std::string ext;
     if (is_system) {
-        ext = ".exe";
+        ext = "exe";
     } else {
-        ext = ".zip";
+        ext = "zip";
     }
 
 #ifdef ARCHITECTURE_x86_64
@@ -103,10 +106,11 @@ std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
 std::optional<std::string> MakeRequest(const std::string& url) {
     cpr::SslOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
-    opts = cpr::Ssl(cpr::ssl::CaBuffer{std::string{kCert}});
+    opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
 #endif
 
-    cpr::Response res = cpr::Get(cpr::Url{url}, opts);
+    cpr::Response res = cpr::Get(cpr::Url{url}, opts, cpr::Timeout{DefaultTimeout},
+                                 cpr::ConnectTimeout{DefaultConnectTimeout});
 
     if (res.error) {
         LOG_ERROR(Frontend, "Failed to download {}: {}", url, res.error.message);
@@ -147,7 +151,7 @@ std::optional<Release> GetLatestRelease() {
     const std::string_view body_str = body.value();
     auto ec = jacinth::doc::try_read<Release>(body_str);
 
-    if (ec) {
+    if (!ec) {
         LOG_CRITICAL(Common, "Failed to parse latest release: {}", ec.error().message());
         return std::nullopt;
     }
@@ -167,7 +171,7 @@ std::optional<std::string> GetReleasesBody() {
 std::vector<Release> GetReleasesFromJson(const std::string& body) {
     auto ec = jacinth::doc::try_read<std::vector<Release>>(body);
 
-    if (ec) {
+    if (!ec) {
         LOG_CRITICAL(Common, "Release JSON parse error: {}", ec.error().message());
         return {};
     }
@@ -178,10 +182,11 @@ std::vector<Release> GetReleasesFromJson(const std::string& body) {
 bool HeadRequest(const std::string& url) {
     cpr::SslOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
-    opts = cpr::Ssl(cpr::ssl::CaBuffer{std::string{kCert}});
+    opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
 #endif
 
-    cpr::Response res = cpr::Get(cpr::Url{url}, opts);
+    cpr::Response res = cpr::Get(cpr::Url{url}, opts, cpr::Timeout{DefaultTimeout},
+                                 cpr::ConnectTimeout{DefaultConnectTimeout});
 
     if (res.error) {
         LOG_ERROR(Frontend, "Failed to download {}: {}", url, res.error.message);

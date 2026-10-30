@@ -53,9 +53,9 @@ if (NOT TARGET stb::headers)
 endif()
 
 AddJsonPackage(NAME zbic DOWNLOAD_ONLY)
-set(ZBIC_INCLUDE_DIR
-    "${zbic_SOURCE_DIR}/src"
-    PARENT_SCOPE)
+add_library(zbic INTERFACE)
+target_include_directories(zbic INTERFACE ${zbic_SOURCE_DIR}/src)
+add_library(zbic::zbic ALIAS zbic)
 
 # ItaniumDemangle (Windows only)
 if (WIN32 AND NOT TARGET LLVM::Demangle)

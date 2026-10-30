@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <array>
+#include <chrono>
 #include <format>
 #include <mutex>
 #include <string>
@@ -72,7 +73,7 @@ struct Client::Impl {
                              const std::string& token_ = "") {
         cpr::SslOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
-        opts = cpr::Ssl(cpr::ssl::CaBuffer{std::string{kCert}});
+        opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
 #endif
 
         cpr::Header params{};
@@ -95,7 +96,9 @@ struct Client::Impl {
         }
 
         // TODO: net.cpp this
-        auto result = cpr::Post(cpr::Url(std::format("{}{}", host, path)), cpr::Body(data), params);
+        auto result = cpr::Post(cpr::Url(std::format("{}{}", host, path)), cpr::Body(data), params,
+                                opts, cpr::Timeout{std::chrono::seconds{30}},
+                                cpr::ConnectTimeout{std::chrono::seconds{10}});
 
         if (result.error) {
             LOG_ERROR(WebService, "{} to {} returned error {}", method, host + path, result.error.message);

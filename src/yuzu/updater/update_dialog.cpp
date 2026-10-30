@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <cpr/callback.h>
@@ -110,7 +111,7 @@ void UpdateDialog::Download() {
     namespace fs = std::filesystem;
     fs::path appDir = QCoreApplication::applicationDirPath().toStdString();
     fs::path parentDir = appDir.parent_path();
-    std::string appDirName = appDir.filename();
+    std::string appDirName = appDir.filename().string();
     fs::path oldDir = parentDir / fmt::format("{}_{}", appDirName, Common::g_build_version);
 
     std::error_code ec;
@@ -140,7 +141,8 @@ void UpdateDialog::Download() {
     // Progress dialog.
     auto progress_callback = [&](size_t processed_size, size_t total_size) {
         QGuiApplication::processEvents();
-        progress->setValue(static_cast<int>((processed_size * 100) / total_size));
+        if (total_size > 0)
+            progress->setValue(int((processed_size * 100) / total_size));
         return !progress->wasCanceled();
     };
 
@@ -165,7 +167,7 @@ void UpdateDialog::Download() {
 
     cpr::SslOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
-    opts = cpr::Ssl(cpr::ssl::CaBuffer{std::string{kCert}});
+    opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
 #endif
 
     const auto res = cpr::Get(
@@ -174,7 +176,8 @@ void UpdateDialog::Download() {
             return progress_callback(now, total);
         }),
         cpr::WriteCallback{on_data},
-        opts
+        opts,
+        cpr::ConnectTimeout{std::chrono::seconds{10}}
     );
 
     progress->close();
@@ -236,13 +239,10 @@ void UpdateDialog::Download() {
             tr("Download Complete"),
             tr("Would you like to keep the old version of Eden? This will be stored in %1 in the "
                "same directory as your current file.")
-                .arg(QString::fromStdString(oldDir.filename())));
+                .arg(QString::fromStdString(oldDir.filename().string())));
 
-        if (button == QtCommon::Frontend::Yes) {
-            fs::rename(appDir, oldDir);
-        } else {
-            fs::remove_all(appDir);
-        }
+        // TODO windows disallows paging dead exe
+        fs::rename(appDir, oldDir);
 
         fs::create_directories(appDir);
 
@@ -252,5 +252,9 @@ void UpdateDialog::Download() {
         progress->show();
         QtCommon::Compress::extractDir(QString::fromStdString(absFilename.string()),
                                        QString::fromStdString(appDir.string()), progress_callback);
+
+        if (button == QtCommon::Frontend::Yes) {
+            fs::remove_all(oldDir);
+        }
     }
 }
