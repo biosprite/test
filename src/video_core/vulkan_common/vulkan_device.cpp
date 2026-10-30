@@ -1643,8 +1643,8 @@ void Device::CollectPhysicalMemoryInfo() {
     if (is_integrated) {
         const s64 available_memory = static_cast<s64>(device_access_memory - device_initial_usage);
         // Conservative 6 GB keeps the Conservative freeing discipline with the larger
-        // budget: games like Tears of the Kingdom and Hades 2 need the 6 GiB headroom on
-        // iGPUs without the aggressive mode's other behavior.
+        // budget: games like Hades 2 need the 6 GiB headroom on iGPUs without the aggressive
+        // mode's other behavior.
         const u64 memory_size =
             Settings::values.vram_usage_mode.GetValue() == Settings::VramUsageMode::Conservative
                 ? 4_GiB
