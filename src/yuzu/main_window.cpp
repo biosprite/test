@@ -45,6 +45,7 @@
 #include "set_play_time_dialog.h"
 #include "util/util.h"
 #include "yuzu/game/game_list.h"
+#include "yuzu/overlay_panel.h"
 
 #include "applets/qt_amiibo_settings.h"
 #include "applets/qt_controller.h"
@@ -221,7 +222,7 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #include <QImage>
 #include <QPainter>
 #include <QSettings>
-#include "common/controller_overlay_frame.h"
+#include "common/overlay_panels.h"
 #include "common/param_package.h"
 #include "qt_common/gamemode.h"
 
@@ -3248,21 +3249,8 @@ void MainWindow::RenderControllerOverlay() {
     const bool automatic = mode == Settings::AppletMode::ConsoleMode ||
                            mode == Settings::AppletMode::HandheldConsoleMode;
     const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-    const auto publish = [](Common::ControllerOverlayFrame& frame, const QImage* image) {
-        std::scoped_lock lock{frame.mutex};
-        if (!image) {
-            if (frame.enabled) {
-                frame.enabled = false;
-                ++frame.version;
-            }
-            return;
-        }
-        frame.width = static_cast<u32>(image->width());
-        frame.height = static_cast<u32>(image->height());
-        frame.pixels.resize(image->sizeInBytes());
-        std::memcpy(frame.pixels.data(), image->constBits(), image->sizeInBytes());
-        frame.enabled = true;
-        ++frame.version;
+    const auto publish = [](Common::OverlayPanel& panel, const QImage* image) {
+        GameOverlay::Publish(panel, image);
     };
 
     const auto player_color = [](int player) {
@@ -3301,7 +3289,7 @@ void MainWindow::RenderControllerOverlay() {
     std::erase_if(controller_hints,
                   [now_ms](const auto& hint) { return now_ms - hint.at >= hint_ms; });
     if (!automatic || !Settings::values.console_hints.GetValue() || controller_hints.empty()) {
-        publish(Common::GetControllerHintFrame(), nullptr);
+        publish(Common::GetOverlayPanel(Common::OverlayPanelId::Hints), nullptr);
     } else {
         QFont hint_font;
         hint_font.setPixelSize(15);
@@ -3360,7 +3348,7 @@ void MainWindow::RenderControllerOverlay() {
             y += hint_h + hint_gap;
         }
         painter.end();
-        publish(Common::GetControllerHintFrame(), &image);
+        publish(Common::GetOverlayPanel(Common::OverlayPanelId::Hints), &image);
     }
 
     overlay_blink.clear();
@@ -3368,7 +3356,7 @@ void MainWindow::RenderControllerOverlay() {
         overlay_blink.push_back(row.flash != 0 && BlinkOn(now_ms - row.flash_since));
     }
     if (!Settings::values.console_debug_overlay.GetValue() || !automatic || overlay_rows.empty()) {
-        publish(Common::GetControllerOverlayFrame(), nullptr);
+        publish(Common::GetOverlayPanel(Common::OverlayPanelId::Players), nullptr);
         return;
     }
 
@@ -3921,7 +3909,7 @@ void MainWindow::RenderControllerOverlay() {
                           overlay_blink[static_cast<std::size_t>(drag_row)], at_y);
     }
     painter.end();
-    publish(Common::GetControllerOverlayFrame(), &image);
+    publish(Common::GetOverlayPanel(Common::OverlayPanelId::Players), &image);
 }
 
 bool MainWindow::HandleOverlayMouse(QEvent* event) {
@@ -3931,7 +3919,7 @@ bool MainWindow::HandleOverlayMouse(QEvent* event) {
     if (overlay_edit_player >= 0) {
         bool shown_now = false;
         {
-            auto& frame = Common::GetControllerOverlayFrame();
+            auto& frame = Common::GetOverlayPanel(Common::OverlayPanelId::Players);
             std::scoped_lock lock{frame.mutex};
             shown_now = frame.enabled;
         }
@@ -3981,7 +3969,7 @@ bool MainWindow::HandleOverlayMouse(QEvent* event) {
     }
     bool shown = false;
     {
-        auto& frame = Common::GetControllerOverlayFrame();
+        auto& frame = Common::GetOverlayPanel(Common::OverlayPanelId::Players);
         std::scoped_lock lock{frame.mutex};
         shown = frame.enabled;
     }
@@ -3991,14 +3979,11 @@ bool MainWindow::HandleOverlayMouse(QEvent* event) {
         overlay_hover_player = -1;
         return false;
     }
-    // The cursor in the overlay image: the overlay is drawn at its own size, 4 pixels in from
-    // the top-left of the game's picture
-    const auto& layout = render_window->GetFramebufferLayout();
-    const qreal ratio = render_window->devicePixelRatioF();
-    const QPointF logical = render_window->mapFromGlobal(QCursor::pos());
-    const QPoint at(
-        static_cast<int>(logical.x() * ratio) - static_cast<int>(layout.screen.left) - 4,
-        static_cast<int>(logical.y() * ratio) - static_cast<int>(layout.screen.top) - 4);
+    // The cursor in the overlay image
+    const QPoint at =
+        GameOverlay::CursorOn(Common::GetOverlayPanel(Common::OverlayPanelId::Players),
+                              *render_window)
+            .at;
     const auto row_at = [this](QPoint point) {
         for (const auto& [player, rect] : overlay_hits) {
             if (rect.contains(point)) {
@@ -5844,6 +5829,13 @@ void MainWindow::ApplyConsoleControllerMode() {
                     want.motions[index] = param.Serialize();
                 }
                 want.profile_name.clear();
+                // Kept as the set's mapping for the session: built again every tick, it asks
+                // the device for its sensors each time and comes out different once a game
+                // polls them, rewriting the player (and reloading the input) four times a second
+                auto& own = SessionSet(set_index);
+                own.buttons = want.buttons;
+                own.analogs = want.analogs;
+                own.motions = want.motions;
                 static std::set<u32> defaulted;
                 if (defaulted.insert(id).second) {
                     LOG_INFO(Frontend,
