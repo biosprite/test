@@ -14,7 +14,6 @@
         GL_ARB_derivative_control,
         GL_ARB_direct_state_access,
         GL_ARB_draw_buffers,
-        GL_ARB_draw_buffers_blend,
         GL_ARB_draw_instanced,
         GL_ARB_fragment_layer_viewport,
 		GL_ARB_fragment_program,
@@ -22,15 +21,10 @@
         GL_ARB_gl_spirv,
         GL_ARB_gpu_shader_fp64,
         GL_ARB_gpu_shader_int64,
-        GL_ARB_imaging,
         GL_ARB_indirect_parameters,
         GL_ARB_instanced_arrays,
-        GL_ARB_multisample,
         GL_ARB_parallel_shader_compile,
         GL_ARB_robustness,
-        GL_ARB_sample_locations,
-        GL_ARB_sample_shading,
-        GL_ARB_seamless_cube_map,
         GL_ARB_seamless_cubemap_per_texture,
         GL_ARB_separate_shader_objects,
         GL_ARB_shader_ballot,
@@ -45,8 +39,6 @@
         GL_ARB_sparse_texture2,
         GL_ARB_spirv_extensions,
         GL_ARB_tessellation_shader,
-        GL_ARB_texture_compression,
-        GL_ARB_texture_compression_bptc,
         GL_ARB_texture_compression_rgtc,
         GL_ARB_texture_filter_anisotropic,
         GL_ARB_texture_filter_minmax,
@@ -155,7 +147,7 @@
     Reproducible: False
 
     Commandline:
-        --profile="compatibility" --api="gl=4.6" --generator="c" --spec="gl" --extensions="GL_AMD_gpu_shader_half_float,GL_AMD_gpu_shader_int64,GL_AMD_seamless_cubemap_per_texture,GL_ARB_bindless_texture,GL_ARB_derivative_control,GL_ARB_direct_state_access,GL_ARB_draw_buffers,GL_ARB_draw_buffers_blend,GL_ARB_draw_instanced,GL_ARB_fragment_layer_viewport,GL_ARB_fragment_program,GL_ARB_geometry_shader4,GL_ARB_gl_spirv,GL_ARB_gpu_shader_fp64,GL_ARB_gpu_shader_int64,GL_ARB_imaging,GL_ARB_indirect_parameters,GL_ARB_instanced_arrays,GL_ARB_multisample,GL_ARB_parallel_shader_compile,GL_ARB_robustness,GL_ARB_sample_locations,GL_ARB_sample_shading,GL_ARB_seamless_cube_map,GL_ARB_seamless_cubemap_per_texture,GL_ARB_separate_shader_objects,GL_ARB_shader_ballot,GL_ARB_shader_group_vote,GL_ARB_shader_objects,GL_ARB_shader_stencil_export,GL_ARB_shader_viewport_layer_array,GL_ARB_shading_language_420pack,GL_ARB_shading_language_include,GL_ARB_sparse_buffer,GL_ARB_sparse_texture,GL_ARB_sparse_texture2,GL_ARB_spirv_extensions,GL_ARB_tessellation_shader,GL_ARB_texture_compression,GL_ARB_texture_compression_bptc,GL_ARB_texture_compression_rgtc,GL_ARB_texture_filter_anisotropic,GL_ARB_texture_filter_minmax,GL_ARB_texture_swizzle,GL_ARB_transform_feedback3,GL_EXT_direct_state_access,GL_EXT_framebuffer_sRGB,GL_EXT_shader_image_load_formatted,GL_EXT_sparse_texture2,GL_EXT_texture_array,GL_EXT_texture_compression_s3tc,GL_EXT_texture_filter_anisotropic,GL_EXT_texture_filter_minmax,GL_EXT_texture_mirror_clamp,GL_KHR_blend_equation_advanced,GL_KHR_blend_equation_advanced_coherent,GL_KHR_debug,GL_KHR_no_error,GL_KHR_parallel_shader_compile,GL_KHR_robustness,GL_NVX_gpu_memory_info,GL_NV_bindless_multi_draw_indirect,GL_NV_bindless_multi_draw_indirect_count,GL_NV_bindless_texture,GL_NV_blend_equation_advanced,GL_NV_blend_minmax_factor,GL_NV_blend_square,GL_NV_command_list,GL_NV_compute_program5,GL_NV_compute_shader_derivatives,GL_NV_conservative_raster,GL_NV_conservative_raster_dilate,GL_NV_conservative_raster_pre_snap,GL_NV_conservative_raster_pre_snap_triangles,GL_NV_conservative_raster_underestimation,GL_NV_copy_depth_to_color,GL_NV_depth_buffer_float,GL_NV_depth_clamp,GL_NV_draw_texture,GL_NV_explicit_multisample,GL_NV_fill_rectangle,GL_NV_fragment_coverage_to_color,GL_NV_fragment_program,GL_NV_fragment_program2,GL_NV_fragment_program4,GL_NV_fragment_program_option,GL_NV_fragment_shader_barycentric,GL_NV_fragment_shader_interlock,GL_NV_framebuffer_multisample_coverage,GL_NV_geometry_program4,GL_NV_geometry_shader4,GL_NV_geometry_shader_passthrough,GL_NV_gpu_program4,GL_NV_gpu_program5,GL_NV_gpu_program5_mem_extended,GL_NV_gpu_shader5,GL_NV_half_float,GL_NV_internalformat_sample_query,GL_NV_memory_attachment,GL_NV_multisample_coverage,GL_NV_multisample_filter_hint,GL_NV_packed_depth_stencil,GL_NV_packed_depth_stencil,GL_NV_sample_locations,GL_NV_sample_mask_override_coverage,GL_NV_shader_atomic_counters,GL_NV_shader_atomic_float,GL_NV_shader_atomic_float64,GL_NV_shader_atomic_fp16_vector,GL_NV_shader_atomic_int64,GL_NV_shader_buffer_load,GL_NV_shader_buffer_store,GL_NV_shader_storage_buffer_object,GL_NV_shader_thread_group,GL_NV_shader_thread_shuffle,GL_NV_shading_rate_image,GL_NV_tessellation_program5,GL_NV_texture_barrier,GL_NV_texture_compression_vtc,GL_NV_texture_env_combine4,GL_NV_texture_expand_normal,GL_NV_texture_multisample,GL_NV_texture_rectangle,GL_NV_texture_rectangle_compressed,GL_NV_texture_shader,GL_NV_texture_shader2,GL_NV_texture_shader3,GL_NV_transform_feedback,GL_NV_transform_feedback2,GL_NV_uniform_buffer_unified_memory,GL_NV_vertex_array_range,GL_NV_vertex_array_range2,GL_NV_vertex_attrib_integer_64bit,GL_NV_vertex_buffer_unified_memory,GL_NV_vertex_program,GL_NV_vertex_program1_1,GL_NV_vertex_program2,GL_NV_vertex_program2_option,GL_NV_vertex_program3,GL_NV_vertex_program4,GL_NV_viewport_array2,GL_NV_viewport_swizzle"
+        --profile="compatibility" --api="gl=4.6" --generator="c" --spec="gl" --extensions="GL_AMD_gpu_shader_half_float,GL_AMD_gpu_shader_int64,GL_AMD_seamless_cubemap_per_texture,GL_ARB_bindless_texture,GL_ARB_derivative_control,GL_ARB_direct_state_access,GL_ARB_draw_buffers,GL_ARB_draw_instanced,GL_ARB_fragment_layer_viewport,GL_ARB_fragment_program,GL_ARB_geometry_shader4,GL_ARB_gl_spirv,GL_ARB_gpu_shader_fp64,GL_ARB_gpu_shader_int64,GL_ARB_indirect_parameters,GL_ARB_instanced_arrays,GL_ARB_parallel_shader_compile,GL_ARB_robustness,GL_ARB_seamless_cubemap_per_texture,GL_ARB_separate_shader_objects,GL_ARB_shader_ballot,GL_ARB_shader_group_vote,GL_ARB_shader_objects,GL_ARB_shader_stencil_export,GL_ARB_shader_viewport_layer_array,GL_ARB_shading_language_420pack,GL_ARB_shading_language_include,GL_ARB_sparse_buffer,GL_ARB_sparse_texture,GL_ARB_sparse_texture2,GL_ARB_spirv_extensions,GL_ARB_tessellation_shader,GL_ARB_texture_compression_rgtc,GL_ARB_texture_filter_anisotropic,GL_ARB_texture_filter_minmax,GL_ARB_texture_swizzle,GL_ARB_transform_feedback3,GL_EXT_direct_state_access,GL_EXT_framebuffer_sRGB,GL_EXT_shader_image_load_formatted,GL_EXT_sparse_texture2,GL_EXT_texture_array,GL_EXT_texture_compression_s3tc,GL_EXT_texture_filter_anisotropic,GL_EXT_texture_filter_minmax,GL_EXT_texture_mirror_clamp,GL_KHR_blend_equation_advanced,GL_KHR_blend_equation_advanced_coherent,GL_KHR_debug,GL_KHR_no_error,GL_KHR_parallel_shader_compile,GL_KHR_robustness,GL_NVX_gpu_memory_info,GL_NV_bindless_multi_draw_indirect,GL_NV_bindless_multi_draw_indirect_count,GL_NV_bindless_texture,GL_NV_blend_equation_advanced,GL_NV_blend_minmax_factor,GL_NV_blend_square,GL_NV_command_list,GL_NV_compute_program5,GL_NV_compute_shader_derivatives,GL_NV_conservative_raster,GL_NV_conservative_raster_dilate,GL_NV_conservative_raster_pre_snap,GL_NV_conservative_raster_pre_snap_triangles,GL_NV_conservative_raster_underestimation,GL_NV_copy_depth_to_color,GL_NV_depth_buffer_float,GL_NV_depth_clamp,GL_NV_draw_texture,GL_NV_explicit_multisample,GL_NV_fill_rectangle,GL_NV_fragment_coverage_to_color,GL_NV_fragment_program,GL_NV_fragment_program2,GL_NV_fragment_program4,GL_NV_fragment_program_option,GL_NV_fragment_shader_barycentric,GL_NV_fragment_shader_interlock,GL_NV_framebuffer_multisample_coverage,GL_NV_geometry_program4,GL_NV_geometry_shader4,GL_NV_geometry_shader_passthrough,GL_NV_gpu_program4,GL_NV_gpu_program5,GL_NV_gpu_program5_mem_extended,GL_NV_gpu_shader5,GL_NV_half_float,GL_NV_internalformat_sample_query,GL_NV_memory_attachment,GL_NV_multisample_coverage,GL_NV_multisample_filter_hint,GL_NV_packed_depth_stencil,GL_NV_packed_depth_stencil,GL_NV_sample_locations,GL_NV_sample_mask_override_coverage,GL_NV_shader_atomic_counters,GL_NV_shader_atomic_float,GL_NV_shader_atomic_float64,GL_NV_shader_atomic_fp16_vector,GL_NV_shader_atomic_int64,GL_NV_shader_buffer_load,GL_NV_shader_buffer_store,GL_NV_shader_storage_buffer_object,GL_NV_shader_thread_group,GL_NV_shader_thread_shuffle,GL_NV_shading_rate_image,GL_NV_tessellation_program5,GL_NV_texture_barrier,GL_NV_texture_compression_vtc,GL_NV_texture_env_combine4,GL_NV_texture_expand_normal,GL_NV_texture_multisample,GL_NV_texture_rectangle,GL_NV_texture_rectangle_compressed,GL_NV_texture_shader,GL_NV_texture_shader2,GL_NV_texture_shader3,GL_NV_transform_feedback,GL_NV_transform_feedback2,GL_NV_uniform_buffer_unified_memory,GL_NV_vertex_array_range,GL_NV_vertex_array_range2,GL_NV_vertex_attrib_integer_64bit,GL_NV_vertex_buffer_unified_memory,GL_NV_vertex_program,GL_NV_vertex_program1_1,GL_NV_vertex_program2,GL_NV_vertex_program2_option,GL_NV_vertex_program3,GL_NV_vertex_program4,GL_NV_viewport_array2,GL_NV_viewport_swizzle"
     Online:
         Too many extensions
 */
@@ -1468,7 +1460,6 @@ int GLAD_GL_ARB_bindless_texture = 0;
 int GLAD_GL_ARB_derivative_control = 0;
 int GLAD_GL_ARB_direct_state_access = 0;
 int GLAD_GL_ARB_draw_buffers = 0;
-int GLAD_GL_ARB_draw_buffers_blend = 0;
 int GLAD_GL_ARB_draw_instanced = 0;
 int GLAD_GL_ARB_fragment_layer_viewport = 0;
 int GLAD_GL_ARB_fragment_program = 0;
@@ -1476,15 +1467,10 @@ int GLAD_GL_ARB_geometry_shader4 = 0;
 int GLAD_GL_ARB_gl_spirv = 0;
 int GLAD_GL_ARB_gpu_shader_fp64 = 0;
 int GLAD_GL_ARB_gpu_shader_int64 = 0;
-int GLAD_GL_ARB_imaging = 0;
 int GLAD_GL_ARB_indirect_parameters = 0;
 int GLAD_GL_ARB_instanced_arrays = 0;
-int GLAD_GL_ARB_multisample = 0;
 int GLAD_GL_ARB_parallel_shader_compile = 0;
 int GLAD_GL_ARB_robustness = 0;
-int GLAD_GL_ARB_sample_locations = 0;
-int GLAD_GL_ARB_sample_shading = 0;
-int GLAD_GL_ARB_seamless_cube_map = 0;
 int GLAD_GL_ARB_seamless_cubemap_per_texture = 0;
 int GLAD_GL_ARB_separate_shader_objects = 0;
 int GLAD_GL_ARB_shader_ballot = 0;
@@ -1499,8 +1485,6 @@ int GLAD_GL_ARB_sparse_texture = 0;
 int GLAD_GL_ARB_sparse_texture2 = 0;
 int GLAD_GL_ARB_spirv_extensions = 0;
 int GLAD_GL_ARB_tessellation_shader = 0;
-int GLAD_GL_ARB_texture_compression = 0;
-int GLAD_GL_ARB_texture_compression_bptc = 0;
 int GLAD_GL_ARB_texture_compression_rgtc = 0;
 int GLAD_GL_ARB_texture_filter_anisotropic = 0;
 int GLAD_GL_ARB_texture_filter_minmax = 0;
@@ -1654,10 +1638,6 @@ PFNGLVERTEXATTRIBL1UI64ARBPROC glad_glVertexAttribL1ui64ARB = NULL;
 PFNGLVERTEXATTRIBL1UI64VARBPROC glad_glVertexAttribL1ui64vARB = NULL;
 PFNGLGETVERTEXATTRIBLUI64VARBPROC glad_glGetVertexAttribLui64vARB = NULL;
 PFNGLDRAWBUFFERSARBPROC glad_glDrawBuffersARB = NULL;
-PFNGLBLENDEQUATIONIARBPROC glad_glBlendEquationiARB = NULL;
-PFNGLBLENDEQUATIONSEPARATEIARBPROC glad_glBlendEquationSeparateiARB = NULL;
-PFNGLBLENDFUNCIARBPROC glad_glBlendFunciARB = NULL;
-PFNGLBLENDFUNCSEPARATEIARBPROC glad_glBlendFuncSeparateiARB = NULL;
 PFNGLDRAWARRAYSINSTANCEDARBPROC glad_glDrawArraysInstancedARB = NULL;
 PFNGLDRAWELEMENTSINSTANCEDARBPROC glad_glDrawElementsInstancedARB = NULL;
 PFNGLPROGRAMSTRINGARBPROC glad_glProgramStringARB = NULL;
@@ -1720,42 +1700,9 @@ PFNGLPROGRAMUNIFORM1UI64VARBPROC glad_glProgramUniform1ui64vARB = NULL;
 PFNGLPROGRAMUNIFORM2UI64VARBPROC glad_glProgramUniform2ui64vARB = NULL;
 PFNGLPROGRAMUNIFORM3UI64VARBPROC glad_glProgramUniform3ui64vARB = NULL;
 PFNGLPROGRAMUNIFORM4UI64VARBPROC glad_glProgramUniform4ui64vARB = NULL;
-PFNGLCOLORTABLEPROC glad_glColorTable = NULL;
-PFNGLCOLORTABLEPARAMETERFVPROC glad_glColorTableParameterfv = NULL;
-PFNGLCOLORTABLEPARAMETERIVPROC glad_glColorTableParameteriv = NULL;
-PFNGLCOPYCOLORTABLEPROC glad_glCopyColorTable = NULL;
-PFNGLGETCOLORTABLEPROC glad_glGetColorTable = NULL;
-PFNGLGETCOLORTABLEPARAMETERFVPROC glad_glGetColorTableParameterfv = NULL;
-PFNGLGETCOLORTABLEPARAMETERIVPROC glad_glGetColorTableParameteriv = NULL;
-PFNGLCOLORSUBTABLEPROC glad_glColorSubTable = NULL;
-PFNGLCOPYCOLORSUBTABLEPROC glad_glCopyColorSubTable = NULL;
-PFNGLCONVOLUTIONFILTER1DPROC glad_glConvolutionFilter1D = NULL;
-PFNGLCONVOLUTIONFILTER2DPROC glad_glConvolutionFilter2D = NULL;
-PFNGLCONVOLUTIONPARAMETERFPROC glad_glConvolutionParameterf = NULL;
-PFNGLCONVOLUTIONPARAMETERFVPROC glad_glConvolutionParameterfv = NULL;
-PFNGLCONVOLUTIONPARAMETERIPROC glad_glConvolutionParameteri = NULL;
-PFNGLCONVOLUTIONPARAMETERIVPROC glad_glConvolutionParameteriv = NULL;
-PFNGLCOPYCONVOLUTIONFILTER1DPROC glad_glCopyConvolutionFilter1D = NULL;
-PFNGLCOPYCONVOLUTIONFILTER2DPROC glad_glCopyConvolutionFilter2D = NULL;
-PFNGLGETCONVOLUTIONFILTERPROC glad_glGetConvolutionFilter = NULL;
-PFNGLGETCONVOLUTIONPARAMETERFVPROC glad_glGetConvolutionParameterfv = NULL;
-PFNGLGETCONVOLUTIONPARAMETERIVPROC glad_glGetConvolutionParameteriv = NULL;
-PFNGLGETSEPARABLEFILTERPROC glad_glGetSeparableFilter = NULL;
-PFNGLSEPARABLEFILTER2DPROC glad_glSeparableFilter2D = NULL;
-PFNGLGETHISTOGRAMPROC glad_glGetHistogram = NULL;
-PFNGLGETHISTOGRAMPARAMETERFVPROC glad_glGetHistogramParameterfv = NULL;
-PFNGLGETHISTOGRAMPARAMETERIVPROC glad_glGetHistogramParameteriv = NULL;
-PFNGLGETMINMAXPROC glad_glGetMinmax = NULL;
-PFNGLGETMINMAXPARAMETERFVPROC glad_glGetMinmaxParameterfv = NULL;
-PFNGLGETMINMAXPARAMETERIVPROC glad_glGetMinmaxParameteriv = NULL;
-PFNGLHISTOGRAMPROC glad_glHistogram = NULL;
-PFNGLMINMAXPROC glad_glMinmax = NULL;
-PFNGLRESETHISTOGRAMPROC glad_glResetHistogram = NULL;
-PFNGLRESETMINMAXPROC glad_glResetMinmax = NULL;
 PFNGLMULTIDRAWARRAYSINDIRECTCOUNTARBPROC glad_glMultiDrawArraysIndirectCountARB = NULL;
 PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTARBPROC glad_glMultiDrawElementsIndirectCountARB = NULL;
 PFNGLVERTEXATTRIBDIVISORARBPROC glad_glVertexAttribDivisorARB = NULL;
-PFNGLSAMPLECOVERAGEARBPROC glad_glSampleCoverageARB = NULL;
 PFNGLMAXSHADERCOMPILERTHREADSARBPROC glad_glMaxShaderCompilerThreadsARB = NULL;
 PFNGLGETGRAPHICSRESETSTATUSARBPROC glad_glGetGraphicsResetStatusARB = NULL;
 PFNGLGETNTEXIMAGEARBPROC glad_glGetnTexImageARB = NULL;
@@ -1777,10 +1724,6 @@ PFNGLGETNCONVOLUTIONFILTERARBPROC glad_glGetnConvolutionFilterARB = NULL;
 PFNGLGETNSEPARABLEFILTERARBPROC glad_glGetnSeparableFilterARB = NULL;
 PFNGLGETNHISTOGRAMARBPROC glad_glGetnHistogramARB = NULL;
 PFNGLGETNMINMAXARBPROC glad_glGetnMinmaxARB = NULL;
-PFNGLFRAMEBUFFERSAMPLELOCATIONSFVARBPROC glad_glFramebufferSampleLocationsfvARB = NULL;
-PFNGLNAMEDFRAMEBUFFERSAMPLELOCATIONSFVARBPROC glad_glNamedFramebufferSampleLocationsfvARB = NULL;
-PFNGLEVALUATEDEPTHVALUESARBPROC glad_glEvaluateDepthValuesARB = NULL;
-PFNGLMINSAMPLESHADINGARBPROC glad_glMinSampleShadingARB = NULL;
 PFNGLDELETEOBJECTARBPROC glad_glDeleteObjectARB = NULL;
 PFNGLGETHANDLEARBPROC glad_glGetHandleARB = NULL;
 PFNGLDETACHOBJECTARBPROC glad_glDetachObjectARB = NULL;
@@ -1830,13 +1773,6 @@ PFNGLBUFFERPAGECOMMITMENTARBPROC glad_glBufferPageCommitmentARB = NULL;
 PFNGLNAMEDBUFFERPAGECOMMITMENTEXTPROC glad_glNamedBufferPageCommitmentEXT = NULL;
 PFNGLNAMEDBUFFERPAGECOMMITMENTARBPROC glad_glNamedBufferPageCommitmentARB = NULL;
 PFNGLTEXPAGECOMMITMENTARBPROC glad_glTexPageCommitmentARB = NULL;
-PFNGLCOMPRESSEDTEXIMAGE3DARBPROC glad_glCompressedTexImage3DARB = NULL;
-PFNGLCOMPRESSEDTEXIMAGE2DARBPROC glad_glCompressedTexImage2DARB = NULL;
-PFNGLCOMPRESSEDTEXIMAGE1DARBPROC glad_glCompressedTexImage1DARB = NULL;
-PFNGLCOMPRESSEDTEXSUBIMAGE3DARBPROC glad_glCompressedTexSubImage3DARB = NULL;
-PFNGLCOMPRESSEDTEXSUBIMAGE2DARBPROC glad_glCompressedTexSubImage2DARB = NULL;
-PFNGLCOMPRESSEDTEXSUBIMAGE1DARBPROC glad_glCompressedTexSubImage1DARB = NULL;
-PFNGLGETCOMPRESSEDTEXIMAGEARBPROC glad_glGetCompressedTexImageARB = NULL;
 PFNGLMATRIXLOADFEXTPROC glad_glMatrixLoadfEXT = NULL;
 PFNGLMATRIXLOADDEXTPROC glad_glMatrixLoaddEXT = NULL;
 PFNGLMATRIXMULTFEXTPROC glad_glMatrixMultfEXT = NULL;
@@ -3682,13 +3618,6 @@ static void load_GL_ARB_draw_buffers(GLADloadproc load) {
 	if(!GLAD_GL_ARB_draw_buffers) return;
 	glad_glDrawBuffersARB = (PFNGLDRAWBUFFERSARBPROC)load("glDrawBuffersARB");
 }
-static void load_GL_ARB_draw_buffers_blend(GLADloadproc load) {
-	if(!GLAD_GL_ARB_draw_buffers_blend) return;
-	glad_glBlendEquationiARB = (PFNGLBLENDEQUATIONIARBPROC)load("glBlendEquationiARB");
-	glad_glBlendEquationSeparateiARB = (PFNGLBLENDEQUATIONSEPARATEIARBPROC)load("glBlendEquationSeparateiARB");
-	glad_glBlendFunciARB = (PFNGLBLENDFUNCIARBPROC)load("glBlendFunciARB");
-	glad_glBlendFuncSeparateiARB = (PFNGLBLENDFUNCSEPARATEIARBPROC)load("glBlendFuncSeparateiARB");
-}
 static void load_GL_ARB_draw_instanced(GLADloadproc load) {
 	if(!GLAD_GL_ARB_draw_instanced) return;
 	glad_glDrawArraysInstancedARB = (PFNGLDRAWARRAYSINSTANCEDARBPROC)load("glDrawArraysInstancedARB");
@@ -3787,43 +3716,6 @@ static void load_GL_ARB_gpu_shader_int64(GLADloadproc load) {
 	glad_glProgramUniform3ui64vARB = (PFNGLPROGRAMUNIFORM3UI64VARBPROC)load("glProgramUniform3ui64vARB");
 	glad_glProgramUniform4ui64vARB = (PFNGLPROGRAMUNIFORM4UI64VARBPROC)load("glProgramUniform4ui64vARB");
 }
-static void load_GL_ARB_imaging(GLADloadproc load) {
-	if(!GLAD_GL_ARB_imaging) return;
-	glad_glBlendColor = (PFNGLBLENDCOLORPROC)load("glBlendColor");
-	glad_glBlendEquation = (PFNGLBLENDEQUATIONPROC)load("glBlendEquation");
-	glad_glColorTable = (PFNGLCOLORTABLEPROC)load("glColorTable");
-	glad_glColorTableParameterfv = (PFNGLCOLORTABLEPARAMETERFVPROC)load("glColorTableParameterfv");
-	glad_glColorTableParameteriv = (PFNGLCOLORTABLEPARAMETERIVPROC)load("glColorTableParameteriv");
-	glad_glCopyColorTable = (PFNGLCOPYCOLORTABLEPROC)load("glCopyColorTable");
-	glad_glGetColorTable = (PFNGLGETCOLORTABLEPROC)load("glGetColorTable");
-	glad_glGetColorTableParameterfv = (PFNGLGETCOLORTABLEPARAMETERFVPROC)load("glGetColorTableParameterfv");
-	glad_glGetColorTableParameteriv = (PFNGLGETCOLORTABLEPARAMETERIVPROC)load("glGetColorTableParameteriv");
-	glad_glColorSubTable = (PFNGLCOLORSUBTABLEPROC)load("glColorSubTable");
-	glad_glCopyColorSubTable = (PFNGLCOPYCOLORSUBTABLEPROC)load("glCopyColorSubTable");
-	glad_glConvolutionFilter1D = (PFNGLCONVOLUTIONFILTER1DPROC)load("glConvolutionFilter1D");
-	glad_glConvolutionFilter2D = (PFNGLCONVOLUTIONFILTER2DPROC)load("glConvolutionFilter2D");
-	glad_glConvolutionParameterf = (PFNGLCONVOLUTIONPARAMETERFPROC)load("glConvolutionParameterf");
-	glad_glConvolutionParameterfv = (PFNGLCONVOLUTIONPARAMETERFVPROC)load("glConvolutionParameterfv");
-	glad_glConvolutionParameteri = (PFNGLCONVOLUTIONPARAMETERIPROC)load("glConvolutionParameteri");
-	glad_glConvolutionParameteriv = (PFNGLCONVOLUTIONPARAMETERIVPROC)load("glConvolutionParameteriv");
-	glad_glCopyConvolutionFilter1D = (PFNGLCOPYCONVOLUTIONFILTER1DPROC)load("glCopyConvolutionFilter1D");
-	glad_glCopyConvolutionFilter2D = (PFNGLCOPYCONVOLUTIONFILTER2DPROC)load("glCopyConvolutionFilter2D");
-	glad_glGetConvolutionFilter = (PFNGLGETCONVOLUTIONFILTERPROC)load("glGetConvolutionFilter");
-	glad_glGetConvolutionParameterfv = (PFNGLGETCONVOLUTIONPARAMETERFVPROC)load("glGetConvolutionParameterfv");
-	glad_glGetConvolutionParameteriv = (PFNGLGETCONVOLUTIONPARAMETERIVPROC)load("glGetConvolutionParameteriv");
-	glad_glGetSeparableFilter = (PFNGLGETSEPARABLEFILTERPROC)load("glGetSeparableFilter");
-	glad_glSeparableFilter2D = (PFNGLSEPARABLEFILTER2DPROC)load("glSeparableFilter2D");
-	glad_glGetHistogram = (PFNGLGETHISTOGRAMPROC)load("glGetHistogram");
-	glad_glGetHistogramParameterfv = (PFNGLGETHISTOGRAMPARAMETERFVPROC)load("glGetHistogramParameterfv");
-	glad_glGetHistogramParameteriv = (PFNGLGETHISTOGRAMPARAMETERIVPROC)load("glGetHistogramParameteriv");
-	glad_glGetMinmax = (PFNGLGETMINMAXPROC)load("glGetMinmax");
-	glad_glGetMinmaxParameterfv = (PFNGLGETMINMAXPARAMETERFVPROC)load("glGetMinmaxParameterfv");
-	glad_glGetMinmaxParameteriv = (PFNGLGETMINMAXPARAMETERIVPROC)load("glGetMinmaxParameteriv");
-	glad_glHistogram = (PFNGLHISTOGRAMPROC)load("glHistogram");
-	glad_glMinmax = (PFNGLMINMAXPROC)load("glMinmax");
-	glad_glResetHistogram = (PFNGLRESETHISTOGRAMPROC)load("glResetHistogram");
-	glad_glResetMinmax = (PFNGLRESETMINMAXPROC)load("glResetMinmax");
-}
 static void load_GL_ARB_indirect_parameters(GLADloadproc load) {
 	if(!GLAD_GL_ARB_indirect_parameters) return;
 	glad_glMultiDrawArraysIndirectCountARB = (PFNGLMULTIDRAWARRAYSINDIRECTCOUNTARBPROC)load("glMultiDrawArraysIndirectCountARB");
@@ -3832,10 +3724,6 @@ static void load_GL_ARB_indirect_parameters(GLADloadproc load) {
 static void load_GL_ARB_instanced_arrays(GLADloadproc load) {
 	if(!GLAD_GL_ARB_instanced_arrays) return;
 	glad_glVertexAttribDivisorARB = (PFNGLVERTEXATTRIBDIVISORARBPROC)load("glVertexAttribDivisorARB");
-}
-static void load_GL_ARB_multisample(GLADloadproc load) {
-	if(!GLAD_GL_ARB_multisample) return;
-	glad_glSampleCoverageARB = (PFNGLSAMPLECOVERAGEARBPROC)load("glSampleCoverageARB");
 }
 static void load_GL_ARB_parallel_shader_compile(GLADloadproc load) {
 	if(!GLAD_GL_ARB_parallel_shader_compile) return;
@@ -3863,16 +3751,6 @@ static void load_GL_ARB_robustness(GLADloadproc load) {
 	glad_glGetnSeparableFilterARB = (PFNGLGETNSEPARABLEFILTERARBPROC)load("glGetnSeparableFilterARB");
 	glad_glGetnHistogramARB = (PFNGLGETNHISTOGRAMARBPROC)load("glGetnHistogramARB");
 	glad_glGetnMinmaxARB = (PFNGLGETNMINMAXARBPROC)load("glGetnMinmaxARB");
-}
-static void load_GL_ARB_sample_locations(GLADloadproc load) {
-	if(!GLAD_GL_ARB_sample_locations) return;
-	glad_glFramebufferSampleLocationsfvARB = (PFNGLFRAMEBUFFERSAMPLELOCATIONSFVARBPROC)load("glFramebufferSampleLocationsfvARB");
-	glad_glNamedFramebufferSampleLocationsfvARB = (PFNGLNAMEDFRAMEBUFFERSAMPLELOCATIONSFVARBPROC)load("glNamedFramebufferSampleLocationsfvARB");
-	glad_glEvaluateDepthValuesARB = (PFNGLEVALUATEDEPTHVALUESARBPROC)load("glEvaluateDepthValuesARB");
-}
-static void load_GL_ARB_sample_shading(GLADloadproc load) {
-	if(!GLAD_GL_ARB_sample_shading) return;
-	glad_glMinSampleShadingARB = (PFNGLMINSAMPLESHADINGARBPROC)load("glMinSampleShadingARB");
 }
 static void load_GL_ARB_separate_shader_objects(GLADloadproc load) {
 	if(!GLAD_GL_ARB_separate_shader_objects) return;
@@ -4003,16 +3881,6 @@ static void load_GL_ARB_tessellation_shader(GLADloadproc load) {
 	if(!GLAD_GL_ARB_tessellation_shader) return;
 	glad_glPatchParameteri = (PFNGLPATCHPARAMETERIPROC)load("glPatchParameteri");
 	glad_glPatchParameterfv = (PFNGLPATCHPARAMETERFVPROC)load("glPatchParameterfv");
-}
-static void load_GL_ARB_texture_compression(GLADloadproc load) {
-	if(!GLAD_GL_ARB_texture_compression) return;
-	glad_glCompressedTexImage3DARB = (PFNGLCOMPRESSEDTEXIMAGE3DARBPROC)load("glCompressedTexImage3DARB");
-	glad_glCompressedTexImage2DARB = (PFNGLCOMPRESSEDTEXIMAGE2DARBPROC)load("glCompressedTexImage2DARB");
-	glad_glCompressedTexImage1DARB = (PFNGLCOMPRESSEDTEXIMAGE1DARBPROC)load("glCompressedTexImage1DARB");
-	glad_glCompressedTexSubImage3DARB = (PFNGLCOMPRESSEDTEXSUBIMAGE3DARBPROC)load("glCompressedTexSubImage3DARB");
-	glad_glCompressedTexSubImage2DARB = (PFNGLCOMPRESSEDTEXSUBIMAGE2DARBPROC)load("glCompressedTexSubImage2DARB");
-	glad_glCompressedTexSubImage1DARB = (PFNGLCOMPRESSEDTEXSUBIMAGE1DARBPROC)load("glCompressedTexSubImage1DARB");
-	glad_glGetCompressedTexImageARB = (PFNGLGETCOMPRESSEDTEXIMAGEARBPROC)load("glGetCompressedTexImageARB");
 }
 static void load_GL_ARB_transform_feedback3(GLADloadproc load) {
 	if(!GLAD_GL_ARB_transform_feedback3) return;
@@ -4781,7 +4649,6 @@ static int find_extensionsGL(void) {
 	GLAD_GL_ARB_derivative_control = has_ext("GL_ARB_derivative_control");
 	GLAD_GL_ARB_direct_state_access = has_ext("GL_ARB_direct_state_access");
 	GLAD_GL_ARB_draw_buffers = has_ext("GL_ARB_draw_buffers");
-	GLAD_GL_ARB_draw_buffers_blend = has_ext("GL_ARB_draw_buffers_blend");
 	GLAD_GL_ARB_draw_instanced = has_ext("GL_ARB_draw_instanced");
 	GLAD_GL_ARB_fragment_layer_viewport = has_ext("GL_ARB_fragment_layer_viewport");
 	GLAD_GL_ARB_fragment_program = has_ext("GL_ARB_fragment_program");
@@ -4789,15 +4656,10 @@ static int find_extensionsGL(void) {
 	GLAD_GL_ARB_gl_spirv = has_ext("GL_ARB_gl_spirv");
 	GLAD_GL_ARB_gpu_shader_fp64 = has_ext("GL_ARB_gpu_shader_fp64");
 	GLAD_GL_ARB_gpu_shader_int64 = has_ext("GL_ARB_gpu_shader_int64");
-	GLAD_GL_ARB_imaging = has_ext("GL_ARB_imaging");
 	GLAD_GL_ARB_indirect_parameters = has_ext("GL_ARB_indirect_parameters");
 	GLAD_GL_ARB_instanced_arrays = has_ext("GL_ARB_instanced_arrays");
-	GLAD_GL_ARB_multisample = has_ext("GL_ARB_multisample");
 	GLAD_GL_ARB_parallel_shader_compile = has_ext("GL_ARB_parallel_shader_compile");
 	GLAD_GL_ARB_robustness = has_ext("GL_ARB_robustness");
-	GLAD_GL_ARB_sample_locations = has_ext("GL_ARB_sample_locations");
-	GLAD_GL_ARB_sample_shading = has_ext("GL_ARB_sample_shading");
-	GLAD_GL_ARB_seamless_cube_map = has_ext("GL_ARB_seamless_cube_map");
 	GLAD_GL_ARB_seamless_cubemap_per_texture = has_ext("GL_ARB_seamless_cubemap_per_texture");
 	GLAD_GL_ARB_separate_shader_objects = has_ext("GL_ARB_separate_shader_objects");
 	GLAD_GL_ARB_shader_ballot = has_ext("GL_ARB_shader_ballot");
@@ -4812,8 +4674,6 @@ static int find_extensionsGL(void) {
 	GLAD_GL_ARB_sparse_texture2 = has_ext("GL_ARB_sparse_texture2");
 	GLAD_GL_ARB_spirv_extensions = has_ext("GL_ARB_spirv_extensions");
 	GLAD_GL_ARB_tessellation_shader = has_ext("GL_ARB_tessellation_shader");
-	GLAD_GL_ARB_texture_compression = has_ext("GL_ARB_texture_compression");
-	GLAD_GL_ARB_texture_compression_bptc = has_ext("GL_ARB_texture_compression_bptc");
 	GLAD_GL_ARB_texture_compression_rgtc = has_ext("GL_ARB_texture_compression_rgtc");
 	GLAD_GL_ARB_texture_filter_anisotropic = has_ext("GL_ARB_texture_filter_anisotropic");
 	GLAD_GL_ARB_texture_filter_minmax = has_ext("GL_ARB_texture_filter_minmax");
@@ -5012,28 +4872,22 @@ int gladLoadGLLoader(GLADloadproc load) {
 	load_GL_ARB_bindless_texture(load);
 	load_GL_ARB_direct_state_access(load);
 	load_GL_ARB_draw_buffers(load);
-	load_GL_ARB_draw_buffers_blend(load);
 	load_GL_ARB_draw_instanced(load);
 	load_GL_ARB_fragment_program(load);
 	load_GL_ARB_geometry_shader4(load);
 	load_GL_ARB_gl_spirv(load);
 	load_GL_ARB_gpu_shader_fp64(load);
 	load_GL_ARB_gpu_shader_int64(load);
-	load_GL_ARB_imaging(load);
 	load_GL_ARB_indirect_parameters(load);
 	load_GL_ARB_instanced_arrays(load);
-	load_GL_ARB_multisample(load);
 	load_GL_ARB_parallel_shader_compile(load);
 	load_GL_ARB_robustness(load);
-	load_GL_ARB_sample_locations(load);
-	load_GL_ARB_sample_shading(load);
 	load_GL_ARB_separate_shader_objects(load);
 	load_GL_ARB_shader_objects(load);
 	load_GL_ARB_shading_language_include(load);
 	load_GL_ARB_sparse_buffer(load);
 	load_GL_ARB_sparse_texture(load);
 	load_GL_ARB_tessellation_shader(load);
-	load_GL_ARB_texture_compression(load);
 	load_GL_ARB_transform_feedback3(load);
 	load_GL_EXT_direct_state_access(load);
 	load_GL_EXT_texture_array(load);
