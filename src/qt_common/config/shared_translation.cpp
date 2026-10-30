@@ -408,6 +408,7 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
     translations->insert({Settings::EnumMetadata<Settings::VramUsageMode>::Index(),
                           {
                               PAIR(VramUsageMode, Conservative, tr("Conservative")),
+                              PAIR(VramUsageMode, Conservative6Gb, tr("Conservative (6 GB)")),
                               PAIR(VramUsageMode, Aggressive, tr("Aggressive")),
                           }});
     translations->insert(
