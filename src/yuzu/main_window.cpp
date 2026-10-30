@@ -94,6 +94,7 @@
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QDBusVariant>
 #include <fcntl.h>
 #include <linux/hidraw.h>
 #include <linux/input.h>
@@ -2526,6 +2527,38 @@ std::optional<std::pair<int, bool>> BluetoothBattery(const std::string& address)
         }
         if (match) {
             return ReadPowerSupply(dir);
+        }
+    }
+    return std::nullopt;
+}
+
+/// A Bluetooth LE controller's battery as BlueZ reads it (its battery service: Xbox Series
+/// controllers report it this way, with no power supply in Linux); charging is unknown
+std::optional<std::pair<int, bool>> BluezBattery(const std::string& address) {
+    QDBusConnection bus = QDBusConnection::systemBus();
+    if (!bus.isConnected()) {
+        return std::nullopt;
+    }
+    QString device = QString::fromStdString(address).toUpper();
+    device.replace(QLatin1Char(':'), QLatin1Char('_'));
+    const QDir adapters{QStringLiteral("/sys/class/bluetooth")};
+    for (const QString& adapter : adapters.entryList({QStringLiteral("hci*")}, QDir::AllEntries)) {
+        if (adapter.contains(QLatin1Char(':'))) {
+            continue; // a connection's entry (hci0:12), not an adapter
+        }
+        QDBusMessage get = QDBusMessage::createMethodCall(
+            QStringLiteral("org.bluez"), QStringLiteral("/org/bluez/%1/dev_%2").arg(adapter, device),
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+        get << QStringLiteral("org.bluez.Battery1") << QStringLiteral("Percentage");
+        // (BlueZ answers from what it holds; read every 10 seconds per controller)
+        const QDBusMessage reply = bus.call(get, QDBus::Block, 250);
+        if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()) {
+            bool ok = false;
+            const int percent =
+                reply.arguments().first().value<QDBusVariant>().variant().toInt(&ok);
+            if (ok && percent >= 0 && percent <= 100) {
+                return std::pair{percent, false};
+            }
         }
     }
     return std::nullopt;
@@ -6351,6 +6384,16 @@ void MainWindow::ApplyConsoleControllerMode() {
                     } else if (const auto address = inst_address.find(pad);
                                address != inst_address.end()) {
                         found = BluetoothBattery(address->second);
+                        if (!found) {
+                            found = BluezBattery(address->second);
+                        }
+                    }
+                    if (!found && fresh.percent < 0 && !fresh.wired &&
+                        Common::ControllerProbes()) {
+                        const auto address = inst_address.find(pad);
+                        LOG_INFO(Frontend, "console-mode: P{} inst={} battery unknown (address {})",
+                                 i + 1, pad,
+                                 address != inst_address.end() ? address->second : "none");
                     }
                     if (found) {
                         fresh = {found->first, found->second, false};
