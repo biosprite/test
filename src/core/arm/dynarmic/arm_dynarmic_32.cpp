@@ -4,6 +4,8 @@
 // SPDX-FileCopyrightText: Copyright 2020 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <mutex>
+
 #include "common/settings.h"
 #include "core/arm/dynarmic/arm_dynarmic.h"
 #include "core/arm/dynarmic/arm_dynarmic_32.h"
@@ -178,7 +180,10 @@ void ArmDynarmic32::MakeJit(Common::PageTable* page_table) {
             // Systems like FreeBSD allocate memory really low by default, and since we pack our page table entries,
             // we have to manually sign extend when our actual pointer is negative.
             config.page_table_sign_extension = std::uint8_t(Common::PageTable::SIGN_BIT);
-            LOG_INFO(Core_ARM, "Page table entries are sign extended (backing memory below the guest address space)");
+            static std::once_flag log_sign_extension;
+            std::call_once(log_sign_extension, [] {
+                LOG_INFO(Core_ARM, "Page table entries are sign extended (backing memory below the guest address space)");
+            });
         }
     }
 
