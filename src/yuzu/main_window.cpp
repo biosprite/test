@@ -5298,6 +5298,32 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
             }
         }
+        // Under Steam the list's names are SDL's, up to 3 seconds behind Steam: a pad Steam just
+        // moved a controller to still has the old one's name there (the deck's on P2's), so
+        // until SDL has the same controller type as Steam, the name is Steam's controller's
+        if (const auto slot = SteamSlotOf(id);
+            slot && SDL_GetGamepadTypeForID(id) != slot->type) {
+            switch (slot->type) {
+            case SDL_GAMEPAD_TYPE_XBOX360:
+                display = QStringLiteral("Xbox 360 Controller");
+                break;
+            case SDL_GAMEPAD_TYPE_XBOXONE:
+                display = QStringLiteral("Xbox One Controller");
+                break;
+            case SDL_GAMEPAD_TYPE_PS4:
+                display = QStringLiteral("PS4 Controller");
+                break;
+            case SDL_GAMEPAD_TYPE_PS5:
+                display = QStringLiteral("DualSense Wireless Controller");
+                break;
+            case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+                display = QStringLiteral("Nintendo Switch Pro Controller");
+                break;
+            default:
+                display = slot->name;
+                break;
+            }
+        }
         return std::pair<QString, QString>{display, PadName(id)};
     };
 
