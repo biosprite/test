@@ -472,7 +472,7 @@ protected:
             const QColor ink = lit ? QColor(Qt::white) : color;
             // The controller's battery, at the right end (inside the arrow)
             QRectF label = rect;
-            if (row.battery >= 0) {
+            if (row.battery >= 0 && batteries) {
                 const QRectF cell(rect.right() - (several ? 16 : 6) - battery_w,
                                   rect.center().y() - 6, battery_w, 12);
                 painter.drawPixmap(cell.topLeft(),
@@ -645,19 +645,20 @@ private:
     static constexpr int battery_room = battery_w + 4;
 
     /// A chip's width among these players: wider with arrows and the grip (several players),
-    /// and with a battery
+    /// and with a battery (unless the chips are too many for the menu bar with them)
     static int ChipWidth(const std::vector<Common::ControllerConsoleState::PlayerRow>& among,
-                         std::size_t k) {
+                         std::size_t k, bool with_batteries) {
         return (among.size() > 1 ? chip_w_full : chip_w) +
-               (among[k].battery >= 0 ? battery_room : 0);
+               (with_batteries && among[k].battery >= 0 ? battery_room : 0);
     }
 
     QRectF ChipRect(int k) const {
         double x = 4;
         for (int j = 0; j < k; ++j) {
-            x += ChipWidth(rows, static_cast<std::size_t>(j)) + chip_gap;
+            x += ChipWidth(rows, static_cast<std::size_t>(j), batteries) + chip_gap;
         }
-        return QRectF(x, 3, ChipWidth(rows, static_cast<std::size_t>(k)), height() - 6);
+        return QRectF(x, 3, ChipWidth(rows, static_cast<std::size_t>(k), batteries),
+                      height() - 6);
     }
 
     static QRectF LeftArrow(const QRectF& chip) {
@@ -705,10 +706,21 @@ private:
                 }
             }
         }
-        int chips_w = 8;
-        for (std::size_t k = 0; k < now.size(); ++k) {
-            chips_w += ChipWidth(now, k) + chip_gap;
+        // (Up to eight players: their batteries go when the chips would run past the menu bar,
+        // and stay in the tooltips)
+        const auto chips_width = [&](bool with_batteries) {
+            int w = 8;
+            for (std::size_t k = 0; k < now.size(); ++k) {
+                w += ChipWidth(now, k, with_batteries) + chip_gap;
+            }
+            return w;
+        };
+        const bool fit = x + 10 + chips_width(true) <= bar->width();
+        if (fit != batteries) {
+            batteries = fit;
+            update();
         }
+        const int chips_w = chips_width(batteries);
         const QRect place(x + 10, 0, chips_w, bar->height());
         if (geometry() != place) {
             setGeometry(place);
@@ -738,6 +750,8 @@ private:
     QMenuBar* bar;
     std::function<void(int)> open_settings;
     std::vector<Common::ControllerConsoleState::PlayerRow> rows;
+    /// The chips show their batteries (they fit in the menu bar with them)
+    bool batteries = true;
     QTimer poll;
     QTimer long_press;
     int pressed = -1;
