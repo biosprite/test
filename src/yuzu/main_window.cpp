@@ -5346,7 +5346,12 @@ void MainWindow::ApplyConsoleControllerMode() {
     for (const auto& [id, ident] : live) {
         if (const auto known = pad_bluetooth.find(BluetoothKey(id));
             known != pad_bluetooth.end() && !known->second.empty()) {
-            inst_address[id] = known->second;
+            // A controller just told apart: its battery is read now, not at the next reading
+            // (up to 10 seconds later)
+            if (auto& address = inst_address[id]; address != known->second) {
+                address = known->second;
+                battery_read.erase(id);
+            }
             if (const auto origin = pad_origin.find(id); origin != pad_origin.end()) {
                 address_origin.try_emplace(known->second, origin->second);
             }
