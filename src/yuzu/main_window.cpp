@@ -6395,6 +6395,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         overlay_rows.clear();
         std::erase_if(battery_read, [&](const auto& e) { return !live.contains(e.first); });
         std::erase_if(bluez_first, [&](const auto& e) { return !live.contains(e.first); });
+        std::erase_if(battery_whose, [&](const auto& e) { return !live.contains(e.first); });
         std::vector<Common::ControllerConsoleState::PlayerRow> tab_rows;
         // Flashes follow the controller behind a player, not just the player: in handheld mode
         // P1 stays connected while the controller behind it changes. Green when a controller
@@ -6504,6 +6505,16 @@ void MainWindow::ApplyConsoleControllerMode() {
             Battery battery;
             if (pad) {
                 auto& read = battery_read[pad];
+                // Whose reading it is: Steam reshuffles its virtual pads, so a pad can be another
+                // controller from one moment to the next (the deck's own, then an Xbox
+                // controller): another one is read afresh
+                const bool own = builtin_valid && pad == builtin_match_id;
+                const std::string whose = (own ? "handheld:" : "") + BluetoothKey(pad);
+                if (auto& was = battery_whose[pad]; was != whose) {
+                    was = whose;
+                    read = {};
+                    bluez_first.erase(pad);
+                }
                 if (read.first == 0 || now_ms - read.first > 10'000) {
                     Battery fresh;
                     const char* source = "sdl";
