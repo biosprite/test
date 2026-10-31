@@ -6927,7 +6927,9 @@ void MainWindow::ApplyConsoleControllerMode() {
                                 // (By controller: Steam reshuffling its pads is no new connection)
                                 const auto [first, added] =
                                     bluez_first.try_emplace(address->second, now_ms, found->first);
-                                if (now_ms - first->second.first < 12'000 &&
+                                // (Only its placeholder: a first value of anything else is real)
+                                if (first->second.second == 50 &&
+                                    now_ms - first->second.first < 12'000 &&
                                     found->first == first->second.second) {
                                     found.reset();
                                     settling = true;
