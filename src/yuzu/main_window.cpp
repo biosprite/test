@@ -6501,7 +6501,8 @@ void MainWindow::ApplyConsoleControllerMode() {
             // own controls run on the system's, else what SDL knows (never for Steam's virtual
             // pads, which have no battery: what SDL reports there is not the controller's). Read
             // every 10 seconds; every 2 while a controller's address gives none yet (a
-            // controller that just connected is read by Linux a few seconds later).
+            // controller that just connected is read by Linux a few seconds later), every 1 while
+            // BlueZ's first value settles.
             Battery battery;
             if (pad) {
                 auto& read = battery_read[pad];
@@ -6561,8 +6562,11 @@ void MainWindow::ApplyConsoleControllerMode() {
                     if (found) {
                         fresh = {found->first, found->second, false};
                     }
-                    // (Its address gives none yet: read again sooner)
-                    const qint64 read_at = by_address && !found ? now_ms - 8'000 : now_ms;
+                    // (Its address gives none yet, or BlueZ's first value is still settling: read
+                    // again sooner, every second while it settles)
+                    const qint64 read_at = settling                ? now_ms - 9'000
+                                           : by_address && !found ? now_ms - 8'000
+                                                                   : now_ms;
 #else
                     const qint64 read_at = now_ms;
 #endif
