@@ -6394,7 +6394,13 @@ void MainWindow::ApplyConsoleControllerMode() {
         std::array<std::string, 10> custom_names{};
         overlay_rows.clear();
         std::erase_if(battery_read, [&](const auto& e) { return !live.contains(e.first); });
-        std::erase_if(bluez_first, [&](const auto& e) { return !live.contains(e.first); });
+        // (A controller that leaves starts afresh when it connects again)
+        std::erase_if(bluez_first, [&](const auto& e) {
+            return std::none_of(live.begin(), live.end(), [&](const auto& pad) {
+                const auto address = inst_address.find(pad.first);
+                return address != inst_address.end() && address->second == e.first;
+            });
+        });
         std::erase_if(battery_whose, [&](const auto& e) { return !live.contains(e.first); });
         std::vector<Common::ControllerConsoleState::PlayerRow> tab_rows;
         // Flashes follow the controller behind a player, not just the player: in handheld mode
@@ -6514,7 +6520,6 @@ void MainWindow::ApplyConsoleControllerMode() {
                 if (auto& was = battery_whose[pad]; was != whose) {
                     was = whose;
                     read = {};
-                    bluez_first.erase(pad);
                 }
                 if (read.first == 0 || now_ms - read.first > 10'000) {
                     Battery fresh;
@@ -6542,8 +6547,9 @@ void MainWindow::ApplyConsoleControllerMode() {
                             // Xbox controllers: their real charge came about 10 seconds later):
                             // its first value counts once it changes, or after 12 seconds
                             if (found) {
+                                // (By controller: Steam reshuffling its pads is no new connection)
                                 const auto [first, added] =
-                                    bluez_first.try_emplace(pad, now_ms, found->first);
+                                    bluez_first.try_emplace(address->second, now_ms, found->first);
                                 if (now_ms - first->second.first < 12'000 &&
                                     found->first == first->second.second) {
                                     found.reset();

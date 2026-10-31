@@ -714,8 +714,9 @@ private:
         bool wired = false;
     };
     std::map<u32, std::pair<qint64, Battery>> battery_read;
-    /// A controller's first battery reading from BlueZ, and when (it reads 50% at first)
-    std::map<u32, std::pair<qint64, int>> bluez_first;
+    /// A controller's first battery reading from BlueZ, and when, by its address (it reads 50%
+    /// at first)
+    std::map<std::string, std::pair<qint64, int>> bluez_first;
     /// Whose controller each pad's battery reading is (its Steam handle or identity, and whether
     /// it is the handheld's own)
     std::map<u32, std::string> battery_whose;
