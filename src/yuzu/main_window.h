@@ -714,6 +714,8 @@ private:
         bool wired = false;
     };
     std::map<u32, std::pair<qint64, Battery>> battery_read;
+    /// A controller's first battery reading from BlueZ, and when (it reads 50% at first)
+    std::map<u32, std::pair<qint64, int>> bluez_first;
     std::set<std::string> battery_low_told;
     /// Use Any Controller as Joy-Cons: each player's type before the engine changed it for a game
     /// that only takes Joy-Cons, and the type it set (a type set by hand is left alone)

@@ -6394,6 +6394,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         std::array<std::string, 10> custom_names{};
         overlay_rows.clear();
         std::erase_if(battery_read, [&](const auto& e) { return !live.contains(e.first); });
+        std::erase_if(bluez_first, [&](const auto& e) { return !live.contains(e.first); });
         std::vector<Common::ControllerConsoleState::PlayerRow> tab_rows;
         // Flashes follow the controller behind a player, not just the player: in handheld mode
         // P1 stays connected while the controller behind it changes. Green when a controller
@@ -6513,6 +6514,7 @@ void MainWindow::ApplyConsoleControllerMode() {
 #ifdef __linux__
                     std::optional<std::pair<int, bool>> found;
                     bool by_address = false;
+                    bool settling = false;
                     if (builtin_valid && pad == builtin_match_id) {
                         found = SystemBattery();
                         source = "system";
@@ -6524,9 +6526,21 @@ void MainWindow::ApplyConsoleControllerMode() {
                         if (!found) {
                             found = BluezBattery(address->second);
                             source = "bluez";
+                            // A controller that just connected first reads 50% there (seen with
+                            // Xbox controllers: their real charge came about 10 seconds later):
+                            // its first value counts once it changes, or after 12 seconds
+                            if (found) {
+                                const auto [first, added] =
+                                    bluez_first.try_emplace(pad, now_ms, found->first);
+                                if (now_ms - first->second.first < 12'000 &&
+                                    found->first == first->second.second) {
+                                    found.reset();
+                                    settling = true;
+                                }
+                            }
                         }
                     }
-                    if (!found && fresh.percent < 0 && !fresh.wired &&
+                    if (!found && !settling && fresh.percent < 0 && !fresh.wired &&
                         Common::ControllerProbes()) {
                         const auto address = inst_address.find(pad);
                         LOG_INFO(Frontend, "console-mode: P{} inst={} battery unknown (address {})",
