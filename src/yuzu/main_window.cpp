@@ -2348,6 +2348,31 @@ bool RealButtonHeld(const RealController& controller) {
     return false;
 }
 
+/// Whether BlueZ has a Bluetooth controller connected (nothing when it can't say)
+std::optional<bool> BluezConnected(const std::string& address) {
+    QDBusConnection bus = QDBusConnection::systemBus();
+    if (!bus.isConnected()) {
+        return std::nullopt;
+    }
+    QString device = QString::fromStdString(address).toUpper();
+    device.replace(QLatin1Char(':'), QLatin1Char('_'));
+    const QDir adapters{QStringLiteral("/sys/class/bluetooth")};
+    for (const QString& adapter : adapters.entryList({QStringLiteral("hci*")}, QDir::AllEntries)) {
+        if (adapter.contains(QLatin1Char(':'))) {
+            continue; // a connection's entry (hci0:12), not an adapter
+        }
+        QDBusMessage get = QDBusMessage::createMethodCall(
+            QStringLiteral("org.bluez"), QStringLiteral("/org/bluez/%1/dev_%2").arg(adapter, device),
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+        get << QStringLiteral("org.bluez.Device1") << QStringLiteral("Connected");
+        const QDBusMessage reply = bus.call(get, QDBus::Block, 250);
+        if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()) {
+            return qvariant_cast<QDBusVariant>(reply.arguments().first()).variant().toBool();
+        }
+    }
+    return std::nullopt;
+}
+
 /// Asks BlueZ to disconnect a controller, which turns most controllers off
 void DisconnectBluetooth(const std::string& address) {
     QDBusConnection bus = QDBusConnection::systemBus();
@@ -6554,12 +6579,34 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
         if (Settings::values.console_pause_disconnect.GetValue() && running &&
             !disconnect_pause_pending) {
+            // A disconnect that is surely real pauses at once: the player's controller turned
+            // off with Turn Off, or one Bluetooth says is no longer connected (turned off, out
+            // of battery or range). Any other waits 3 seconds: Steam drops and adds back its
+            // pads for a moment now and then.
+            const auto surely_gone = [&](int player) {
+                if (now_ms - turned_off_at[static_cast<std::size_t>(player)] < 5000) {
+                    return true;
+                }
+#ifdef __linux__
+                for (const auto& [id, slot] : pad_slots) {
+                    if (slot != player || live.contains(id)) {
+                        continue;
+                    }
+                    if (const auto address = inst_address.find(id);
+                        address != inst_address.end() &&
+                        BluezConnected(address->second) == false) {
+                        return true;
+                    }
+                }
+#endif
+                return false;
+            };
             std::set<int> gone;
             for (int i = 0; i < 10; ++i) {
                 // (Each wait pauses once: resumed by hand, the game keeps running)
-                if (waiting_since[static_cast<std::size_t>(i)] &&
-                    now_ms - waiting_since[static_cast<std::size_t>(i)] >= 3000 &&
-                    !pause_done.contains(i)) {
+                const qint64 since = waiting_since[static_cast<std::size_t>(i)];
+                if (since && !pause_done.contains(i) &&
+                    (now_ms - since >= 3000 || surely_gone(i))) {
                     gone.insert(i);
                 }
             }
@@ -6573,6 +6620,14 @@ void MainWindow::ApplyConsoleControllerMode() {
                     names.push_back(QStringLiteral("P%1").arg(player + 1));
                 }
                 const QString who = names.join(QStringLiteral(", "));
+                // (Said once: the pause's notice takes the place of their "left" hints)
+                std::erase_if(controller_hints, [&](const auto& hint) {
+                    return !hint.joined && !hint.pause_notice && gone.contains(hint.player);
+                });
+                for (const int player : gone) {
+                    auto& said = hinted_leave[static_cast<std::size_t>(player)];
+                    said = (std::max)(said, now_ms);
+                }
                 // (With no other controller left, reconnecting is the only way on)
                 controller_hints.push_back(
                     {QString{}, *gone.begin(), false, now_ms, false,

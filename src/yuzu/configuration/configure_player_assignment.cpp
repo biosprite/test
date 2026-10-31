@@ -785,9 +785,9 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
 
     pause_switch = new ToggleSwitch(gameplay);
     add_option(tr("Pause When a Controller Disconnects"),
-               tr("Pauses the game when a player's controller has been gone for 3 seconds, and "
-                  "resumes when a controller takes that player again. Press + on another "
-                  "controller to go on without that player."),
+               tr("Pauses the game when a player's controller is turned off, or has been gone "
+                  "for 3 seconds, and resumes when a controller takes that player again. Press + "
+                  "on another controller to go on without that player."),
                pause_switch);
     original_pause = Settings::values.console_pause_disconnect.GetValue();
     pause_switch->setChecked(original_pause);

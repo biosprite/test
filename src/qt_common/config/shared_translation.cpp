@@ -45,8 +45,8 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
     INSERT(Settings, console_joycon_auto, tr("Use any controller as Joy-Cons"),
            tr("When the game only takes Joy-Cons, controllers act as Joy-Cons."));
     INSERT(Settings, console_pause_disconnect, tr("Pause when a controller disconnects"),
-           tr("Pauses when a player's controller has been gone for 3 seconds. + on another "
-              "controller goes on without that player."));
+           tr("Pauses when a player's controller is turned off, or has been gone for 3 seconds. "
+              "+ on another controller goes on without that player."));
     INSERT(Settings, console_player_lights, tr("Player lights"),
            tr("Controllers' player lights show their player."));
     INSERT(Settings, console_button_labels, tr("Button layout by label"),

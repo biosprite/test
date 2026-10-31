@@ -234,7 +234,8 @@ struct Values {
     /// Joy-Cons, or a single one held sideways with the buttons arranged to fit)
     SwitchableSetting<bool> console_joycon_auto{linkage, true, "console_joycon_auto",
                                                 Category::LibraryApplet};
-    /// Modern Console: pause the game when a player's controller has been gone for 3 seconds
+    /// Modern Console: pause the game when a player's controller is turned off (Turn Off, or
+    /// Bluetooth says so) or has been gone for 3 seconds
     /// (resumed when a controller takes the player again)
     SwitchableSetting<bool> console_pause_disconnect{linkage, true, "console_pause_disconnect",
                                                      Category::LibraryApplet};
