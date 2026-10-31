@@ -99,6 +99,7 @@
 #include <linux/hidraw.h>
 #include <linux/input.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <unistd.h>
 #endif
@@ -1999,7 +2000,23 @@ std::string PadIdentity(SDL_JoystickID id) {
 }
 
 /// A pad's display name (Xbox Controller, Steam Virtual Gamepad, ...).
+/// What Steam says is in one of its virtual pads, from the file it writes for the game. SDL
+/// reads the same file, but at most every 3 seconds: a controller Steam moved to another pad
+/// (on its first use) showed as the pad's old one that long, with its input already there.
+struct SteamSlot {
+    Uint64 handle = 0;
+    Uint16 vendor = 0;
+    Uint16 product = 0;
+    SDL_GamepadType type = SDL_GAMEPAD_TYPE_UNKNOWN;
+    QString name;
+};
+
+std::optional<SteamSlot> SteamSlotOf(SDL_JoystickID id);
+
 QString PadName(SDL_JoystickID id) {
+    if (const auto slot = SteamSlotOf(id); slot && !slot->name.isEmpty()) {
+        return slot->name;
+    }
     const JoystickApiLock lock;
     SDL_Joystick* js = SDL_OpenJoystick(id);
     if (!js) {
@@ -2047,6 +2064,107 @@ QString PadPath(SDL_JoystickID id) {
     QString out = path ? QString::fromUtf8(path) : QString{};
     SDL_CloseJoystick(js);
     return out;
+}
+
+/// A pad's slot as Steam says now (nothing for a pad that isn't one of Steam's, or without
+/// Steam's file); read again whenever Steam writes the file
+std::optional<SteamSlot> SteamSlotOf(SDL_JoystickID id) {
+#ifdef __linux__
+    static const QByteArray file = qgetenv("SteamVirtualGamepadInfo");
+    if (file.isEmpty()) {
+        return std::nullopt;
+    }
+    // The pad's slot: Steam names its device "Microsoft X-Box 360 pad <slot>" (read once a pad)
+    static std::map<SDL_JoystickID, int> slot_of_pad;
+    auto known = slot_of_pad.find(id);
+    if (known == slot_of_pad.end()) {
+        const QString node = QFileInfo{PadPath(id)}.fileName();
+        if (node.isEmpty()) {
+            return std::nullopt;
+        }
+        int slot = -1;
+        QFile name_file{QStringLiteral("/sys/class/input/%1/device/name").arg(node)};
+        if (name_file.open(QIODevice::ReadOnly)) {
+            const QString name = QString::fromUtf8(name_file.readAll()).trimmed();
+            const QString prefix = QStringLiteral("Microsoft X-Box 360 pad ");
+            bool ok = false;
+            const int number = name.startsWith(prefix) ? name.mid(prefix.size()).toInt(&ok) : -1;
+            slot = ok ? number : -1;
+        }
+        known = slot_of_pad.emplace(id, slot).first;
+    }
+    if (known->second < 0) {
+        return std::nullopt;
+    }
+    // The file, read again when Steam writes it
+    static std::map<int, SteamSlot> said;
+    static timespec said_at{};
+    struct ::stat st {};
+    if (::stat(file.constData(), &st) != 0) {
+        return std::nullopt;
+    }
+    if (st.st_mtim.tv_sec != said_at.tv_sec || st.st_mtim.tv_nsec != said_at.tv_nsec) {
+        QFile in{QString::fromLocal8Bit(file)};
+        if (!in.open(QIODevice::ReadOnly)) {
+            return std::nullopt;
+        }
+        said_at = st.st_mtim;
+        said.clear();
+        SteamSlot* current = nullptr;
+        for (const QByteArray& raw : in.readAll().split('\n')) {
+            const QByteArray line = raw.trimmed();
+            if (line.startsWith("[slot ") && line.endsWith(']')) {
+                current = &said[line.mid(6, line.size() - 7).toInt()];
+                continue;
+            }
+            const auto at = line.indexOf('=');
+            if (!current || at < 0) {
+                continue;
+            }
+            const QByteArray key = line.left(at);
+            const QByteArray value = line.mid(at + 1);
+            if (key == "handle") {
+                current->handle = value.toULongLong(nullptr, 16);
+            } else if (key == "VID") {
+                current->vendor = static_cast<Uint16>(value.toUInt(nullptr, 16));
+            } else if (key == "PID") {
+                current->product = static_cast<Uint16>(value.toUInt(nullptr, 16));
+            } else if (key == "type") {
+                current->type = SDL_GetGamepadTypeFromString(value.constData());
+            } else if (key == "name") {
+                current->name = QString::fromUtf8(value);
+            }
+        }
+    }
+    if (const auto slot = said.find(known->second); slot != said.end()) {
+        return slot->second;
+    }
+#endif
+    return std::nullopt;
+}
+
+/// A pad's USB vendor id (under Steam, its controller's, as Steam says now)
+Uint16 PadVendor(SDL_JoystickID id) {
+    if (const auto slot = SteamSlotOf(id)) {
+        return slot->vendor;
+    }
+    return SDL_GetJoystickVendorForID(id);
+}
+
+/// A pad's USB product id (under Steam, its controller's, as Steam says now)
+Uint16 PadProduct(SDL_JoystickID id) {
+    if (const auto slot = SteamSlotOf(id)) {
+        return slot->product;
+    }
+    return SDL_GetJoystickProductForID(id);
+}
+
+/// A pad's gamepad type (under Steam, its controller's, as Steam says now)
+SDL_GamepadType PadType(SDL_JoystickID id) {
+    if (const auto slot = SteamSlotOf(id)) {
+        return slot->type;
+    }
+    return SDL_GetGamepadTypeForID(id);
 }
 
 #ifdef __linux__
@@ -2148,7 +2266,7 @@ PadBluetooth FindPadBluetooth(SDL_JoystickID id) {
         }
     }
     const auto controllers =
-        ControllersOfModel(SDL_GetJoystickVendorForID(id), SDL_GetJoystickProductForID(id));
+        ControllersOfModel(PadVendor(id), PadProduct(id));
     const bool any_bluetooth = std::any_of(controllers.begin(), controllers.end(),
                                            [](const auto& c) { return c.bluetooth; });
     if (controllers.size() == 1) {
@@ -2306,18 +2424,6 @@ int PadPlayerIndex(SDL_JoystickID id) {
     return index;
 }
 
-/// A pad's USB vendor id, under the same lock as the rest of the API use.
-Uint16 PadVendor(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Joystick* js = SDL_OpenJoystick(id);
-    if (!js) {
-        return 0;
-    }
-    const Uint16 vendor = SDL_GetJoystickVendor(js);
-    SDL_CloseJoystick(js);
-    return vendor;
-}
-
 /// True when SDL reports a gyro on the pad. Under Steam Input this tells whether the virtual
 /// pad passes motion through at all (the deck's own motion may only come from a DSU server).
 bool PadHasGyro(SDL_JoystickID id) {
@@ -2442,15 +2548,15 @@ bool StyleSupported(Core::HID::NpadStyleIndex style, const Core::HID::NpadStyleT
 
 /// A controller's short name, for a named player ("John (Xbox)")
 QString ShortControllerName(SDL_JoystickID id, const QString& full) {
-    const Uint16 vendor = SDL_GetJoystickVendorForID(id);
-    const Uint16 product = SDL_GetJoystickProductForID(id);
+    const Uint16 vendor = PadVendor(id);
+    const Uint16 product = PadProduct(id);
     if (vendor == 0x28DE && product == 0x1205) {
         return QStringLiteral("Steam Deck");
     }
     if (vendor == 0x28DE && InputCommon::ValveMotion::Family(product) != 0) {
         return QStringLiteral("Steam Controller");
     }
-    switch (SDL_GetGamepadTypeForID(id)) {
+    switch (PadType(id)) {
     case SDL_GAMEPAD_TYPE_XBOX360:
     case SDL_GAMEPAD_TYPE_XBOXONE:
         return QStringLiteral("Xbox");
@@ -2650,7 +2756,7 @@ std::tuple<int, bool, bool> SdlBattery(SDL_JoystickID id) {
 /// True for Nintendo's own controllers (and their look-alikes): their buttons already sit where
 /// the Switch's are, by label and by position
 bool IsNintendoPad(SDL_JoystickID id) {
-    switch (SDL_GetGamepadTypeForID(id)) {
+    switch (PadType(id)) {
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
@@ -2658,20 +2764,8 @@ bool IsNintendoPad(SDL_JoystickID id) {
     case SDL_GAMEPAD_TYPE_GAMECUBE:
         return true;
     default:
-        return SDL_GetJoystickVendorForID(id) == 0x057E;
+        return PadVendor(id) == 0x057E;
     }
-}
-
-/// A pad's USB product id, under the same lock as the rest of the API use.
-Uint16 PadProduct(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Joystick* js = SDL_OpenJoystick(id);
-    if (!js) {
-        return 0;
-    }
-    const Uint16 product = SDL_GetJoystickProduct(js);
-    SDL_CloseJoystick(js);
-    return product;
 }
 
 /// Makers of standalone controllers: never a handheld's built-in controls, even when alone
@@ -2759,6 +2853,10 @@ bool IsStandaloneControllerType(SDL_GamepadType type) {
 /// Input, or not known). Steam's virtual pads are fixed slots that Steam refills in its own
 /// order, so this handle is the only thing that could tell which physical pad came back.
 Uint64 PadSteamHandle(SDL_JoystickID id) {
+    // (As Steam says now: SDL's copy is up to 3 seconds old)
+    if (const auto slot = SteamSlotOf(id)) {
+        return slot->handle;
+    }
     const JoystickApiLock lock;
     SDL_Gamepad* pad = SDL_OpenGamepad(id);
     if (!pad) {
@@ -4235,13 +4333,13 @@ void MainWindow::LearnBluetoothPads() {
             const u32 id = ids[i];
             // (Not a real device Steam hid: its virtual pad is the player)
             if (Common::SteamPadsInUse() && !IsSteamVirtualPad(id) &&
-                Common::SteamHidModel(SDL_GetJoystickVendorForID(id),
-                                      SDL_GetJoystickProductForID(id))) {
+                Common::SteamHidModel(PadVendor(id),
+                                      PadProduct(id))) {
                 continue;
             }
             std::string key = BluetoothKey(id);
             if (pad_bt_pending.contains(key)) {
-                by_model[{SDL_GetJoystickVendorForID(id), SDL_GetJoystickProductForID(id)}]
+                by_model[{PadVendor(id), PadProduct(id)}]
                     .emplace_back(id, std::move(key));
             }
         }
@@ -4389,10 +4487,10 @@ void MainWindow::LearnValvePairs() {
         SDL_JoystickID* ids = SDL_GetGamepads(&count);
         for (int i = 0; i < count; ++i) {
             const u32 id = ids[i];
-            if (!IsSteamVirtualPad(id) || SDL_GetJoystickVendorForID(id) != 0x28DE) {
+            if (!IsSteamVirtualPad(id) || PadVendor(id) != 0x28DE) {
                 continue;
             }
-            const int family = InputCommon::ValveMotion::Family(SDL_GetJoystickProductForID(id));
+            const int family = InputCommon::ValveMotion::Family(PadProduct(id));
             if (family != 0 && per_family[family] > 1 && PadAnyButtonPressed(id)) {
                 held_pads[family].push_back(BluetoothKey(id));
             }
@@ -4436,7 +4534,7 @@ FreshPresses WatchControllerPresses(InputCommon::InputSubsystem* input) {
         SDL_JoystickID* ids = SDL_GetGamepads(&count);
         for (int i = 0; i < count; ++i) {
             pads.push_back(ids[i]);
-            models.emplace(SDL_GetJoystickVendorForID(ids[i]), SDL_GetJoystickProductForID(ids[i]));
+            models.emplace(PadVendor(ids[i]), PadProduct(ids[i]));
         }
         SDL_free(ids);
     }
@@ -4825,19 +4923,19 @@ void MainWindow::ApplyConsoleControllerMode() {
             // motion: never a player; logged once, with the virtual pads of the same model. (A
             // controller Steam leaves alone plays as itself.)
             if (Common::SteamPadsInUse() && !IsSteamVirtualPad(id) &&
-                Common::SteamHidModel(SDL_GetJoystickVendorForID(id),
-                                      SDL_GetJoystickProductForID(id))) {
+                Common::SteamHidModel(PadVendor(id),
+                                      PadProduct(id))) {
                 motion_devices.push_back(id);
                 // (Only marked once logged: Debug Probes turned on later still describes it)
                 static std::set<u32> probed;
                 if (Common::ControllerProbes() && probed.insert(id).second) {
                     std::string twins;
-                    const Uint16 vendor = SDL_GetJoystickVendorForID(id);
-                    const Uint16 product = SDL_GetJoystickProductForID(id);
+                    const Uint16 vendor = PadVendor(id);
+                    const Uint16 product = PadProduct(id);
                     for (int k = 0; k < count; ++k) {
                         if (ids[k] != id && IsSteamVirtualPad(ids[k]) &&
-                            SDL_GetJoystickVendorForID(ids[k]) == vendor &&
-                            SDL_GetJoystickProductForID(ids[k]) == product) {
+                            PadVendor(ids[k]) == vendor &&
+                            PadProduct(ids[k]) == product) {
                             twins += fmt::format("{} ", ids[k]);
                         }
                     }
@@ -4862,14 +4960,14 @@ void MainWindow::ApplyConsoleControllerMode() {
             // What a user's log needs for adding their handheld to the allowlist
             static std::set<std::string> described;
             if (Common::ControllerProbes() && described.insert(ident).second) {
-                const Uint16 vendor = SDL_GetJoystickVendorForID(id);
+                const Uint16 vendor = PadVendor(id);
                 // (SDL has no name for an unknown type: null, which fmt refuses)
-                const char* type = SDL_GetGamepadStringForType(SDL_GetGamepadTypeForID(id));
+                const char* type = SDL_GetGamepadStringForType(PadType(id));
                 if (Common::ControllerProbes()) {
                     LOG_INFO(Frontend,
                              "console-mode: device {:04x}:{:04x} name=\"{}\" type={} steam={} "
                              "gyro={} handheld_maker={} controller_maker={} ident={}",
-                             vendor, SDL_GetJoystickProductForID(id), PadName(id).toStdString(),
+                             vendor, PadProduct(id), PadName(id).toStdString(),
                              type ? type : "unknown", IsSteamVirtualPad(id), PadHasGyro(id),
                              IsHandheldMaker(vendor), IsControllerMaker(vendor), ident);
                 }
@@ -4885,8 +4983,8 @@ void MainWindow::ApplyConsoleControllerMode() {
     // again (at most every 2 seconds)
     {
         const auto deck = std::find_if(motion_devices.begin(), motion_devices.end(), [](u32 id) {
-            return SDL_GetJoystickVendorForID(id) == 0x28DE &&
-                   SDL_GetJoystickProductForID(id) == 0x1205;
+            return PadVendor(id) == 0x28DE &&
+                   PadProduct(id) == 0x1205;
         });
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         if (deck != motion_devices.end() && now_ms - deck_motion_asked_at >= 2000 &&
@@ -5224,7 +5322,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         for (const auto& [id, ident] : live) {
             const std::string desc = fmt::format(
                 "steam_handle={:#x} type={} name={}", PadSteamHandle(id),
-                static_cast<int>(SDL_GetGamepadTypeForID(id)), PadName(id).toStdString());
+                static_cast<int>(PadType(id)), PadName(id).toStdString());
             auto& last = traced_steam[id];
             if (last != desc) {
                 if (Common::ControllerProbes()) {
@@ -5244,7 +5342,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                              "steam_handle={:#x} type={} real_type={}",
                              id, ident, PadName(id).toStdString(), PadPlayerIndex(id),
                              PadHasGyro(id), PadSteamHandle(id),
-                             static_cast<int>(SDL_GetGamepadTypeForID(id)),
+                             static_cast<int>(PadType(id)),
                              static_cast<int>(SDL_GetRealGamepadTypeForID(id)));
                 }
             }
@@ -5402,7 +5500,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             int fits = 0;
             u32 fit = 0;
             for (const auto& [id, ident] : live) {
-                if (SDL_GetGamepadTypeForID(id) == SDL_GAMEPAD_TYPE_UNKNOWN &&
+                if (PadType(id) == SDL_GAMEPAD_TYPE_UNKNOWN &&
                     PadSteamHandle(id) != 0 && CouldBeHandheld(PadVendor(id), PadProduct(id)) &&
                     !is_blocked(id)) {
                     ++fits;
@@ -5414,7 +5512,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 holder = fit;
                 adopted = true;
             } else if (want.empty() && live.size() == 1 &&
-                       !IsStandaloneControllerType(SDL_GetGamepadTypeForID(live.begin()->first)) &&
+                       !IsStandaloneControllerType(PadType(live.begin()->first)) &&
                        CouldBeHandheld(PadVendor(live.begin()->first),
                                        PadProduct(live.begin()->first)) &&
                        !is_blocked(live.begin()->first)) {
@@ -6211,8 +6309,8 @@ void MainWindow::ApplyConsoleControllerMode() {
             std::optional<std::size_t> valve_port;
             const auto valve_devices = input_subsystem->GetValveMotionDevices();
             if (Common::SteamPadsInUse() && !valve_devices.empty()) {
-                const Uint16 vendor = is_builtin ? 0x28DE : SDL_GetJoystickVendorForID(id);
-                const Uint16 product = is_builtin ? 0x1205 : SDL_GetJoystickProductForID(id);
+                const Uint16 vendor = is_builtin ? 0x28DE : PadVendor(id);
+                const Uint16 product = is_builtin ? 0x1205 : PadProduct(id);
                 const int family = vendor == 0x28DE ? InputCommon::ValveMotion::Family(product) : 0;
                 std::vector<std::size_t> ports;
                 for (const auto& device : valve_devices) {
@@ -6221,8 +6319,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                     }
                 }
                 const auto virtuals = std::count_if(live.begin(), live.end(), [&](const auto& e) {
-                    return SDL_GetJoystickVendorForID(e.first) == 0x28DE &&
-                           InputCommon::ValveMotion::Family(SDL_GetJoystickProductForID(e.first)) ==
+                    return PadVendor(e.first) == 0x28DE &&
+                           InputCommon::ValveMotion::Family(PadProduct(e.first)) ==
                                family;
                 });
                 const auto paired = valve_pairs.find(BluetoothKey(id));
@@ -6246,11 +6344,11 @@ void MainWindow::ApplyConsoleControllerMode() {
             if (valve_port) {
                 want.motions.fill(ValveMotionParam(*valve_port));
             } else if (Common::SteamPadsInUse()) {
-                const Uint16 vendor = is_builtin ? 0x28DE : SDL_GetJoystickVendorForID(id);
-                const Uint16 product = is_builtin ? 0x1205 : SDL_GetJoystickProductForID(id);
+                const Uint16 vendor = is_builtin ? 0x28DE : PadVendor(id);
+                const Uint16 product = is_builtin ? 0x1205 : PadProduct(id);
                 const auto same_model = [vendor, product](u32 other) {
-                    return SDL_GetJoystickVendorForID(other) == vendor &&
-                           SDL_GetJoystickProductForID(other) == product;
+                    return PadVendor(other) == vendor &&
+                           PadProduct(other) == product;
                 };
                 const auto real =
                     std::count_if(motion_devices.begin(), motion_devices.end(), same_model);
