@@ -609,6 +609,17 @@ private:
     std::map<std::string, std::string> pad_bluetooth;
     std::set<std::string> pad_bt_pending;
     void LearnBluetoothPads();
+    /// Reads the pads' and the real controllers' inputs (Debug Probes log every one)
+    void WatchSteamPadInputs();
+    /// The last time a pad had input together with exactly one real controller (its address,
+    /// else its HID entry): when Steam then says it moved a controller to that pad, that is
+    /// the controller (see ApplyConsoleControllerMode)
+    struct LoneInput {
+        u32 pad;
+        std::string controller;
+        std::chrono::steady_clock::time_point at;
+    };
+    std::optional<LoneInput> last_lone_input;
     /// Experimental reader: Steam's pads (by BluetoothKey) paired with the Valve controllers
     /// read directly, by port, when identical ones need a button press to tell apart
     std::map<std::string, std::size_t> valve_pairs;

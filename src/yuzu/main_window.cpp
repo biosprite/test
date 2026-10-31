@@ -4412,7 +4412,175 @@ void MainWindow::LearnValvePairs() {
     }
 }
 
+#ifdef __linux__
+namespace {
+
+/// The presses since the last look: the pads that just got input, and the real controllers
+/// (their address, else their HID entry) with input in the last 150ms (a button, the d-pad, or
+/// a stick or trigger a quarter of its range from rest), read from their own input nodes
+struct FreshPresses {
+    std::set<SDL_JoystickID> pads;
+    std::set<std::string> controllers;
+};
+
+/// Reads the pads' and the real controllers' presses (see FreshPresses); Debug Probes log each.
+/// A pad's press is SDL's own record of its input (what reading its buttons here misses).
+FreshPresses WatchControllerPresses(InputCommon::InputSubsystem* input) {
+    FreshPresses fresh;
+    // The pads with a button down, and the models behind them
+    std::vector<SDL_JoystickID> pads;
+    std::set<std::pair<unsigned, unsigned>> models;
+    {
+        const JoystickApiLock lock;
+        int count = 0;
+        SDL_JoystickID* ids = SDL_GetGamepads(&count);
+        for (int i = 0; i < count; ++i) {
+            pads.push_back(ids[i]);
+            models.emplace(SDL_GetJoystickVendorForID(ids[i]), SDL_GetJoystickProductForID(ids[i]));
+        }
+        SDL_free(ids);
+    }
+    // (A pad's input newer than at the last look)
+    static std::map<SDL_JoystickID, std::chrono::steady_clock::time_point> pads_seen;
+    for (const SDL_JoystickID id : pads) {
+        const auto last = input ? input->GetSDLLastActivity(id) : std::nullopt;
+        if (!last) {
+            continue;
+        }
+        auto& seen = pads_seen[id];
+        if (*last != seen) {
+            const bool first = seen == std::chrono::steady_clock::time_point{};
+            seen = *last;
+            if (!first) {
+                fresh.pads.insert(id);
+                if (Common::ControllerProbes()) {
+                    LOG_INFO(Frontend, "console-mode: probe: pad inst={} ({}) input", id,
+                             BluetoothKey(id));
+                }
+            }
+        }
+    }
+    // The controllers' input nodes (their own reading, apart from the one telling twins apart),
+    // listed again every 2 seconds
+    struct Node {
+        int fd;
+        std::string controller;
+        /// Its axes' ranges and where they rested when it was opened
+        std::map<u16, input_absinfo> axes;
+    };
+    static std::map<QString, Node> nodes;
+    static std::map<std::string, std::chrono::steady_clock::time_point> pressed_at;
+    static auto listed = std::chrono::steady_clock::time_point{};
+    const auto now = std::chrono::steady_clock::now();
+    if (now - listed > std::chrono::seconds{2}) {
+        listed = now;
+        for (const auto& [vendor, product] : models) {
+            for (const auto& controller : ControllersOfModel(vendor, product)) {
+                for (const QString& event : controller.events) {
+                    if (!nodes.contains(event)) {
+                        const int fd = ::open(event.toLocal8Bit().constData(),
+                                              O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+                        // (Not a motion sensor's node: its axes move all the time)
+                        std::array<unsigned char, INPUT_PROP_MAX / 8 + 1> props{};
+                        if (fd >= 0 && ioctl(fd, EVIOCGPROP(props.size()), props.data()) >= 0 &&
+                            (props[INPUT_PROP_ACCELEROMETER / 8] &
+                             (1 << (INPUT_PROP_ACCELEROMETER % 8)))) {
+                            ::close(fd);
+                            continue;
+                        }
+                        std::map<u16, input_absinfo> axes;
+                        for (u16 code = 0; fd >= 0 && code <= ABS_MAX; ++code) {
+                            input_absinfo info{};
+                            if (ioctl(fd, EVIOCGABS(code), &info) == 0 &&
+                                info.maximum > info.minimum) {
+                                axes[code] = info;
+                            }
+                        }
+                        nodes[event] = {fd, controller.key, std::move(axes)};
+                        if (Common::ControllerProbes()) {
+                            LOG_INFO(Frontend,
+                                     "console-mode: probe: watching {} of {} ({:04x}:{:04x}){}",
+                                     event.toStdString(), controller.key, vendor, product,
+                                     nodes[event].fd < 0 ? " - can't open" : "");
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (auto it = nodes.begin(); it != nodes.end();) {
+        std::array<input_event, 64> events;
+        ssize_t got = 0;
+        while (it->second.fd >= 0 &&
+               (got = ::read(it->second.fd, events.data(), sizeof(events))) > 0) {
+            for (std::size_t k = 0; k < static_cast<std::size_t>(got) / sizeof(input_event); ++k) {
+                const input_event& e = events[k];
+                bool pressed = e.type == EV_KEY && e.value == 1;
+                if (const auto axis = it->second.axes.find(e.code);
+                    e.type == EV_ABS && axis != it->second.axes.end()) {
+                    const auto& info = axis->second;
+                    pressed = std::abs(static_cast<double>(e.value - info.value)) /
+                                  static_cast<double>(info.maximum - info.minimum) >
+                              0.25;
+                }
+                if (!pressed) {
+                    continue;
+                }
+                pressed_at[it->second.controller] = now;
+                // (Logged once a burst: a stick held out sends events all the time)
+                static std::map<std::string, std::chrono::steady_clock::time_point> logged_at;
+                auto& logged = logged_at[it->second.controller];
+                const bool burst = now - logged < std::chrono::milliseconds{500};
+                logged = now;
+                if (Common::ControllerProbes() && !burst) {
+                    LOG_INFO(Frontend, "console-mode: probe: controller {} input ({} {:#x})",
+                             it->second.controller, e.type == EV_KEY ? "button" : "axis",
+                             e.code);
+                }
+            }
+        }
+        // (Gone: listed again if it comes back)
+        if (it->second.fd < 0 || (got < 0 && errno == ENODEV)) {
+            if (it->second.fd >= 0) {
+                ::close(it->second.fd);
+            }
+            it = nodes.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = pressed_at.begin(); it != pressed_at.end();) {
+        if (now - it->second < std::chrono::milliseconds{150}) {
+            fresh.controllers.insert(it->first);
+            ++it;
+        } else {
+            it = pressed_at.erase(it);
+        }
+    }
+    return fresh;
+}
+
+} // Anonymous namespace
+#endif
+
+void MainWindow::WatchSteamPadInputs() {
+#ifdef __linux__
+    // (The inputs are read for this under Steam, and for Debug Probes' log)
+    if (!Common::SteamPadsInUse() && !Common::ControllerProbes()) {
+        return;
+    }
+    const FreshPresses fresh = WatchControllerPresses(input_subsystem.get());
+    // A pad's input together with exactly one real controller's: kept, so that when Steam says
+    // it moved a controller to that pad, that is the one (see ApplyConsoleControllerMode)
+    if (Common::SteamPadsInUse() && fresh.pads.size() == 1 && fresh.controllers.size() == 1) {
+        last_lone_input = LoneInput{*fresh.pads.begin(), *fresh.controllers.begin(),
+                                    std::chrono::steady_clock::now()};
+    }
+#endif
+}
+
 void MainWindow::PollControllerActivity() {
+    WatchSteamPadInputs();
     LearnBluetoothPads();
     LearnValvePairs();
     // Input shows faster than the 250ms assignment tick: redraw only when who is active changes
@@ -4770,6 +4938,37 @@ void MainWindow::ApplyConsoleControllerMode() {
                 const auto slot = old_slot.find(from);
                 LOG_INFO(Frontend, "console-mode: Steam moved {} from inst={} to inst={} (P{})",
                          live[to], from, to, slot != old_slot.end() ? slot->second + 1 : 0);
+                // Steam moves a controller on its first use and says so later: meanwhile its
+                // input already comes on its new pad, under the old controller's handle. The one
+                // controller that had input with this pad just before is the one it moved: told
+                // apart without waiting for its next input, and a match made from input that
+                // came during the move (taken for the old controller's) is put right.
+                const std::string key = BluetoothKey(to);
+                if (last_lone_input && last_lone_input->pad == to &&
+                    std::chrono::steady_clock::now() - last_lone_input->at <
+                        std::chrono::seconds{5} &&
+                    last_lone_input->controller.size() == 17 && pad_bluetooth.contains(key)) {
+                    const std::string& address = last_lone_input->controller;
+                    const auto had = pad_bluetooth.find(key);
+                    if (had->second != address) {
+                        // (The controller it was taken for is unsure again: the last of its
+                        // model, or its next input, tells)
+                        for (auto& [other, other_address] : pad_bluetooth) {
+                            if (other != key && other_address == address) {
+                                other_address.clear();
+                                pad_bt_pending.insert(other);
+                            }
+                        }
+                        LOG_INFO(Frontend,
+                                 "console-mode: inst={} ({}) told apart by the input Steam moved "
+                                 "it for: bluetooth={}{}",
+                                 to, key, address,
+                                 had->second.empty() ? std::string{}
+                                                     : " (was " + had->second + ")");
+                        had->second = address;
+                        pad_bt_pending.erase(key);
+                    }
+                }
                 if (slot != old_slot.end()) {
                     pad_slots[to] = slot->second;
                     pad_identity[to] = live[to];
