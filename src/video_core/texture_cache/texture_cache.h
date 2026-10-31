@@ -554,8 +554,7 @@ ImageViewId TextureCache<P>::VisitImageView(u32 index, bool compute) {
         const ImageId image_id = slot_image_views[view_id].image_id;
         return image_id && True(slot_images[image_id].flags & ImageFlagBits::Remapped);
     };
-    const auto it = channel_state->image_view_ids.find(map_index);
-    if (is_new || is_remapped(it->second)) {
+    if (is_new) {
         if (!compute) {
             ++texture_bindings_serial;
         }
@@ -574,6 +573,7 @@ ImageViewId TextureCache<P>::VisitImageView(u32 index, bool compute) {
         channel_state->image_view_ids.insert_or_assign(map_index, NULL_IMAGE_VIEW_ID);
         return NULL_IMAGE_VIEW_ID;
     }
+    auto const it = channel_state->image_view_ids.find(map_index);
     if (it->second != NULL_IMAGE_VIEW_ID)
         PrepareImageView(it->second, false, false);
     return it->second;
@@ -696,6 +696,7 @@ void TextureCache<P>::UnmapGPUMemory(size_t as_id, GPUVAddr gpu_addr, size_t siz
     boost::container::small_vector<ImageId, 16> deleted_images;
     ForEachImageInRegionGPU(as_id, gpu_addr, size,
                             [&](ImageId id, Image&) { deleted_images.push_back(id); });
+    bool any_remapped = false;
     for (const ImageId id : deleted_images) {
         Image& image = slot_images[id];
         if (False(image.flags & ImageFlagBits::CpuModified)) {
@@ -708,6 +709,14 @@ void TextureCache<P>::UnmapGPUMemory(size_t as_id, GPUVAddr gpu_addr, size_t siz
             continue;
         }
         image.flags |= ImageFlagBits::Remapped;
+        any_remapped = true;
+    }
+    if (any_remapped) {
+        // Bound views of a remapped image are recreated on their next visit (VisitImageView).
+        for (size_t c : active_channel_ids) {
+            channel_storage[c].graphics_image_table.Invalidate();
+            channel_storage[c].compute_image_table.Invalidate();
+        }
     }
 }
 
