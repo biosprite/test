@@ -723,6 +723,10 @@ private:
     /// (0 none), and the players a pause was for (resumed when they all have one again)
     std::array<qint64, 10> waiting_since{};
     std::set<int> disconnect_paused;
+    /// The pause for a disconnect is about to come (its notice is drawn first)
+    bool disconnect_pause_pending = false;
+    /// + is held on another controller during that pause: on without those players once let go
+    bool disconnect_continue_held = false;
     std::set<int> pause_done;
     /// Player Lights: the player each controller's lights were last set to (by connection)
     std::map<u32, int> lights_player;
@@ -763,6 +767,8 @@ private:
         bool turned_off = false;
         /// Said instead of joined / left ("" none): how the player's controller changed
         QString note;
+        /// Says the game is paused for a disconnect: kept while it is, shown with hints off too
+        bool pause_notice = false;
     };
     std::vector<ControllerHint> controller_hints;
     /// A game running with no controller: since when (0 none), and whether it was said

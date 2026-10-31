@@ -2268,6 +2268,18 @@ bool PadAnyButtonPressed(SDL_JoystickID id) {
     return pressed;
 }
 
+/// True while a pad's + (Start, Menu, Options) is held
+bool PadStartHeld(SDL_JoystickID id) {
+    const JoystickApiLock lock;
+    SDL_Gamepad* pad = SDL_OpenGamepad(id);
+    if (!pad) {
+        return false;
+    }
+    const bool held = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START);
+    SDL_CloseGamepad(pad);
+    return held;
+}
+
 /// Steam's own player index for a pad (-1 when not assigned by Steam Input).
 int PadPlayerIndex(SDL_JoystickID id) {
     const JoystickApiLock lock;
@@ -3341,9 +3353,15 @@ void MainWindow::RenderControllerOverlay() {
             }
         }
     }
-    std::erase_if(controller_hints,
-                  [now_ms](const auto& hint) { return now_ms - hint.at >= hint_ms; });
-    if (!automatic || !Settings::values.console_hints.GetValue() || controller_hints.empty()) {
+    // (A pause's notice stays while the game is paused for it, and shows even with the hints off)
+    const bool hints_on = Settings::values.console_hints.GetValue();
+    std::erase_if(controller_hints, [&](const auto& hint) {
+        if (hint.pause_notice && !disconnect_paused.empty()) {
+            return false;
+        }
+        return now_ms - hint.at >= hint_ms || (!hints_on && !hint.pause_notice);
+    });
+    if (!automatic || controller_hints.empty()) {
         publish(Common::GetOverlayPanel(Common::OverlayPanelId::Hints), nullptr);
     } else {
         QFont hint_font;
@@ -4770,10 +4788,12 @@ void MainWindow::ApplyConsoleControllerMode() {
         state.pads.insert(state.pads.end(), standalone.begin(), standalone.end());
         // A human tap is shorter than 250ms: poll fast while the Identify handshake is
         // armed so a quick press cannot slip between the samples.
-        // (Faster too while a controller waits for a press to be told apart from its twin)
-        console_mode_timer.start(std::chrono::milliseconds{state.identify_armed  ? 50
-                                                           : pad_bt_pending.empty() ? 250
-                                                                                    : 100});
+        // (Faster too while a controller waits for a press to be told apart from its twin, and
+        // while a game is paused for a disconnect, for a quick press of + on another one)
+        console_mode_timer.start(std::chrono::milliseconds{
+            state.identify_armed || !disconnect_paused.empty() ? 50
+            : pad_bt_pending.empty()                           ? 250
+                                                               : 100});
         if (state.identify_armed) {
             const auto now = std::chrono::steady_clock::now();
             if (now - state.identify_armed_at > std::chrono::seconds{15}) {
@@ -6138,7 +6158,9 @@ void MainWindow::ApplyConsoleControllerMode() {
 
     // Pause When a Controller Disconnects: a player whose controller left (its player held for it)
     // and didn't come back within 3 seconds pauses the game; it resumes when every player the
-    // pause was for has a controller again (and only if it is still this pause)
+    // pause was for has a controller again (and only if it is still this pause), or when + is
+    // pressed on another controller: then those players are let go (their controllers join
+    // as new players if they come back)
     {
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         for (int i = 0; i < static_cast<int>(players.size()) && i < 10; ++i) {
@@ -6155,10 +6177,12 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
         const bool running =
             emulation_running && QtCommon::emu_thread && QtCommon::emu_thread->IsRunning();
-        if (!disconnect_paused.empty() && running) {
+        if (!disconnect_paused.empty() && running && !disconnect_pause_pending) {
             disconnect_paused.clear(); // (resumed by hand)
+            disconnect_continue_held = false;
         }
-        if (Settings::values.console_pause_disconnect.GetValue() && running) {
+        if (Settings::values.console_pause_disconnect.GetValue() && running &&
+            !disconnect_pause_pending) {
             std::set<int> gone;
             for (int i = 0; i < 10; ++i) {
                 // (Each wait pauses once: resumed by hand, the game keeps running)
@@ -6173,20 +6197,67 @@ void MainWindow::ApplyConsoleControllerMode() {
                 pause_done.insert(gone.begin(), gone.end());
                 LOG_INFO(Frontend, "console-mode: paused, P{}'s controller disconnected",
                          *gone.begin() + 1);
+                QStringList names;
+                for (const int player : gone) {
+                    names.push_back(QStringLiteral("P%1").arg(player + 1));
+                }
+                const QString who = names.join(QStringLiteral(", "));
                 controller_hints.push_back(
                     {QString{}, *gone.begin(), false, now_ms, false,
-                     tr("P%1's controller disconnected: paused").arg(*gone.begin() + 1)});
-                OnPauseGame();
+                     tr("%1 disconnected: reconnect, or press + on another controller to go on "
+                        "without %1")
+                         .arg(who),
+                     true});
+                // A paused game shows its last frame, and the overlay is drawn into frames:
+                // the notice is drawn first, and the game paused a moment later
+                RenderControllerOverlay();
+                disconnect_pause_pending = true;
+                QTimer::singleShot(150, this, [this] {
+                    disconnect_pause_pending = false;
+                    if (!disconnect_paused.empty() && emulation_running && QtCommon::emu_thread &&
+                        QtCommon::emu_thread->IsRunning()) {
+                        OnPauseGame();
+                    }
+                });
             }
-        } else if (!disconnect_paused.empty() && !running && emulation_running) {
+        } else if (!disconnect_paused.empty() && !running && emulation_running &&
+                   !disconnect_pause_pending) {
             const bool all_back =
                 std::all_of(disconnect_paused.begin(), disconnect_paused.end(), [&](int player) {
                     return std::any_of(pad_slots.begin(), pad_slots.end(), [&](const auto& e) {
                         return e.second == player && live.contains(e.first);
                     });
                 });
+            // (+ counts once let go, so the game never sees it on resuming)
+            const bool plus = std::any_of(live.begin(), live.end(),
+                                          [](const auto& e) { return PadStartHeld(e.first); });
             if (all_back) {
                 LOG_INFO(Frontend, "console-mode: resumed, the controllers are back");
+                disconnect_paused.clear();
+                disconnect_continue_held = false;
+                OnStartGame();
+            } else if (plus) {
+                disconnect_continue_held = true;
+            } else if (std::exchange(disconnect_continue_held, false)) {
+                // On without them: their players are no longer held for their controllers
+                for (auto it = pad_slots.begin(); it != pad_slots.end();) {
+                    if (disconnect_paused.contains(it->second) && !live.contains(it->first)) {
+                        pad_identity.erase(it->first);
+                        it = pad_slots.erase(it);
+                    } else {
+                        ++it;
+                    }
+                }
+                QStringList names;
+                for (const int player : disconnect_paused) {
+                    names.push_back(QStringLiteral("P%1").arg(player + 1));
+                }
+                LOG_INFO(Frontend, "console-mode: resumed without {}",
+                         names.join(QStringLiteral(", ")).toStdString());
+                controller_hints.push_back({QString{}, *disconnect_paused.begin(), false, now_ms,
+                                            false,
+                                            tr("Going on without %1")
+                                                .arg(names.join(QStringLiteral(", ")))});
                 disconnect_paused.clear();
                 OnStartGame();
             }
