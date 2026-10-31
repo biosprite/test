@@ -4681,17 +4681,24 @@ void MainWindow::ApplyConsoleControllerMode() {
         auto& state = Common::GetControllerConsoleState();
         std::scoped_lock lock{state.mutex};
         state.pads.clear();
+        // Every pad is offered as the handheld's controller, the ones that could be built in
+        // first: a handheld's controls can pose as a standalone controller (an emulated
+        // DualSense for its gyro), and picking is the user's say
+        std::vector<std::pair<std::string, std::string>> standalone;
         for (const auto& [id, ident] : live) {
-            // Only pads that could be built in are offered as the handheld's controller
-            if (IsPlainlyStandalone(id)) {
-                continue;
-            }
             // Under Steam every pad shares one GUID identity, so the picker would declare
             // them all at once: its entries carry the Steam handle there instead
             const Uint64 handle = Common::SteamPadsInUse() ? PadSteamHandle(id) : 0;
-            state.pads.emplace_back(PadName(id).toStdString(),
-                                    handle ? fmt::format("steamhandle:{:#x}", handle) : ident);
+            auto entry = std::pair{PadName(id).toStdString(),
+                                   handle ? fmt::format("steamhandle:{:#x}", handle) : ident};
+            if (IsPlainlyStandalone(id)) {
+                standalone.push_back(std::move(entry));
+            } else {
+                state.pads.push_back(std::move(entry));
+            }
         }
+        state.builtin_pads = state.pads.size();
+        state.pads.insert(state.pads.end(), standalone.begin(), standalone.end());
         // A human tap is shorter than 250ms: poll fast while the Identify handshake is
         // armed so a quick press cannot slip between the samples.
         console_mode_timer.start(std::chrono::milliseconds{state.identify_armed ? 50 : 250});
@@ -4701,8 +4708,9 @@ void MainWindow::ApplyConsoleControllerMode() {
                 state.identify_armed = false;
             } else {
                 for (const auto& [id, ident] : live) {
-                    // (A press on a plainly standalone controller is not the handheld's)
-                    if (PadAnyButtonPressed(id) && !IsPlainlyStandalone(id)) {
+                    // (Any pad: the user presses on the handheld's own on purpose, and its
+                    // controls may pose as a standalone controller)
+                    if (PadAnyButtonPressed(id)) {
                         state.identify_armed = false;
                         builtin_pad_id = id;
                         builtin_identity = ident;
@@ -4714,6 +4722,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                             if (handle) {
                                 Settings::values.builtin_pad_steam_handle.SetValue(
                                     fmt::format("{:#x}", handle));
+                                Settings::values.builtin_pad_steam_manual.SetValue(true);
                             }
                         } else {
                             Settings::values.builtin_pad_identity.SetValue(ident);
@@ -4745,6 +4754,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             }
             // The identity is the direct launches' own: a Steam pick only sets the handle
             Settings::values.builtin_pad_steam_handle.SetValue(handle);
+            Settings::values.builtin_pad_steam_manual.SetValue(true);
             Settings::values.builtin_pad_identity.SetValue(std::string{});
             Settings::values.builtin_pad_manual.SetValue(false);
             LOG_INFO(Frontend, "console-mode: picker declared Steam handle {} inst={}", handle,
@@ -4995,6 +5005,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             const std::string key = PadKey(builtin_pad_id, live[builtin_pad_id]);
             Settings::values.builtin_pad_blocked.SetValue(key);
             Settings::values.builtin_pad_steam_handle.SetValue(std::string{});
+            Settings::values.builtin_pad_steam_manual.SetValue(false);
             Settings::values.builtin_pad_identity.SetValue(std::string{});
             Settings::values.builtin_pad_manual.SetValue(false);
             builtin_pad_id = 0;
@@ -5029,8 +5040,10 @@ void MainWindow::ApplyConsoleControllerMode() {
                 if (fmt::format("{:#x}", PadSteamHandle(id)) != want || is_blocked(id)) {
                     continue;
                 }
-                if (!CouldBeHandheld(PadVendor(id), PadProduct(id))) {
+                if (!Settings::values.builtin_pad_steam_manual.GetValue() &&
+                    !CouldBeHandheld(PadVendor(id), PadProduct(id))) {
                     // An earlier build took a standalone controller for the handheld's own
+                    // (a declared one stays: the user's say)
                     LOG_INFO(Frontend,
                              "console-mode: stored handheld {} is a {:04x}:{:04x} "
                              "controller, not a handheld's: forgotten",
@@ -5075,6 +5088,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             const std::string handle = fmt::format("{:#x}", PadSteamHandle(holder));
             if (handle != want) {
                 Settings::values.builtin_pad_steam_handle.SetValue(handle);
+                Settings::values.builtin_pad_steam_manual.SetValue(false);
                 LOG_INFO(Frontend,
                          "console-mode: builtin adopted inst={} as the deck's controller, "
                          "Steam handle {} -> {}",

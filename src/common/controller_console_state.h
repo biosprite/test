@@ -22,8 +22,11 @@ namespace Common {
 /// requests. The UI reads and declares; the engine observes and obeys.
 struct ControllerConsoleState {
     std::mutex mutex;
-    /// Live pads as (display name, identity) in engine order
+    /// Live pads as (display name, identity): first the ones that could be a handheld's
+    /// controls, then the standalone controllers (a handheld's controls can pose as one)
     std::vector<std::pair<std::string, std::string>> pads;
+    /// How many of `pads` could be a handheld's controls (the first ones)
+    std::size_t builtin_pads = 0;
     /// Set by the Identify button: capture the next pad that has a button pressed
     bool identify_armed = false;
     std::chrono::steady_clock::time_point identify_armed_at{};

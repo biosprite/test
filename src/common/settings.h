@@ -272,6 +272,10 @@ struct Values {
                                                        "builtin_pad_blocked", Category::Core};
     SwitchableSetting<std::string> builtin_pad_steam_handle{
         linkage, std::string{}, "builtin_pad_steam_handle", Category::Core};
+    /// True when the user declared the Steam handle (the picker or the Identify button): kept
+    /// whatever the pad reports, such as a handheld's controls posing as a DualSense
+    SwitchableSetting<bool> builtin_pad_steam_manual{linkage, false, "builtin_pad_steam_manual",
+                                                     Category::Core};
     SwitchableSetting<MemoryLayout, true> memory_layout_mode{linkage,
                                                              MemoryLayout::Memory_4Gb,
                                                              "memory_layout_mode",

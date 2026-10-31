@@ -37,6 +37,7 @@
 #include <QRadioButton>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QStandardItemModel>
 #include <QSlider>
 #include <QStyledItemDelegate>
 #include <QTimer>
@@ -1074,12 +1075,14 @@ void ConfigurePlayerAssignment::Refresh() {
 void ConfigurePlayerAssignment::RefreshBuiltin() {
     auto& state = Common::GetControllerConsoleState();
     std::vector<std::pair<std::string, std::string>> pads;
+    std::size_t builtin_pads = 0;
     bool armed = false;
     std::chrono::steady_clock::time_point armed_at{};
     std::string detected_name;
     {
         std::scoped_lock lock{state.mutex};
         pads = state.pads;
+        builtin_pads = state.builtin_pads;
         armed = state.identify_armed;
         armed_at = state.identify_armed_at;
         detected_name = state.handheld_name;
@@ -1087,7 +1090,7 @@ void ConfigurePlayerAssignment::RefreshBuiltin() {
 
     // The entries name the connected controllers; under Steam their data is the Steam handle
     // (every Steam virtual pad shares one GUID), otherwise the pad's identity
-    QString signature;
+    QString signature = QString::number(builtin_pads) + QLatin1Char('|');
     for (const auto& [display, ident] : pads) {
         signature += QString::fromStdString(ident) + QLatin1Char('|');
     }
@@ -1097,8 +1100,18 @@ void ConfigurePlayerAssignment::RefreshBuiltin() {
         const bool blocked = builtin_picker->blockSignals(true);
         builtin_picker->clear();
         builtin_picker->addItem(tr("Auto-detect"), QString{});
-        for (const auto& [display, ident] : pads) {
-            builtin_picker->addItem(QString::fromStdString(display), QString::fromStdString(ident));
+        for (std::size_t i = 0; i < pads.size(); ++i) {
+            if (i == builtin_pads) {
+                // The standalone controllers, for a handheld whose controls pose as one: a
+                // heading that can't be picked
+                builtin_picker->insertSeparator(builtin_picker->count());
+                builtin_picker->addItem(tr("Other controllers"));
+                if (auto* model = qobject_cast<QStandardItemModel*>(builtin_picker->model())) {
+                    model->item(builtin_picker->count() - 1)->setEnabled(false);
+                }
+            }
+            builtin_picker->addItem(QString::fromStdString(pads[i].first),
+                                    QString::fromStdString(pads[i].second));
         }
         const int keep = builtin_picker->findData(current);
         builtin_picker->setCurrentIndex(keep > 0 ? keep : 0);
@@ -1127,7 +1140,8 @@ void ConfigurePlayerAssignment::RefreshBuiltin() {
         QString::fromStdString(Settings::values.builtin_pad_steam_handle.GetValue());
     const QString stored =
         steam ? (handle.isEmpty() ? QString{} : QStringLiteral("steamhandle:") + handle) : identity;
-    const bool declared = !steam && Settings::values.builtin_pad_manual.GetValue();
+    const bool declared = steam ? Settings::values.builtin_pad_steam_manual.GetValue()
+                                : Settings::values.builtin_pad_manual.GetValue();
 
     // Keep the picker on a declared pad, else on automatic detection
     const int stored_index = stored.isEmpty() ? -1 : builtin_picker->findData(stored);
@@ -1617,6 +1631,7 @@ void ConfigurePlayerAssignment::OnBuiltinPicked(int index) {
         // Detect automatically: forget the stored pad, so the engine detects it afresh
         Settings::values.builtin_pad_identity.SetValue(std::string{});
         Settings::values.builtin_pad_steam_handle.SetValue(std::string{});
+        Settings::values.builtin_pad_steam_manual.SetValue(false);
         Settings::values.builtin_pad_manual.SetValue(false);
         return;
     }
@@ -1625,6 +1640,7 @@ void ConfigurePlayerAssignment::OnBuiltinPicked(int index) {
     const QString prefix = QStringLiteral("steamhandle:");
     if (ident.startsWith(prefix)) {
         Settings::values.builtin_pad_steam_handle.SetValue(ident.mid(prefix.size()).toStdString());
+        Settings::values.builtin_pad_steam_manual.SetValue(true);
     } else {
         Settings::values.builtin_pad_identity.SetValue(ident.toStdString());
         Settings::values.builtin_pad_manual.SetValue(true);
