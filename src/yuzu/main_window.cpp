@@ -6480,23 +6480,34 @@ void MainWindow::ApplyConsoleControllerMode() {
                 flash = 0;
             }
             // Its controller's battery: a Bluetooth controller's own (by address), the handheld's
-            // own controls run on the system's, else what SDL knows. Read every 10 seconds.
+            // own controls run on the system's, else what SDL knows (never for Steam's virtual
+            // pads, which have no battery: what SDL reports there is not the controller's). Read
+            // every 10 seconds; every 2 while a controller's address gives none yet (a
+            // controller that just connected is read by Linux a few seconds later).
             Battery battery;
             if (pad) {
                 auto& read = battery_read[pad];
                 if (read.first == 0 || now_ms - read.first > 10'000) {
                     Battery fresh;
-                    const auto [percent, charging, wired] = SdlBattery(pad);
-                    fresh = {percent, charging, wired};
+                    const char* source = "sdl";
+                    if (!IsSteamVirtualPad(pad)) {
+                        const auto [percent, charging, wired] = SdlBattery(pad);
+                        fresh = {percent, charging, wired};
+                    }
 #ifdef __linux__
                     std::optional<std::pair<int, bool>> found;
+                    bool by_address = false;
                     if (builtin_valid && pad == builtin_match_id) {
                         found = SystemBattery();
+                        source = "system";
                     } else if (const auto address = inst_address.find(pad);
                                address != inst_address.end()) {
+                        by_address = true;
                         found = BluetoothBattery(address->second);
+                        source = "power supply";
                         if (!found) {
                             found = BluezBattery(address->second);
+                            source = "bluez";
                         }
                     }
                     if (!found && fresh.percent < 0 && !fresh.wired &&
@@ -6509,8 +6520,18 @@ void MainWindow::ApplyConsoleControllerMode() {
                     if (found) {
                         fresh = {found->first, found->second, false};
                     }
+                    // (Its address gives none yet: read again sooner)
+                    const qint64 read_at = by_address && !found ? now_ms - 8'000 : now_ms;
+#else
+                    const qint64 read_at = now_ms;
 #endif
-                    read = {now_ms, fresh};
+                    if (Common::ControllerProbes() && fresh.percent >= 0 &&
+                        (fresh.percent != read.second.percent ||
+                         fresh.charging != read.second.charging)) {
+                        LOG_INFO(Frontend, "console-mode: P{} inst={} battery {}%{} ({})", i + 1,
+                                 pad, fresh.percent, fresh.charging ? " charging" : "", source);
+                    }
+                    read = {read_at, fresh};
                 }
                 battery = read.second;
                 // A low battery, once a session per controller: named on screen
