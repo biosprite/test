@@ -236,7 +236,7 @@ struct Values {
                                                 Category::LibraryApplet};
     /// Modern Console: pause the game when a player's controller has been gone for 3 seconds
     /// (resumed when a controller takes the player again)
-    SwitchableSetting<bool> console_pause_disconnect{linkage, false, "console_pause_disconnect",
+    SwitchableSetting<bool> console_pause_disconnect{linkage, true, "console_pause_disconnect",
                                                      Category::LibraryApplet};
     /// Modern Console: controllers' player lights and light bars show their player (for the
     /// controllers Eden reads itself; Steam sets them for its own)
