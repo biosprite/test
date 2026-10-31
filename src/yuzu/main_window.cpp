@@ -2115,10 +2115,17 @@ PadBluetooth FindPadBluetooth(SDL_JoystickID id) {
     return {{}, any_bluetooth};
 }
 
-/// True while a controller has a button held, or had one pressed in the last 200ms (a quick
-/// tap falls between two checks), read from its input nodes (kept open)
+/// How long a press read from a controller's input node counts: a check comes every 100ms
+/// while a controller waits to be told apart, and its pad's own activity counts for 200ms
+constexpr s64 RealPressWindowUs = 300'000;
+
+/// True while a controller has a button held, or had something pressed in the last 300ms (a
+/// quick tap falls between two checks), read from its input nodes (kept open). Something is a
+/// button, the d-pad, or a stick or trigger pushed past half (as the pads' own activity counts)
 bool RealButtonHeld(const RealController& controller) {
     static std::map<QString, int> open_nodes;
+    // (Each node's axes, read when it is opened: their ranges, and where they rest then)
+    static std::map<std::pair<QString, u16>, input_absinfo> ranges;
     // (When each node's last press happened, by the kernel's own stamp on it: a press read late
     // is still as old as it is)
     static std::map<QString, s64> pressed_at_us;
@@ -2131,6 +2138,12 @@ bool RealButtonHeld(const RealController& controller) {
             const int fd =
                 ::open(event.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
             it = open_nodes.emplace(event, fd).first;
+            for (u16 code = 0; fd >= 0 && code <= ABS_MAX; ++code) {
+                input_absinfo info{};
+                if (ioctl(fd, EVIOCGABS(code), &info) == 0 && info.maximum > info.minimum) {
+                    ranges[{event, code}] = info;
+                }
+            }
         }
         if (it->second < 0) {
             continue;
@@ -2140,20 +2153,32 @@ bool RealButtonHeld(const RealController& controller) {
         ssize_t got = 0;
         while ((got = ::read(it->second, events.data(), sizeof(events))) > 0) {
             for (std::size_t k = 0; k < static_cast<std::size_t>(got) / sizeof(input_event); ++k) {
-                if (events[k].type == EV_KEY && events[k].value == 1) {
-                    pressed_at_us[event] = static_cast<s64>(events[k].input_event_sec) * 1'000'000 +
-                                           static_cast<s64>(events[k].input_event_usec);
+                const input_event& e = events[k];
+                bool pressed = e.type == EV_KEY && e.value == 1;
+                if (const auto range = ranges.find({event, e.code});
+                    e.type == EV_ABS && range != ranges.end()) {
+                    // A quarter of its range away from where it rests: a stick half way out,
+                    // a trigger a quarter pulled, the d-pad (only its ends)
+                    const auto& info = range->second;
+                    const double moved = std::abs(static_cast<double>(e.value - info.value)) /
+                                         static_cast<double>(info.maximum - info.minimum);
+                    pressed = moved > 0.25;
+                }
+                if (pressed) {
+                    pressed_at_us[event] = static_cast<s64>(e.input_event_sec) * 1'000'000 +
+                                           static_cast<s64>(e.input_event_usec);
                 }
             }
         }
         if (const auto pressed = pressed_at_us.find(event);
-            pressed != pressed_at_us.end() && now_us - pressed->second < 200'000) {
+            pressed != pressed_at_us.end() && now_us - pressed->second < RealPressWindowUs) {
             return true;
         }
         std::array<unsigned char, KEY_MAX / 8 + 1> keys{};
         if (ioctl(it->second, EVIOCGKEY(keys.size()), keys.data()) < 0) {
             ::close(it->second);
             open_nodes.erase(it);
+            std::erase_if(ranges, [&](const auto& e) { return e.first.first == event; });
             continue;
         }
         if (std::any_of(keys.begin(), keys.end(), [](unsigned char b) { return b != 0; })) {
@@ -4703,7 +4728,10 @@ void MainWindow::ApplyConsoleControllerMode() {
         state.pads.insert(state.pads.end(), standalone.begin(), standalone.end());
         // A human tap is shorter than 250ms: poll fast while the Identify handshake is
         // armed so a quick press cannot slip between the samples.
-        console_mode_timer.start(std::chrono::milliseconds{state.identify_armed ? 50 : 250});
+        // (Faster too while a controller waits for a press to be told apart from its twin)
+        console_mode_timer.start(std::chrono::milliseconds{state.identify_armed  ? 50
+                                                           : pad_bt_pending.empty() ? 250
+                                                                                    : 100});
         if (state.identify_armed) {
             const auto now = std::chrono::steady_clock::now();
             if (now - state.identify_armed_at > std::chrono::seconds{15}) {
