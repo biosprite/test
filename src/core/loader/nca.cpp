@@ -262,6 +262,15 @@ ResultStatus AppLoader_NCA::ReadTitle(std::string& out_title) {
     return ResultStatus::Success;
 }
 
+ResultStatus AppLoader_NCA::ReadKeyGeneration(u8& out_key_generation) {
+    if (nca == nullptr || nca->GetStatus() != ResultStatus::Success) {
+        return ResultStatus::ErrorNotInitialized;
+    }
+
+    out_key_generation = nca->GetKeyGeneration();
+    return ResultStatus::Success;
+}
+
 ResultStatus AppLoader_NCA::ReadBanner(std::vector<u8>& buffer) {
     if (nca == nullptr || nca->GetStatus() != ResultStatus::Success) {
         return ResultStatus::ErrorNotInitialized;

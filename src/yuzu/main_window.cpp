@@ -140,6 +140,7 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 #include "core/frontend/applets/general.h"
 #include "core/frontend/applets/mii_edit.h"
 #include "core/frontend/applets/software_keyboard.h"
+#include "core/loader/loader.h"
 
 #include "core/hle/kernel/k_process.h"
 #include "core/hle/service/acc/profile_manager.h"
@@ -1943,6 +1944,29 @@ bool MainWindow::LoadROM(const QString& filename, Service::AM::FrontendAppletPar
     return true;
 }
 
+bool MainWindow::ConfirmFirmwareForKeyGeneration(Loader::AppLoader& loader) {
+    const auto mismatch = Loader::CheckFirmwareForKeyGeneration(*QtCommon::system, loader);
+    if (!mismatch) {
+        return true;
+    }
+
+    const auto version_string = [](const FileSys::FirmwareVersionTriple& version) {
+        return QStringLiteral("%1.%2.%3").arg(version.major).arg(version.minor).arg(version.micro);
+    };
+
+    QMessageBox box(this);
+    box.setIcon(QMessageBox::Warning);
+    box.setWindowTitle(tr("Newer Firmware Expected"));
+    box.setText(tr("This title was built for system firmware %1 or newer; firmware %2 is installed. "
+                   "It can be run, but some system features may not work. Continue?")
+                    .arg(version_string(mismatch->required), version_string(mismatch->installed)));
+    const auto* continue_button = box.addButton(tr("Continue"), QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.exec();
+
+    return box.clickedButton() == continue_button;
+}
+
 bool MainWindow::SelectAndSetCurrentUser(
     const Core::Frontend::ProfileSelectParameters& parameters) {
     QtProfileSelectionDialog dialog(*QtCommon::system, this, parameters);
@@ -1980,6 +2004,10 @@ void MainWindow::BootGame(const QString& filename, Service::AM::FrontendAppletPa
     const auto v_file = Core::GetGameFileFromPath(QtCommon::vfs, filename.toUtf8().constData());
     const auto loader =
         Loader::GetLoader(*QtCommon::system, v_file, params.program_id, params.program_index);
+
+    if (loader != nullptr && !ConfirmFirmwareForKeyGeneration(*loader)) {
+        return;
+    }
 
     if (loader != nullptr && loader->ReadProgramId(title_id) == Loader::ResultStatus::Success &&
         type == StartGameType::Normal) {

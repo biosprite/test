@@ -49,6 +49,7 @@ public:
     ResultStatus ReadProgramId(u64& out_program_id) override;
     ResultStatus ReadControlData(FileSys::NACP& out_control) override;
     ResultStatus ReadTitle(std::string& out_title) override;
+    ResultStatus ReadKeyGeneration(u8& out_key_generation) override;
 
     ResultStatus ReadBanner(std::vector<u8>& buffer) override;
     ResultStatus ReadLogo(std::vector<u8>& buffer) override;

@@ -93,6 +93,10 @@ namespace PlayTime {
 class PlayTimeManager;
 }
 
+namespace Loader {
+class AppLoader;
+}
+
 namespace FileSys {
 class ContentProvider;
 class ManualContentProvider;
@@ -276,6 +280,7 @@ private:
     void AllowOSSleep();
 
     bool LoadROM(const QString& filename, Service::AM::FrontendAppletParameters params);
+    bool ConfirmFirmwareForKeyGeneration(Loader::AppLoader& loader);
     void BootGame(const QString& filename, Service::AM::FrontendAppletParameters params,
                   StartGameType with_config = StartGameType::Normal);
     void BootGameFromList(const QString& filename, StartGameType with_config);

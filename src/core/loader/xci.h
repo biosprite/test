@@ -55,6 +55,7 @@ public:
     ResultStatus ReadTitle(std::string& title) override;
     ResultStatus ReadControlData(FileSys::NACP& control) override;
     ResultStatus ReadManualRomFS(FileSys::VirtualFile& out_file) override;
+    ResultStatus ReadKeyGeneration(u8& out_key_generation) override;
 
     ResultStatus ReadBanner(std::vector<u8>& buffer) override;
     ResultStatus ReadLogo(std::vector<u8>& buffer) override;

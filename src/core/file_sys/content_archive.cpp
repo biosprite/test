@@ -29,6 +29,38 @@ static u8 MasterKeyIdForKeyGeneration(u8 key_generation) {
     return std::max<u8>(key_generation, 1) - 1;
 }
 
+// Indexed by master key id: the firmware whose release brought that master key.
+constexpr std::array<FirmwareVersionTriple, 20> MASTER_KEY_FIRMWARE{{
+    {1, 0, 0},  // 00
+    {3, 0, 0},  // 01
+    {3, 0, 1},  // 02
+    {4, 0, 0},  // 03
+    {5, 0, 0},  // 04
+    {6, 0, 0},  // 05
+    {6, 2, 0},  // 06
+    {7, 0, 0},  // 07
+    {8, 1, 0},  // 08
+    {9, 0, 0},  // 09
+    {9, 1, 0},  // 0A
+    {12, 1, 0}, // 0B
+    {13, 0, 0}, // 0C
+    {14, 0, 0}, // 0D
+    {15, 0, 0}, // 0E
+    {16, 0, 0}, // 0F
+    {17, 0, 0}, // 10
+    {18, 0, 0}, // 11
+    {19, 0, 0}, // 12
+    {20, 0, 0}, // 13
+}};
+
+std::optional<FirmwareVersionTriple> FirmwareIntroducingKeyGeneration(u8 key_generation) {
+    const u8 master_key_id = MasterKeyIdForKeyGeneration(key_generation);
+    if (master_key_id >= MASTER_KEY_FIRMWARE.size()) {
+        return std::nullopt;
+    }
+    return MASTER_KEY_FIRMWARE[master_key_id];
+}
+
 NCA::NCA(VirtualFile file_, const NCA* base_nca, bool allow_missing_base)
     : file(std::move(file_)), keys{Core::Crypto::KeyManager::Instance()} {
     if (file == nullptr) {

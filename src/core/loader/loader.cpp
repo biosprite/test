@@ -21,6 +21,7 @@
 #include "core/file_sys/registered_cache.h"
 #include "core/file_sys/submission_package.h"
 #include "core/hle/kernel/k_process.h"
+#include "core/hle/service/set/system_settings_server.h"
 #include "core/loader/deconstructed_rom_directory.h"
 #include "core/loader/kip.h"
 #include "core/loader/nax.h"
@@ -377,6 +378,31 @@ static std::unique_ptr<AppLoader> GetFileLoader(Core::System& system, FileSys::V
     default:
         return nullptr;
     }
+}
+
+std::optional<KeyGenerationFirmwareMismatch> CheckFirmwareForKeyGeneration(Core::System& system,
+                                                                           AppLoader& loader) {
+    u8 key_generation{};
+    if (loader.ReadKeyGeneration(key_generation) != ResultStatus::Success) {
+        return std::nullopt;
+    }
+    const auto required = FileSys::FirmwareIntroducingKeyGeneration(key_generation);
+    if (!required) {
+        return std::nullopt;
+    }
+
+    Service::Set::FirmwareVersionFormat firmware{};
+    if (Service::Set::GetFirmwareVersionImpl(firmware, system, Service::Set::GetFirmwareVersionType::Version2).IsError()) {
+        return std::nullopt;
+    }
+    const FileSys::FirmwareVersionTriple installed{firmware.major, firmware.minor, firmware.micro};
+    if (installed >= *required) {
+        return std::nullopt;
+    }
+
+    LOG_WARNING(Loader, "Program content uses key generation {:02X}, introduced with firmware {}.{}.{}; firmware {}.{}.{} is installed",
+                key_generation, required->major, required->minor, required->micro, installed.major, installed.minor, installed.micro);
+    return KeyGenerationFirmwareMismatch{*required, installed};
 }
 
 std::unique_ptr<AppLoader> GetLoader(Core::System& system, FileSys::VirtualFile file,

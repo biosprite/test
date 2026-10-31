@@ -7,6 +7,7 @@
 #pragma once
 
 #include <array>
+#include <compare>
 #include <memory>
 #include <optional>
 #include <string>
@@ -61,6 +62,18 @@ inline bool IsDirectoryLogoPartition(const VirtualDir& pfs) {
     return pfs->GetFile("NintendoLogo.png") != nullptr &&
            pfs->GetFile("StartupMovie.gif") != nullptr;
 }
+
+struct FirmwareVersionTriple {
+    u8 major;
+    u8 minor;
+    u8 micro;
+
+    friend constexpr auto operator<=>(const FirmwareVersionTriple&, const FirmwareVersionTriple&) = default;
+};
+
+// The system firmware that introduced the master key an NCA of the given key generation is
+// encrypted under. Nothing is returned for a generation newer than this table knows.
+std::optional<FirmwareVersionTriple> FirmwareIntroducingKeyGeneration(u8 key_generation);
 
 // An implementation of VfsDirectory that represents a Nintendo Content Archive (NCA) container.
 // After construction, use GetStatus to determine if the file is valid and ready to be used.

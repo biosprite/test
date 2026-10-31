@@ -16,6 +16,7 @@
 
 #include "common/common_funcs.h"
 #include "common/common_types.h"
+#include "core/file_sys/content_archive.h"
 #include "core/file_sys/control_metadata.h"
 #include "core/file_sys/vfs/vfs.h"
 
@@ -328,6 +329,18 @@ public:
     }
 
     /**
+     * Get the key generation the application's program content is encrypted under, as its NCA
+     * header states it
+     *
+     * @param[out] out_key_generation Reference to store the key generation into
+     *
+     * @return ResultStatus result of function
+     */
+    virtual ResultStatus ReadKeyGeneration(u8& out_key_generation) {
+        return ResultStatus::ErrorNotImplemented;
+    }
+
+    /**
      * Get the RomFS of the manual of the application
      *
      * @param[out] out_file The raw manual RomFS of the game
@@ -348,6 +361,26 @@ protected:
     FileSys::VirtualFile file;
     bool is_loaded = false;
 };
+
+struct KeyGenerationFirmwareMismatch {
+    FileSys::FirmwareVersionTriple required;
+    FileSys::FirmwareVersionTriple installed;
+};
+
+/**
+ * Compares the firmware that introduced the key generation of the application's program content
+ * with the installed firmware. A title encrypted under a newer generation than the installed
+ * firmware's can still run, but may depend on system behaviour that firmware does not have.
+ *
+ * @param system The system context.
+ * @param loader The loader of the application.
+ *
+ * @return both versions when the installed firmware is older than the one the title was built
+ *         for; nothing when it is new enough, when no firmware is installed, or when the loader
+ *         cannot state its key generation.
+ */
+std::optional<KeyGenerationFirmwareMismatch> CheckFirmwareForKeyGeneration(Core::System& system,
+                                                                           AppLoader& loader);
 
 /**
  * Identifies a bootable file and return a suitable loader

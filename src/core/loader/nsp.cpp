@@ -213,6 +213,13 @@ ResultStatus AppLoader_NSP::ReadUpdateRaw(FileSys::VirtualFile& out_file) {
     return ResultStatus::Success;
 }
 
+ResultStatus AppLoader_NSP::ReadKeyGeneration(u8& out_key_generation) {
+    if (secondary_loader == nullptr) {
+        return ResultStatus::ErrorNotInitialized;
+    }
+    return secondary_loader->ReadKeyGeneration(out_key_generation);
+}
+
 ResultStatus AppLoader_NSP::ReadProgramId(u64& out_program_id) {
     out_program_id = nsp->GetProgramTitleID();
     if (out_program_id == 0) {
