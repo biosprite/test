@@ -6624,9 +6624,10 @@ void MainWindow::ApplyConsoleControllerMode() {
                 std::erase_if(controller_hints, [&](const auto& hint) {
                     return !hint.joined && !hint.pause_notice && gone.contains(hint.player);
                 });
+                // (The leave is stamped a moment later, when the overlay draws it: a margin)
                 for (const int player : gone) {
                     auto& said = hinted_leave[static_cast<std::size_t>(player)];
-                    said = (std::max)(said, now_ms);
+                    said = (std::max)(said, now_ms + 2'000);
                 }
                 // (With no other controller left, reconnecting is the only way on)
                 controller_hints.push_back(
