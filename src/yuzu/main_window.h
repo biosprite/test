@@ -665,6 +665,9 @@ private:
     /// red one followed by a green one (the controller left and another took its place) holds
     /// the green's start in overlay_green_at
     std::array<std::string, 10> overlay_row_ident{};
+    /// The key each player's input history is kept under: its controller's own (identical
+    /// controllers can share an identity)
+    std::array<std::string, 10> overlay_row_history{};
     std::array<int, 10> overlay_flash{};
     std::array<qint64, 10> overlay_flash_since{};
     std::array<qint64, 10> overlay_green_at{};

@@ -4009,7 +4009,7 @@ void MainWindow::RenderControllerOverlay() {
         // at the far end as it expires (and the bubble with them). Buttons pressed together
         // share a capsule, joined by "+"; inputs that no longer fit drop off the far end.
         static const std::deque<ButtonPress> none;
-        const auto found = press_history.find(overlay_row_ident[row.player]);
+        const auto found = press_history.find(overlay_row_history[row.player]);
         const auto& presses = show_history && found != press_history.end() ? found->second : none;
         struct Input {
             std::size_t first;
@@ -4757,18 +4757,18 @@ bool MainWindow::PollButtonHistory() {
     std::erase_if(press_history, [this, &pressed](const auto& entry) {
         const bool kept =
             std::any_of(overlay_rows.begin(), overlay_rows.end(), [&](const auto& row) {
-                return row.pad != 0 && overlay_row_ident[row.player] == entry.first;
+                return row.pad != 0 && overlay_row_history[row.player] == entry.first;
             });
         pressed |= !kept;
         return !kept;
     });
     for (const auto& row : overlay_rows) {
         if (row.pad == 0 || row.player < 0 || row.player >= 8 ||
-            overlay_row_ident[row.player].empty()) {
+            overlay_row_history[row.player].empty()) {
             continue;
         }
         const int i = row.player;
-        const std::string& ident = overlay_row_ident[i];
+        const std::string& ident = overlay_row_history[i];
         const bool fresh = history_ident[i] != ident;
         history_ident[i] = ident;
         const auto& player = Settings::values.players.GetValue()[i];
@@ -6899,6 +6899,17 @@ void MainWindow::ApplyConsoleControllerMode() {
                     }
                 }
                 overlay_row_ident[i] = live[pad];
+                // The input history's: the controller's own, even where identical controllers
+                // share an identity (launched without Steam: their model's GUID), by its
+                // address, else its connection too when another pad has the same identity
+                std::string history_key = name_key(pad);
+                if (history_key.starts_with("id:") &&
+                    std::any_of(live.begin(), live.end(), [&](const auto& entry) {
+                        return entry.first != pad && entry.second == live[pad];
+                    })) {
+                    history_key += fmt::format("#{}", pad);
+                }
+                overlay_row_history[i] = std::move(history_key);
             } else if (since != 0 && gone == 0) {
                 gone = now_ms;
                 flash = 2;
@@ -6914,6 +6925,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 gone = 0;
                 flash = 0;
                 overlay_row_ident[i].clear();
+                overlay_row_history[i].clear();
                 continue;
             }
             if (green_at != 0 && now_ms >= green_at) {
