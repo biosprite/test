@@ -2793,6 +2793,11 @@ bool IsNintendoPad(SDL_JoystickID id) {
     }
 }
 
+/// The players controllers take in the console modes: a Switch's eight. The settings' players
+/// go on past them (the handheld's own, and one more), which no controller may take: a ninth
+/// controller waits until one of the eight is free.
+constexpr int ConsolePlayers = 8;
+
 /// Makers of standalone controllers: never a handheld's built-in controls, even when alone
 bool IsControllerMaker(Uint16 vendor) {
     switch (vendor) {
@@ -5930,7 +5935,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             }
             if (matches > 1) {
                 int lowest_free = -1;
-                for (int slot = 0; slot < static_cast<int>(players.size()); ++slot) {
+                for (int slot = 0; slot < ConsolePlayers; ++slot) {
                     if (used.find(slot) == used.end()) {
                         lowest_free = slot;
                         break;
@@ -5973,7 +5978,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             }
             // Claim the lowest free slot
             bool assigned = false;
-            for (int slot = 0; slot < static_cast<int>(players.size()) && !assigned; ++slot) {
+            for (int slot = 0; slot < ConsolePlayers && !assigned; ++slot) {
                 if (used.find(slot) == used.end()) {
                     LOG_INFO(Frontend, "console-mode: claim inst={} ident={} -> slot {}", id, ident,
                              slot);
@@ -6003,7 +6008,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 for (const auto& [k, slot] : pad_slots) {
                     used.insert(slot);
                 }
-                for (int slot = 0; slot < static_cast<int>(players.size()); ++slot) {
+                for (int slot = 0; slot < ConsolePlayers; ++slot) {
                     if (used.find(slot) == used.end()) {
                         LOG_INFO(Frontend, "console-mode: claim inst={} ident={} -> slot {}", id,
                                  ident, slot);
@@ -6541,7 +6546,7 @@ void MainWindow::ApplyConsoleControllerMode() {
     {
         std::set<int> seen_slots;
         for (const auto& [id, slot] : pad_slots) {
-            const bool in_range = slot >= 0 && slot < static_cast<int>(players.size());
+            const bool in_range = slot >= 0 && slot < ConsolePlayers;
             const bool unique = in_range && seen_slots.insert(slot).second;
             if (live.find(id) != live.end() && (!in_range || !unique)) {
                 LOG_ERROR(Frontend,
