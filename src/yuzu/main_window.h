@@ -717,9 +717,10 @@ private:
     /// A controller's first battery reading from BlueZ, and when, by its address (it reads 50%
     /// at first)
     std::map<std::string, std::pair<qint64, int>> bluez_first;
-    /// When each pad first held a player, and when the first one did (Eden's start): only a
-    /// controller connected since waits for BlueZ's real charge
-    std::map<u32, qint64> pad_joined_ms;
+    /// When each controller (its Steam handle, or its pad) first held a player, and when the
+    /// first one did (Eden's start): only a controller connected since waits for BlueZ's real
+    /// charge
+    std::map<std::string, qint64> pad_joined_ms;
     qint64 console_started_ms = 0;
     /// Whose controller each pad's battery reading is (its Steam handle or identity, and whether
     /// it is the handheld's own)

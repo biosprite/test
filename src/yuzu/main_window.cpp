@@ -6436,7 +6436,14 @@ void MainWindow::ApplyConsoleControllerMode() {
             });
         });
         std::erase_if(battery_whose, [&](const auto& e) { return !live.contains(e.first); });
-        std::erase_if(pad_joined_ms, [&](const auto& e) { return !live.contains(e.first); });
+        {
+            std::set<std::string> live_keys;
+            for (const auto& [id, ident] : live) {
+                live_keys.insert(BluetoothKey(id));
+            }
+            std::erase_if(pad_joined_ms,
+                          [&](const auto& e) { return !live_keys.contains(e.first); });
+        }
         std::vector<Common::ControllerConsoleState::PlayerRow> tab_rows;
         // Flashes follow the controller behind a player, not just the player: in handheld mode
         // P1 stays connected while the controller behind it changes. Green when a controller
@@ -6549,7 +6556,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 if (console_started_ms == 0) {
                     console_started_ms = now_ms;
                 }
-                pad_joined_ms.try_emplace(pad, now_ms);
+                // (By controller: Steam reshuffling its pads moves one to another pad)
+                pad_joined_ms.try_emplace(BluetoothKey(pad), now_ms);
                 auto& read = battery_read[pad];
                 // Whose reading it is: Steam reshuffles its virtual pads, so a pad can be another
                 // controller from one moment to the next (the deck's own, then an Xbox
@@ -6587,7 +6595,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                             // its first value counts once it changes, or after 12 seconds. Only
                             // a pad that came after Eden started, in the last 15 seconds: one
                             // already on at launch has its real charge in BlueZ by then.
-                            const auto joined = pad_joined_ms.find(pad);
+                            const auto joined = pad_joined_ms.find(BluetoothKey(pad));
                             const bool just_connected =
                                 joined != pad_joined_ms.end() &&
                                 joined->second - console_started_ms > 2'000 &&
