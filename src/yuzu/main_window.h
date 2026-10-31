@@ -590,7 +590,8 @@ private:
     /// reconnects
     std::map<std::string, int> address_origin;
     /// Names given to controllers, by controller (see the rows): "bt:<address>", "handheld",
-    /// or "id:<identity>" for the session
+    /// or "id:<identity>". Kept until Eden closes, never saved: identical-looking controllers
+    /// can't be told apart by their owners in a later session
     std::map<std::string, std::string> controller_names;
     /// The mode last logged (a change is logged), and each player's refused controller type
     /// as last logged

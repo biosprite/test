@@ -2394,37 +2394,6 @@ QString ShortControllerName(SDL_JoystickID id, const QString& full) {
     }
 }
 
-/// The kept names (console_controller_names): key=name entries, ';' and '=' and '%' escaped
-std::map<std::string, std::string> ReadControllerNames() {
-    std::map<std::string, std::string> names;
-    const QString stored =
-        QString::fromStdString(Settings::values.console_controller_names.GetValue());
-    for (const QString& entry : stored.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
-        const auto at = entry.indexOf(QLatin1Char('='));
-        if (at > 0) {
-            names[QUrl::fromPercentEncoding(entry.left(at).toUtf8()).toStdString()] =
-                QUrl::fromPercentEncoding(entry.mid(at + 1).toUtf8()).toStdString();
-        }
-    }
-    return names;
-}
-
-void WriteControllerNames(const std::map<std::string, std::string>& names) {
-    QStringList entries;
-    for (const auto& [key, name] : names) {
-        // (Only what lasts: Bluetooth controllers and the handheld's own)
-        if (!key.starts_with("bt:") && key != "handheld") {
-            continue;
-        }
-        entries.push_back(
-            QString::fromLatin1(QUrl::toPercentEncoding(QString::fromStdString(key))) +
-            QLatin1Char('=') +
-            QString::fromLatin1(QUrl::toPercentEncoding(QString::fromStdString(name))));
-    }
-    Settings::values.console_controller_names.SetValue(
-        entries.join(QLatin1Char(';')).toStdString());
-}
-
 /// A stick binding turned with a single Joy-Con held sideways: what the Joy-Con's own stick would
 /// report for the same push (the right one is turned a quarter clockwise, the left one the other
 /// way). Only SDL bindings turn; others are kept as they are.
@@ -4850,7 +4819,6 @@ void MainWindow::ApplyConsoleControllerMode() {
         session_sets = ModernStartSets(*console_profile);
         ApplySeatProfiles();
         LOG_INFO(Frontend, "console-mode: entered, the user's players are kept aside");
-        controller_names = ReadControllerNames();
         if (Common::ControllerProbes()) {
             LOG_INFO(Frontend, "console-mode: entered with profile P1 motions {}",
                      MotionTrace((*console_profile)[0]));
@@ -6263,7 +6231,6 @@ void MainWindow::ApplyConsoleControllerMode() {
                 } else {
                     controller_names[key] = given;
                 }
-                WriteControllerNames(controller_names);
                 LOG_INFO(Frontend, "console-mode: P{} named \"{}\"", player + 1, given);
             }
         }
@@ -6297,14 +6264,12 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
                 // (The name of the controller that had the player, should it have just left)
                 const QString previous = overlay_row_name[i];
-                // (A name given before the address was known moves to it, like the bindings,
-                // and wins over one kept from an earlier session: it is the newer)
+                // (A name given before the address was known moves to it, like the bindings)
                 if (const std::string key = name_key(pad); key.starts_with("bt:")) {
                     const auto earlier = controller_names.find("id:" + live[pad]);
                     if (earlier != controller_names.end()) {
                         controller_names[key] = earlier->second;
                         controller_names.erase(earlier);
-                        WriteControllerNames(controller_names);
                     }
                 }
                 const auto given = controller_names.find(name_key(pad));

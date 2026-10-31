@@ -230,10 +230,6 @@ struct Values {
     /// their raw reports instead of SDL opening them. Read at startup.
     SwitchableSetting<bool> console_valve_reader{linkage, false, "console_valve_reader",
                                                  Category::LibraryApplet};
-    /// Modern Console: the names given to players' controllers that are kept between sessions
-    /// (Bluetooth controllers by address, the handheld's own), as key=name;key=name
-    Setting<std::string> console_controller_names{
-        linkage, std::string{}, "console_controller_names", Category::LibraryApplet};
     /// Modern Console: when a game only takes Joy-Cons, players' controllers act as Joy-Cons (Dual
     /// Joy-Cons, or a single one held sideways with the buttons arranged to fit)
     SwitchableSetting<bool> console_joycon_auto{linkage, true, "console_joycon_auto",
