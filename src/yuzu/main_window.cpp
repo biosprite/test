@@ -6202,11 +6202,13 @@ void MainWindow::ApplyConsoleControllerMode() {
                     names.push_back(QStringLiteral("P%1").arg(player + 1));
                 }
                 const QString who = names.join(QStringLiteral(", "));
+                // (With no other controller left, reconnecting is the only way on)
                 controller_hints.push_back(
                     {QString{}, *gone.begin(), false, now_ms, false,
-                     tr("%1 disconnected: reconnect, or press + on another controller to go on "
-                        "without %1")
-                         .arg(who),
+                     live.empty() ? tr("%1 disconnected: reconnect to go on").arg(who)
+                                  : tr("%1 disconnected: reconnect, or press + on another "
+                                       "controller to go on without %1")
+                                        .arg(who),
                      true});
                 // A paused game shows its last frame, and the overlay is drawn into frames:
                 // the notice is drawn first, and the game paused a moment later
