@@ -160,6 +160,9 @@ private:
     /// How each player tab is lit, as the menu bar's chips (0 idle, 1 input held, 2 green
     /// blink, 3 red blink)
     std::array<int, 8> tab_lit{};
+    /// The battery each player tab shows as its icon (percent * 2 + charging, -1 none), so the
+    /// icon is only set again when it changes
+    std::array<int, 8> tab_battery{-1, -1, -1, -1, -1, -1, -1, -1};
     std::array<QPointer<QToolButton>, 8> tab_lefts;
     std::array<QPointer<QToolButton>, 8> tab_rights;
     /// The tab to select once its player shows (the controller a drag or an arrow moved)

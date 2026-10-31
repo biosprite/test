@@ -407,6 +407,10 @@ QColor ConfigurePlayerAssignment::Accent(const QWidget* widget) {
                                      : widget->palette().highlight().color();
 }
 
+QPixmap ConfigurePlayerAssignment::Battery(int percent, bool charging) {
+    return BatteryIcon(percent, charging);
+}
+
 QColor ConfigurePlayerAssignment::PlayerColor(int player) {
     return PlayerColors[static_cast<std::size_t>(player) % PlayerColors.size()];
 }

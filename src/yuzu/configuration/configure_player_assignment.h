@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <QColor>
+#include <QPixmap>
 #include <QString>
 #include <QWidget>
 
@@ -55,6 +56,8 @@ public:
     static QColor Accent(const QWidget* widget);
     /// A player's colour, as the overlay and the player badges draw it
     static QColor PlayerColor(int player);
+    /// A controller's battery as a small cell (20x12), as the overlay draws it
+    static QPixmap Battery(int percent, bool charging);
     /// A ✕ inside a drop-down, left of its arrow (hidden or shown by the caller)
     static QToolButton* AddClearButton(QComboBox* combo);
     /// Lets the open lists of a widget's drop-downs follow ModernComboStyle

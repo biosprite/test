@@ -470,9 +470,18 @@ protected:
             }
             painter.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2);
             const QColor ink = lit ? QColor(Qt::white) : color;
+            // The controller's battery, at the right end (inside the arrow)
+            QRectF label = rect;
+            if (row.battery >= 0) {
+                const QRectF cell(rect.right() - (several ? 16 : 6) - battery_w,
+                                  rect.center().y() - 6, battery_w, 12);
+                painter.drawPixmap(cell.topLeft(),
+                                   ConfigurePlayerAssignment::Battery(row.battery, row.charging));
+                label.setRight(cell.left() + (several ? 16 : 6));
+            }
             // With other players around: the grip, and the arrows swapping with a neighbour
             painter.setPen(ink);
-            painter.drawText(rect, Qt::AlignCenter,
+            painter.drawText(label, Qt::AlignCenter,
                              several ? QStringLiteral("\u283F P%1").arg(row.player + 1)
                                      : QStringLiteral("P%1").arg(row.player + 1));
             if (several) {
@@ -602,16 +611,21 @@ protected:
             const int index = IndexAt(help->pos().x());
             if (index >= 0) {
                 const auto& row = rows[static_cast<std::size_t>(index)];
+                const QString battery =
+                    row.battery < 0 ? QString{}
+                    : row.charging  ? QObject::tr("\nBattery %1% (charging)").arg(row.battery)
+                                    : QObject::tr("\nBattery %1%").arg(row.battery);
                 QToolTip::showText(
                     help->globalPos(),
-                    rows.size() > 1
-                        ? QObject::tr("P%1: %2\nClick: rumble and open its settings\nArrows, "
-                                      "or hold then drag: change the player order")
-                              .arg(row.player + 1)
-                              .arg(QString::fromStdString(row.name))
-                        : QObject::tr("P%1: %2\nClick: rumble and open its settings")
-                              .arg(row.player + 1)
-                              .arg(QString::fromStdString(row.name)),
+                    (rows.size() > 1
+                         ? QObject::tr("P%1: %2\nClick: rumble and open its settings\nArrows, "
+                                       "or hold then drag: change the player order")
+                               .arg(row.player + 1)
+                               .arg(QString::fromStdString(row.name))
+                         : QObject::tr("P%1: %2\nClick: rumble and open its settings")
+                               .arg(row.player + 1)
+                               .arg(QString::fromStdString(row.name))) +
+                        battery,
                     this);
             } else {
                 QToolTip::hideText();
@@ -626,13 +640,24 @@ private:
     /// With arrows and the grip, when there are several players
     static constexpr int chip_w_full = 74;
     static constexpr int chip_gap = 4;
+    /// A chip's battery, when its controller tells its charge (and the room it takes)
+    static constexpr int battery_w = 20;
+    static constexpr int battery_room = battery_w + 4;
 
-    int ChipWidth() const {
-        return rows.size() > 1 ? chip_w_full : chip_w;
+    /// A chip's width among these players: wider with arrows and the grip (several players),
+    /// and with a battery
+    static int ChipWidth(const std::vector<Common::ControllerConsoleState::PlayerRow>& among,
+                         std::size_t k) {
+        return (among.size() > 1 ? chip_w_full : chip_w) +
+               (among[k].battery >= 0 ? battery_room : 0);
     }
 
     QRectF ChipRect(int k) const {
-        return QRectF(4 + k * (ChipWidth() + chip_gap), 3, ChipWidth(), height() - 6);
+        double x = 4;
+        for (int j = 0; j < k; ++j) {
+            x += ChipWidth(rows, static_cast<std::size_t>(j)) + chip_gap;
+        }
+        return QRectF(x, 3, ChipWidth(rows, static_cast<std::size_t>(k)), height() - 6);
     }
 
     static QRectF LeftArrow(const QRectF& chip) {
@@ -680,9 +705,11 @@ private:
                 }
             }
         }
-        const int width_each = now.size() > 1 ? chip_w_full : chip_w;
-        const QRect place(x + 10, 0, 8 + static_cast<int>(now.size()) * (width_each + chip_gap),
-                          bar->height());
+        int chips_w = 8;
+        for (std::size_t k = 0; k < now.size(); ++k) {
+            chips_w += ChipWidth(now, k) + chip_gap;
+        }
+        const QRect place(x + 10, 0, chips_w, bar->height());
         if (geometry() != place) {
             setGeometry(place);
         }
@@ -694,7 +721,8 @@ private:
         // (not while one is being dragged)
         const auto same = [](const auto& a, const auto& b) {
             return a.player == b.player && a.active == b.active && a.name == b.name &&
-                   a.flash == b.flash && a.flash_since == b.flash_since;
+                   a.flash == b.flash && a.flash_since == b.flash_since &&
+                   a.battery == b.battery && a.charging == b.charging;
         };
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         const bool blinking = std::any_of(now.begin(), now.end(), [now_ms](const auto& r) {

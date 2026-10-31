@@ -19,6 +19,7 @@
 #include <QEvent>
 #include <QGroupBox>
 #include <QHBoxLayout>
+#include <QFontMetrics>
 #include <QIcon>
 #include <QMouseEvent>
 #include <QPainter>
@@ -293,6 +294,17 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                     if (tabs->tabBar()->tabTextColor(index) != label) {
                         tabs->tabBar()->setTabTextColor(index, label);
                     }
+                    // The controller's battery as the tab's icon, when it tells its charge
+                    const int battery = automatic && shown && row->battery >= 0 && !row->leaving
+                                            ? row->battery * 2 + (row->charging ? 1 : 0)
+                                            : -1;
+                    if (tab_battery[i] != battery) {
+                        tab_battery[i] = battery;
+                        tabs->setTabIcon(index,
+                                         battery < 0 ? QIcon{}
+                                                     : QIcon(ConfigurePlayerAssignment::Battery(
+                                                           row->battery, row->charging)));
+                    }
                     if (!automatic) {
                         set_text(player_tab_titles[i]);
                         set_tip({});
@@ -301,9 +313,15 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                         // there is nothing to reorder)
                         set_text(several ? QStringLiteral("\u283F P%1").arg(i + 1)
                                          : QStringLiteral("P%1").arg(i + 1));
+                        const QString battery_tip =
+                            battery < 0 ? QString{}
+                            : row->charging
+                                ? tr("\nBattery %1% (charging)").arg(row->battery)
+                                : tr("\nBattery %1%").arg(row->battery);
                         set_tip(tr("P%1: %2\nDrag left or right to change the player order")
                                     .arg(i + 1)
-                                    .arg(QString::fromStdString(row->name)));
+                                    .arg(QString::fromStdString(row->name)) +
+                                battery_tip);
                     }
                 }
             }
@@ -325,8 +343,11 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                 auto* style = new PlayerTabStyle(QApplication::style()->name());
                 style->setParent(bar);
                 bar->setStyle(style);
+                // (The battery icons' own shape: a square icon would shrink them)
+                bar->setIconSize(QSize(20, 12));
                 pill_bar = bar;
             } else if (!pills && pill_bar == bar) {
+                bar->setIconSize(QSize{});
                 bar->setStyle(nullptr);
                 pill_bar = nullptr;
             }
@@ -686,7 +707,20 @@ void PlayerTabOverlay::paintEvent(QPaintEvent*) {
         font.setBold(true);
         painter.setFont(font);
         painter.setPen(paint.ink);
-        painter.drawText(text, Qt::AlignCenter, bar->tabText(i));
+        // The battery icon, left of the label, the two centred together
+        const QIcon icon = bar->tabIcon(i);
+        if (icon.isNull()) {
+            painter.drawText(text, Qt::AlignCenter, bar->tabText(i));
+            return;
+        }
+        const QSize icon_size = bar->iconSize();
+        const int text_w = QFontMetrics(font).horizontalAdvance(bar->tabText(i));
+        const int left = text.center().x() - (icon_size.width() + 4 + text_w) / 2;
+        icon.paint(&painter,
+                   QRect(left, text.center().y() - icon_size.height() / 2, icon_size.width(),
+                         icon_size.height()));
+        painter.drawText(QRect(left + icon_size.width() + 4, text.top(), text_w + 2, text.height()),
+                         Qt::AlignVCenter | Qt::AlignLeft, bar->tabText(i));
     };
     for (int i = 0; i < bar->count(); ++i) {
         const auto look = TabLook(bar->tabData(i));
