@@ -6578,9 +6578,15 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
         const bool running =
             emulation_running && QtCommon::emu_thread && QtCommon::emu_thread->IsRunning();
-        if (!disconnect_paused.empty() && running && !disconnect_pause_pending) {
+        // (Pausing takes a moment: only once the game was seen paused does running again mean
+        // it was resumed by hand)
+        if (!disconnect_paused.empty() && !running && !disconnect_pause_pending) {
+            disconnect_pause_seen = true;
+        }
+        if (!disconnect_paused.empty() && running && disconnect_pause_seen) {
             disconnect_paused.clear(); // (resumed by hand)
             disconnect_continue_held = false;
+            disconnect_pause_seen = false;
         }
         if (Settings::values.console_pause_disconnect.GetValue() && running &&
             !disconnect_pause_pending) {
@@ -6646,6 +6652,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 // the notice is drawn first, and the game paused a moment later
                 RenderControllerOverlay();
                 disconnect_pause_pending = true;
+                disconnect_pause_seen = false;
                 QTimer::singleShot(150, this, [this] {
                     disconnect_pause_pending = false;
                     if (!disconnect_paused.empty() && emulation_running && QtCommon::emu_thread &&

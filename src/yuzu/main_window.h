@@ -745,6 +745,9 @@ private:
     std::set<int> disconnect_paused;
     /// The pause for a disconnect is about to come (its notice is drawn first)
     bool disconnect_pause_pending = false;
+    /// The game was seen paused for it (pausing takes a moment: running before then is not a
+    /// resume by hand)
+    bool disconnect_pause_seen = false;
     /// + is held on another controller during that pause: on without those players once let go
     bool disconnect_continue_held = false;
     std::set<int> pause_done;
