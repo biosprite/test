@@ -111,7 +111,8 @@ private:
     MemoryAllocator& memory_allocator;
     Scheduler& scheduler;
 
-    // Serializes pool metadata; stable allocation handles would avoid the lock if it contends.
+    // Serializes the staging buffer caches, which download requests reach from other threads.
+    // The stream buffer state is only touched by the GPU thread and stays outside the lock.
     std::mutex mutex;
 
     vk::Buffer stream_buffer;
