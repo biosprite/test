@@ -675,6 +675,9 @@ private:
     };
     std::vector<OverlayRow> overlay_rows;
     std::vector<bool> overlay_blink;
+    /// The room the players panel had last (see Common::OverlayRoomTopLeft): drawn again when
+    /// a panel against the top right opens, tucks away or hides
+    float overlay_room = 0.0f;
     std::set<u32> overlay_active_pads;
     /// Polls controller input faster than the assignment tick, for the blue highlight
     QTimer console_activity_timer;

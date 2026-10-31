@@ -3539,9 +3539,18 @@ void MainWindow::RenderControllerOverlay() {
     // Room for as many of the widest chips as the history keeps (and the times between them),
     // so the image keeps its size as the bubbles change; without the history, room for a
     // hovered row's buttons
-    const int history_room = show_history ? inner * 2 + history_size * (widest_chip + chip_gap) +
-                                                (show_gaps ? (history_size - 1) * widest_gap : 0)
-                                          : 200;
+    int history_room = show_history ? inner * 2 + history_size * (widest_chip + chip_gap) +
+                                          (show_gaps ? (history_size - 1) * widest_gap : 0)
+                                    : 200;
+    // Short of the panels against the top right (such as cheats): the oldest inputs drop off
+    // sooner instead of running under them
+    if (render_window) {
+        const auto& layout = render_window->GetFramebufferLayout();
+        const int room = static_cast<int>(Common::OverlayRoomTopLeft(
+                             static_cast<float>(layout.screen.right - layout.screen.left))) -
+                         (controller_w + bubble_gap + 2);
+        history_room = (std::clamp)(room, inner * 2 + widest_chip, history_room);
+    }
     const int width = controller_w + bubble_gap + history_room + 2;
     const int count = static_cast<int>(overlay_rows.size());
     const int height = count * row_h + (count - 1) * row_gap + 2;
@@ -4367,7 +4376,12 @@ void MainWindow::PollControllerActivity() {
         blink.push_back(row.flash != 0 && BlinkOn(now_ms - row.flash_since));
     }
     const bool pressed = PollButtonHistory();
-    if (pressed || OverlayAnimating() || active != overlay_active_pads || blink != overlay_blink) {
+    const auto& layout = render_window->GetFramebufferLayout();
+    const float room = Common::OverlayRoomTopLeft(
+        static_cast<float>(layout.screen.right - layout.screen.left));
+    const bool room_changed = std::exchange(overlay_room, room) != room;
+    if (pressed || OverlayAnimating() || active != overlay_active_pads || blink != overlay_blink ||
+        room_changed) {
         RenderControllerOverlay();
     }
 }

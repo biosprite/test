@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -87,6 +88,23 @@ struct OverlayRect {
                         ? bottom - height - margin
                         : top + margin + (bottom - top) * panel.drop;
     return {std::floor(x), std::floor(y), width, height};
+}
+
+/// The width a panel against the top left has on a screen area this wide before it reaches
+/// the panels shown against the top right, as they are now (a panel that grows, such as the
+/// controllers' input history, stops short of them). Takes the other panels' mutexes: never
+/// call it with one held.
+[[nodiscard]] inline float OverlayRoomTopLeft(float screen_width) {
+    constexpr float margin = 4.0f;
+    constexpr float apart = 8.0f;
+    float right_taken = 0.0f;
+    for (auto& panel : GetOverlayPanels()) {
+        std::scoped_lock lock{panel.mutex};
+        if (panel.enabled && panel.anchor == OverlayAnchor::TopRight) {
+            right_taken = (std::max)(right_taken, static_cast<float>(panel.width) + margin + apart);
+        }
+    }
+    return screen_width - margin - right_taken;
 }
 
 } // namespace Common
