@@ -15,6 +15,7 @@
 #include <set>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include "common/controller_console_state.h"
 #include "common/logging.h"
 #include "common/math_util.h"
@@ -96,6 +97,65 @@ static bool SDLEventWatcher(void* user_data, SDL_Event* event) {
     return true;
 }
 
+namespace {
+
+/// Handhelds whose built-in motion comes in with some axes the wrong way round, as SDL reads it:
+/// the device's model (the device tree's), the controller it shows its built-in controls as, and
+/// which axes to turn around (SDL's frame: x, y, z of the accelerometer, then of the gyro)
+struct MotionQuirk {
+    std::string_view model;
+    u16 vendor;
+    u16 product;
+    std::array<bool, 3> accel;
+    std::array<bool, 3> gyro;
+};
+constexpr std::array motion_quirks{
+    // InputPlumber's virtual DualSense (or DualSense Edge) for the built-in IMU
+    MotionQuirk{"AYN Odin 3", 0x054C, 0x0CE6, {false, true, false}, {true, false, true}},
+    MotionQuirk{"AYN Odin 3", 0x054C, 0x0DF2, {false, true, false}, {true, false, true}},
+};
+
+/// The quirk for a controller, when it is a handheld's own virtual one (never a real
+/// controller of the same model connected to it)
+const MotionQuirk* FindMotionQuirk([[maybe_unused]] SDL_Gamepad* gamepad) {
+#ifdef __linux__
+    static const std::string model = [] {
+        std::ifstream file{"/sys/firmware/devicetree/base/model"};
+        std::string text;
+        std::getline(file, text, '\0');
+        return text;
+    }();
+    if (model.empty() || !gamepad) {
+        return nullptr;
+    }
+    const u16 vendor = SDL_GetGamepadVendor(gamepad);
+    const u16 product = SDL_GetGamepadProduct(gamepad);
+    const auto quirk = std::find_if(motion_quirks.begin(), motion_quirks.end(), [&](const auto& q) {
+        return q.model == model && q.vendor == vendor && q.product == product;
+    });
+    if (quirk == motion_quirks.end()) {
+        return nullptr;
+    }
+    // A virtual device (uhid): the handheld's own, not a controller plugged into it
+    const char* path = SDL_GetGamepadPath(gamepad);
+    if (!path) {
+        return nullptr;
+    }
+    const std::string node = std::filesystem::path{path}.filename().string();
+    std::error_code error;
+    const auto device = std::filesystem::canonical(
+        std::filesystem::path{"/sys/class/hidraw"} / node / "device", error);
+    if (error || device.string().find("/devices/virtual/") == std::string::npos) {
+        return nullptr;
+    }
+    return &*quirk;
+#else
+    return nullptr;
+#endif
+}
+
+} // Anonymous namespace
+
 class SDLJoystick {
 public:
     SDLJoystick(Common::UUID guid_, int port_, SDL_Joystick* joystick,
@@ -128,6 +188,11 @@ public:
         }
 
         LOG_INFO(Input, "Controller motion capabilities: accel={} gyro={}", has_accel, has_gyro);
+        motion_quirk = FindMotionQuirk(controller);
+        if (motion_quirk) {
+            LOG_INFO(Input, "Motion axes corrected for the {}'s built-in controls",
+                     motion_quirk->model);
+        }
     }
 
     bool HasMotion() const {
@@ -152,6 +217,16 @@ public:
         // delta timestamps in microseconds.
         const u64 time_difference = (sensor_timestamp - last_motion_update) / 1000;
         last_motion_update = sensor_timestamp;
+        if (motion_quirk &&
+            (event.sensor == SDL_SENSOR_GYRO || event.sensor == SDL_SENSOR_ACCEL)) {
+            const auto& flip =
+                event.sensor == SDL_SENSOR_GYRO ? motion_quirk->gyro : motion_quirk->accel;
+            for (std::size_t i = 0; i < flip.size(); ++i) {
+                if (flip[i]) {
+                    event.data[i] = -event.data[i];
+                }
+            }
+        }
         switch (event.sensor) {
         case SDL_SENSOR_ACCEL: {
             motion.accel_x = -event.data[0] / gravity_constant;
@@ -407,6 +482,8 @@ private:
     u64 last_motion_update{};
     std::size_t motion_error_count{};
     bool has_gyro{false};
+    /// The handheld's motion axes to turn around (see motion_quirks), when it has some
+    const MotionQuirk* motion_quirk{nullptr};
     bool has_accel{false};
     bool has_vibration{false};
     bool is_vibration_tested{false};
