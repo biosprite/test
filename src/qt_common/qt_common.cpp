@@ -36,6 +36,7 @@
 #endif
 
 #ifdef _WIN32
+#include <QScreen>
 #include <QSettings>
 #include <windows.h>
 #include "common/windows/timer_resolution.h"
@@ -332,8 +333,6 @@ QPixmap CreateCirclePixmapFromColor(const QColor& color) {
 }
 
 #ifdef _WIN32
-#include <QScreen>
-
 // TODO(crueter): Does this affect Qt 6 at all?
 static void OverrideWindowsFont() {
     // Qt5 chooses these fonts on Windows and they have fairly ugly alphanumeric/cyrillic characters
