@@ -2829,11 +2829,9 @@ bool CouldBeHandheld(Uint16 vendor, Uint16 product) {
     return !IsControllerMaker(vendor);
 }
 
-/// Whether a pad is plainly a standalone controller, never a handheld's built-in controls:
-/// not offered as the handheld's controller. Valve's other controllers, the makers that only
-/// make controllers, and Xbox controllers on Bluetooth or a wireless adapter (their ids differ
-/// from the wired ones); a wired Microsoft id stays, as some handhelds' controls report one
-/// (an Xbox 360 pad, the ROG Xbox Ally). Wireless pads are never built in either.
+/// Whether a pad is plainly a standalone controller, never a handheld's controls: Valve's other
+/// controllers, controller-only makers, and wireless Xbox controllers (a wired Microsoft id
+/// stays: some handhelds' controls report one, such as the ROG Xbox Ally)
 bool IsPlainlyStandalone(SDL_JoystickID id) {
     const Uint16 vendor = PadVendor(id);
     const Uint16 product = PadProduct(id);
@@ -2873,9 +2871,8 @@ bool IsStandaloneControllerType(SDL_GamepadType type) {
     return type != SDL_GAMEPAD_TYPE_UNKNOWN && type != SDL_GAMEPAD_TYPE_STANDARD;
 }
 
-/// Steam Input's handle for the physical controller behind a pad (0 when not under Steam
-/// Input, or not known). Steam's virtual pads are fixed slots that Steam refills in its own
-/// order, so this handle is the only thing that could tell which physical pad came back.
+/// Steam Input's handle for the physical controller behind a pad (0 none): Steam refills its
+/// virtual pads in its own order, so only the handle tells which controller came back
 Uint64 PadSteamHandle(SDL_JoystickID id) {
     // (As Steam says now: SDL's copy is up to 3 seconds old)
     if (const auto slot = SteamSlotOf(id)) {
@@ -2891,9 +2888,8 @@ Uint64 PadSteamHandle(SDL_JoystickID id) {
     return handle;
 }
 
-/// The key a pad's Bluetooth state is kept under: its Steam handle under Steam, which stays with
-/// the physical controller while Steam moves controllers between its virtual pads (read when it
-/// is needed, never from an earlier tick), otherwise the connection instance
+/// The key a pad's Bluetooth state is kept under: its Steam handle under Steam (it follows the
+/// controller between virtual pads), else the connection instance
 std::string BluetoothKey(SDL_JoystickID id) {
     if (const Uint64 handle = PadSteamHandle(id)) {
         return fmt::format("steamhandle:{:#x}", handle);
@@ -2901,8 +2897,7 @@ std::string BluetoothKey(SDL_JoystickID id) {
     return fmt::format("inst:{}", id);
 }
 
-/// How a pad is stored as the handheld's (or as the removed one): its Steam handle under Steam,
-/// else its identity
+/// How a pad is stored as the handheld's: Steam handle under Steam, else its identity
 std::string PadKey(SDL_JoystickID id, const std::string& ident) {
     if (Common::SteamPadsInUse()) {
         if (const Uint64 handle = PadSteamHandle(id)) {
@@ -2940,7 +2935,6 @@ void PadRumble(SDL_JoystickID id, Uint16 strength, Uint32 duration_ms) {
     }
 }
 
-/// An SDL motion binding for a device, as InputCommon's own auto-mapping builds it.
 /// The motion of a Valve controller read directly (experimental reader), as a binding
 std::string ValveMotionParam(std::size_t port) {
     Common::ParamPackage param;
@@ -2950,6 +2944,7 @@ std::string ValveMotionParam(std::size_t port) {
     return param.Serialize();
 }
 
+/// An SDL motion binding for a device, as InputCommon's auto-mapping builds it
 std::string SdlMotionParam(const std::string& guid, int port) {
     Common::ParamPackage param;
     param.Set("engine", "sdl");
@@ -2959,9 +2954,8 @@ std::string SdlMotionParam(const std::string& guid, int port) {
     return param.Serialize();
 }
 
-/// Points every SDL binding of a player at one device (guid + port), leaving keyboard and
-/// other engines alone. Bindings address pads by (guid, port), never by slot, so this is
-/// what makes a slot's pad the one that actually drives the player. True when it changed.
+/// Points every SDL binding of a player at one device (guid + port), leaving other engines
+/// alone. True when it changed.
 bool RouteSdlBindings(Settings::PlayerInput& player, const std::string& guid, int port) {
     bool routed = false;
     const auto route = [&](auto& params) {
@@ -2989,11 +2983,9 @@ bool RouteSdlBindings(Settings::PlayerInput& player, const std::string& guid, in
     return routed;
 }
 
-/// The binding sets Modern Console starts from: the user's players without their mappings or
-/// profiles. Modern Console never takes the manual modes' mappings (keyboard and mouse
-/// included): each controller gets its own default mapping, or its player's picked profile.
-/// Only a DSU server's motion stays (a handheld whose own gyro is wrong or missing, set up once
-/// in the manual Controls): the console modes don't expose motion.
+/// The binding sets the console modes start from: the user's players without mappings or
+/// profiles (each controller gets its defaults or a picked profile). Only a DSU server's motion
+/// stays: the console modes don't expose motion.
 std::array<Settings::PlayerInput, 10> ModernStartSets(
     const std::array<Settings::PlayerInput, 10>& user_players) {
     auto sets = user_players;
@@ -3017,8 +3009,7 @@ void MainWindow::SaveAllConfigValues() {
         config->SaveAllValues();
         return;
     }
-    // A console mode drives the players at runtime; the file keeps the user's own. The
-    // global copy is the one a global save writes, also while a game runs on its own copy.
+    // A console mode drives the players at runtime; the file keeps the user's own
     auto& players = Settings::values.players.GetValue(true);
     std::swap(players, *console_profile);
     config->SaveAllValues();
@@ -3044,10 +3035,8 @@ void MainWindow::RestoreConsoleProfile() {
         LOG_INFO(Frontend, "console-mode: restore, profile P1 motions {}",
                  MotionTrace((*console_profile)[0]));
     }
-    // Booting a game switches the players to its own copy (the per-game config read), and
-    // the engine drove that copy since. Both get the user's players back, or the global copy
-    // keeps the engine's pre-boot state and that is what the next save writes. (The game's
-    // copy as it was read at boot, before the engine drove it)
+    // A running game has its own copy of the players, which the engine drove: both copies get
+    // the user's players back (the game's as read at boot)
     Settings::values.players.GetValue(true) = *console_profile;
     if (!Settings::values.players.UsingGlobal()) {
         Settings::values.players.GetValue() = game_profiles ? *game_profiles : *console_profile;
@@ -3081,16 +3070,14 @@ std::array<Settings::PlayerInput, 10> MainWindow::ConsoleBindingSets() const {
 
 namespace {
 
-/// A binding's mapping without its device (guid, port): what an edit in the Controls tab
-/// changes, as opposed to the device routing that a console mode owns. Order- and
-/// float-format-insensitive, so the tab rewriting "0.5" as "0.500000" is no edit.
+/// A binding's mapping without its device (guid, port): what a Controls tab edit changes.
+/// Order- and float-format-insensitive ("0.5" and "0.500000" are the same).
 std::string BindingMapping(const std::string& raw) {
     if (raw.empty()) {
         return {};
     }
     Common::ParamPackage param{raw};
-    // Only an SDL binding's guid/port is device routing; for other engines (a DSU server's
-    // address, say) they are the mapping itself
+    // Only an SDL binding's guid/port is routing (a DSU server's address is the mapping)
     if (param.Get("engine", "") == "sdl") {
         param.Erase("guid");
         param.Erase("guid2");
@@ -3123,8 +3110,7 @@ std::string BindingMapping(const std::string& raw) {
     return out;
 }
 
-/// Puts a profile's mappings on a binding set, keeping the set's own controller (guid, port)
-/// on SDL bindings: the set stays on whatever controller carries it
+/// Puts a profile's mappings on a binding set, keeping the set's controller on SDL bindings
 void ApplyProfileMappings(Settings::PlayerInput& set, const Settings::PlayerInput& profile) {
     const auto apply = [](auto& to, const auto& from) {
         for (size_t i = 0; i < to.size(); ++i) {
@@ -3150,9 +3136,8 @@ void ApplyProfileMappings(Settings::PlayerInput& set, const Settings::PlayerInpu
     apply(set.motions, profile.motions);
 }
 
-/// Brings the edited mappings of one binding array into the profile's, keeping the profile's
-/// own device (guid, port) on SDL bindings: that device is what the user's profile drives
-/// outside the console modes. True when anything was taken.
+/// Brings edited mappings into the profile's, keeping the profile's own device on SDL bindings.
+/// True when anything was taken.
 template <typename Array>
 bool MergeMappings(Array& profile, const Array& before, const Array& after) {
     bool taken = false;
@@ -3238,13 +3223,11 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
     }
     // The Controls tab edits the global copy, whatever copy a running game uses
     const auto& after = Settings::values.players.GetValue(true);
-    // The handheld's own non-SDL motion (a DSU server on the deck) is held back from every
-    // external pad: whatever the dialog makes of a player the handheld does not hold, it must
-    // never clear that binding from the handheld's set. Kept here and put back at the end.
+    // The handheld's own non-SDL motion (a DSU server) must survive edits on players it doesn't
+    // hold: kept here and put back at the end
     const auto handheld_motions_kept = SessionSet(0).motions;
     const auto own_slot = pad_slots.find(builtin_pad_id);
-    // (While the handheld holds a player, edits on that player are its set's own: only a
-    // handheld without a player - externals around - cannot have edited it)
+    // (Only a handheld without a player can't have edited its set)
     const bool handheld_has_player = builtin_pad_id && own_slot != pad_slots.end();
     if (Common::ControllerProbes()) {
         LOG_INFO(Frontend,
@@ -3267,15 +3250,12 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
     for (size_t i = 0; i < after.size(); ++i) {
         const auto& a = after[i];
         const auto& b = before[i];
-        // Picking a device in the tab re-maps the player to that device's defaults: a device
-        // change is a controller swap (below), and its side-effect mapping is no edit
+        // A device change is a controller swap (below), not an edit
         if (const auto device = sdl_device(a); device && device != sdl_device(b)) {
             continue;
         }
-        // The connected flags and the device routing stay the engine's: the engine keeps
-        // re-pointing bindings while the tab is open (the tab even switches the players to
-        // the global copy the engine drives), so only mapping changes count as edits. An edit
-        // on the handheld's own pad goes to player one's set, the one it carries everywhere.
+        // Only mapping changes count as edits (connection and routing are the engine's). The
+        // handheld's own pad's edits go to player one's set.
         const auto own = pad_slots.find(builtin_pad_id);
         size_t target = static_cast<size_t>(slot_set[i]);
         // For this session only: the user's own setup is the manual modes'
@@ -3283,10 +3263,8 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
         bool remapped = MergeMappings(p.buttons, b.buttons, a.buttons);
         remapped = MergeMappings(p.analogs, b.analogs, a.analogs) || remapped;
         bool edited = remapped;
-        // An external pad never gets the handheld's own non-SDL motion (a DSU server on the
-        // deck): on a player the handheld does not hold, that binding being absent is the
-        // engine's doing, never an edit, and must not wipe it from the handheld's set (a swap
-        // closing the dialog did, through P1 held by an Xbox pad)
+        // An external pad never gets the handheld's non-SDL motion: its absence on another
+        // player is the engine's doing, not an edit, and must not wipe it from the set
         auto edited_motions = a.motions;
         if (target != 0 ||
             !(builtin_pad_id && own != pad_slots.end() && own->second == static_cast<int>(i))) {
@@ -3303,8 +3281,7 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
             }
         }
         edited = MergeMappings(p.motions, b.motions, edited_motions) || edited;
-        // Remapped by hand and not saved to the profile: the controls are no longer the
-        // profile's, for the player or its seat
+        // Remapped and not saved: the controls are no longer the profile's
         if (remapped && !p.profile_name.empty()) {
             InputProfiles input_profiles;
             const auto saved = input_profiles.PeekProfile(p.profile_name, i);
@@ -3346,15 +3323,12 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
                  MotionTrace((*console_profile)[0]));
     }
 
-    // A controller swap from the Controls tab: a player whose device was changed to the
-    // device another player's pad holds trades slots with it (or takes it, when the player had
-    // no pad). Each pad then carries its new player's binding set; the routing pass re-points
-    // them next tick. A device no pad holds is ignored, like any other device change here.
+    // A swap from the Controls tab: a player whose device was changed to another player's pad
+    // trades slots with it; the routing pass re-points them next tick
     if (!input_subsystem) {
         return;
     }
-    // The open pads and the (guid, port) each is bound as; the driver lock must not be held
-    // around GetSDLBinding, so the instances are listed first
+    // The pads and their (guid, port); listed first, as GetSDLBinding can't run under the lock
     std::vector<u32> instances;
     {
         const JoystickApiLock lock;
@@ -3371,8 +3345,7 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
             bound[inst] = *binding;
         }
     }
-    // (The eight players only: the handheld's own entry, and the one after it, are never a
-    // controller's to take)
+    // (The eight players only)
     for (size_t i = 0; i < after.size() && i < static_cast<size_t>(ConsolePlayers); ++i) {
         const auto chosen = sdl_device(after[i]);
         if (!chosen || chosen == sdl_device(before[i])) {
@@ -3431,9 +3404,8 @@ bool BlinkOn(qint64 elapsed_ms) {
 } // Anonymous namespace
 
 void MainWindow::RenderControllerOverlay() {
-    // A row lights blue while its controller has an input held, or for a moment after a tap
-    // (so a tap between two polls still shows). Motion never lights it: a resting gyro reports
-    // constant noise.
+    // A row lights while its controller has an input held, or a moment after a tap. Never for
+    // motion: a resting gyro is never still.
     const auto now = std::chrono::steady_clock::now();
     std::set<u32> active;
     for (const auto& row : overlay_rows) {
@@ -3472,8 +3444,7 @@ void MainWindow::RenderControllerOverlay() {
     badge_font.setPixelSize(12);
     badge_font.setBold(true);
 
-    // Hints: a controller that took a player (green flash) or left one (red flash), named for a
-    // few seconds in the bottom-left corner, whether the overlay shows or not
+    // Hints: a controller that took or left a player, named for a few seconds at the bottom left
     constexpr qint64 hint_ms = 3000;
     for (const auto& row : overlay_rows) {
         const int i = row.player;
@@ -3663,8 +3634,7 @@ void MainWindow::RenderControllerOverlay() {
     const int history_size = Settings::values.console_history_size.GetValue();
     const qint64 press_life_ms = Settings::values.console_history_seconds.GetValue() * 1000LL;
     constexpr qint64 press_shrink_ms = 400;
-    // The time between inputs: a small grey tag between their chips, in milliseconds (the unit
-    // is the option's), seconds from one second ("1.2"), never more than an entry lives
+    // The time between inputs: a tag between their chips, in ms, or seconds from one ("1.2")
     QFont gap_font;
     gap_font.setPixelSize(8);
     gap_font.setBold(true);
@@ -3699,14 +3669,11 @@ void MainWindow::RenderControllerOverlay() {
     const int battery_w =
         batteries ? 8 + chip_fm.horizontalAdvance(QStringLiteral("100%")) + 5 + 16 : 0;
     const int controller_w = inner + badge_w + 8 + name_w + battery_w + inner + 4;
-    // Room for as many of the widest chips as the history keeps (and the times between them),
-    // so the image keeps its size as the bubbles change; without the history, room for a
-    // hovered row's buttons
+    // Room for as many of the widest chips as the history keeps, so the image keeps its size
     int history_room = show_history ? inner * 2 + history_size * (widest_chip + chip_gap) +
                                           (show_gaps ? (history_size - 1) * widest_gap : 0)
                                     : 200;
-    // Short of the panels against the top right (such as cheats): the oldest inputs drop off
-    // sooner instead of running under them
+    // Short of the panels at the top right: the oldest inputs drop off sooner
     if (render_window) {
         const auto& layout = render_window->GetFramebufferLayout();
         const int room = static_cast<int>(Common::OverlayRoomTopLeft(
@@ -3750,8 +3717,7 @@ void MainWindow::RenderControllerOverlay() {
         painter.setFont(badge_font);
         painter.setPen(Qt::white);
         painter.drawText(badge_rect, Qt::AlignCenter, QStringLiteral("P%1").arg(row.player + 1));
-        // On the badge's corner: a guess on a reconnect (?), else a dot in the colour of the
-        // player the controller started as
+        // On the badge's corner: ? for a reconnect's guess, else the starting player's colour
         if (!gone && (row.guessed || row.origin >= 0)) {
             const QPointF corner(badge_rect.right() - 1, badge_rect.top() + 1);
             painter.setPen(QPen(QColor(14, 14, 18), 1.5));
@@ -3832,8 +3798,7 @@ void MainWindow::RenderControllerOverlay() {
         }
         painter.setPen(Qt::NoPen);
     };
-    // The buttons of a name being typed, where the history goes: apply, remove the name (when
-    // it has one) and cancel
+    // A name being typed: apply, remove and cancel, where the history goes
     const auto edit_buttons = [&](std::size_t r, int at_y) {
         const auto& row = overlay_rows[r];
         constexpr int round_w = 24;
@@ -3880,8 +3845,7 @@ void MainWindow::RenderControllerOverlay() {
         }
         painter.setPen(Qt::NoPen);
     };
-    // The row under the mouse shows its buttons where its history goes: swaps with the players
-    // above and below, Config (the player's tab), and Turn Off for a Bluetooth controller
+    // The row under the mouse shows its buttons where its history goes
     overlay_buttons.clear();
     const auto neighbour = [this](std::size_t r, int step) {
         for (int k = static_cast<int>(r) + step;
@@ -4015,9 +3979,8 @@ void MainWindow::RenderControllerOverlay() {
             continue;
         }
 
-        // The history bubble: the last inputs, newest first and brightest, each shrinking away
-        // at the far end as it expires (and the bubble with them). Buttons pressed together
-        // share a capsule, joined by "+"; inputs that no longer fit drop off the far end.
+        // The history bubble: the last inputs, newest first, shrinking away as they expire.
+        // Buttons pressed together share a capsule, joined by "+".
         static const std::deque<ButtonPress> none;
         const auto found = press_history.find(overlay_row_history[row.player]);
         const auto& presses = show_history && found != press_history.end() ? found->second : none;
@@ -4143,8 +4106,7 @@ void MainWindow::RenderControllerOverlay() {
 
 bool MainWindow::HandleOverlayMouse(QEvent* event) {
     const auto type = event->type();
-    // A name being typed in the overlay takes the keys (and no shortcut fires meanwhile), while
-    // the overlay shows and the player is still there
+    // A name being typed in the overlay takes the keys
     if (overlay_edit_player >= 0) {
         bool shown_now = false;
         {
@@ -4192,8 +4154,7 @@ bool MainWindow::HandleOverlayMouse(QEvent* event) {
         RenderControllerOverlay();
         return false;
     }
-    // (The pointer moving with no button held comes as a hover move: the render window gets mouse
-    // moves only while a button is held)
+    // (With no button held, the pointer's moves come as hover moves)
     const bool hover_move = type == QEvent::HoverMove;
     if (type != QEvent::MouseButtonPress && type != QEvent::MouseMove &&
         type != QEvent::MouseButtonRelease && !hover_move) {
@@ -4359,8 +4320,8 @@ bool MainWindow::OverlayAnimating() const {
 
 void MainWindow::LearnBluetoothPads() {
 #ifdef __linux__
-    // Pads whose Bluetooth controller is unsure (several of their model): the one controller
-    // with a button held while just one of those pads has one held is that pad's
+    // Pads with several controllers of their model: the one controller with a button held while
+    // just one of those pads has one is that pad's
     if (pad_bt_pending.empty()) {
         return;
     }
@@ -4436,8 +4397,7 @@ void MainWindow::LearnBluetoothPads() {
                 pressed_pads.push_back(pad);
             }
         }
-        // (Every check reads the controllers' queues, so a press is only ever counted when it
-        // happened, never later)
+        // (Every check reads the controllers' queues, so a press counts when it happened)
         const RealController* pressed = nullptr;
         int count = 0;
         for (const auto& controller : controllers) {
@@ -4504,8 +4464,7 @@ void MainWindow::LearnBluetoothPads() {
 }
 
 void MainWindow::LearnValvePairs() {
-    // Identical Valve controllers read directly: the one controller with a button held while
-    // just one of Steam's pads of its model has one held is that pad's
+    // Identical Valve controllers read directly: paired the same way, by a held button
     const auto devices = input_subsystem
                              ? input_subsystem->GetValveMotionDevices()
                              : std::vector<InputCommon::InputSubsystem::ValveMotionDevice>{};
@@ -4555,15 +4514,13 @@ void MainWindow::LearnValvePairs() {
 namespace {
 
 /// The presses since the last look: the pads that just got input, and the real controllers
-/// (their address, else their HID entry) with input in the last 150ms (a button, the d-pad, or
-/// a stick or trigger a quarter of its range from rest), read from their own input nodes
+/// with input in the last 150ms, read from their input nodes
 struct FreshPresses {
     std::set<SDL_JoystickID> pads;
     std::set<std::string> controllers;
 };
 
-/// Reads the pads' and the real controllers' presses (see FreshPresses); Debug Probes log each.
-/// A pad's press is SDL's own record of its input (what reading its buttons here misses).
+/// Reads the pads' and the real controllers' presses (a pad's is SDL's record of its input)
 FreshPresses WatchControllerPresses(InputCommon::InputSubsystem* input) {
     FreshPresses fresh;
     // The pads with a button down, and the models behind them
@@ -4599,8 +4556,7 @@ FreshPresses WatchControllerPresses(InputCommon::InputSubsystem* input) {
             }
         }
     }
-    // The controllers' input nodes (their own reading, apart from the one telling twins apart),
-    // listed again every 2 seconds
+    // The controllers' input nodes, listed again every 2 seconds
     struct Node {
         int fd;
         std::string controller;
@@ -4704,13 +4660,13 @@ FreshPresses WatchControllerPresses(InputCommon::InputSubsystem* input) {
 
 void MainWindow::WatchSteamPadInputs() {
 #ifdef __linux__
-    // (The inputs are read for this under Steam, and for Debug Probes' log)
+    // (Read under Steam, and for Debug Probes)
     if (!Common::SteamPadsInUse() && !Common::ControllerProbes()) {
         return;
     }
     const FreshPresses fresh = WatchControllerPresses(input_subsystem.get());
-    // A pad's input together with exactly one real controller's: kept, so that when Steam says
-    // it moved a controller to that pad, that is the one (see ApplyConsoleControllerMode)
+    // A pad's input together with exactly one real controller's: when Steam then moves a
+    // controller to that pad, that is the one
     if (Common::SteamPadsInUse() && fresh.pads.size() == 1 && fresh.controllers.size() == 1) {
         last_lone_input = LoneInput{*fresh.pads.begin(), *fresh.controllers.begin(),
                                     std::chrono::steady_clock::now()};
@@ -4719,8 +4675,7 @@ void MainWindow::WatchSteamPadInputs() {
 }
 
 void MainWindow::PollControllerActivity() {
-    // (Telling controllers apart and their inputs are the automatic modes' alone: in the manual
-    // modes nothing here runs every 40ms)
+    // (The automatic modes only)
     const auto mode = Settings::values.controller_applet_mode.GetValue();
     if (mode == Settings::AppletMode::ConsoleMode ||
         mode == Settings::AppletMode::HandheldConsoleMode) {
@@ -4728,8 +4683,7 @@ void MainWindow::PollControllerActivity() {
         LearnBluetoothPads();
         LearnValvePairs();
     }
-    // Input shows faster than the 250ms assignment tick: redraw only when who is active changes
-    // (or while the hints and history animate)
+    // Redrawn faster than the 250ms tick, only when who is active changes or while animating
     if (overlay_rows.empty()) {
         if (!controller_hints.empty()) {
             RenderControllerOverlay();
@@ -4806,8 +4760,7 @@ bool MainWindow::PollButtonHistory() {
             history.pop_front();
             pressed = true;
         }
-        // Presses within 50ms of an input's first (about three frames) are one input, as a
-        // fighting game's training mode shows them: they share its time. As many inputs as set.
+        // Presses within 50ms of an input's first (about three frames) are one input
         constexpr qint64 together_ms = 50;
         const auto record = [&](int button) {
             qint64 at = now_ms;
@@ -4871,8 +4824,7 @@ bool MainWindow::PollButtonHistory() {
 }
 
 void MainWindow::ApplyConsoleControllerMode() {
-    // A check that takes longer than its own 250ms is a controller or the system holding Eden
-    // up (a USB device that stopped answering froze it for seconds once): always logged
+    // A tick longer than 250ms means a controller or the system held Eden up: always logged
     struct SlowCheckWarning {
         std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
         ~SlowCheckWarning() {
@@ -4908,11 +4860,9 @@ void MainWindow::ApplyConsoleControllerMode() {
                      Settings::values.modern_seat_profiles.GetValue());
         }
     }
-    // The handheld's own pad is stored once per way of launching, since the pads differ
-    // completely: under Steam it is the Steam handle (builtin_pad_steam_handle), launched
-    // directly it is the raw pad's identity (builtin_pad_identity, with builtin_pad_manual
-    // when declared). Older builds stored the Steam virtual pad's GUID as the identity, which
-    // no raw pad ever has: launched directly, drop it so auto-detection finds the deck again.
+    // The handheld's own pad is stored per way of launching: the Steam handle under Steam, the
+    // raw pad's identity otherwise. A Steam virtual pad's GUID stored as the identity (older
+    // builds) never matches a raw pad: dropped, so auto-detection works again.
     if (!Common::SteamPadsInUse()) {
         const std::string identity = Settings::values.builtin_pad_identity.GetValue();
         if (identity.size() >= 25 && identity.starts_with("guid:") &&
@@ -4925,8 +4875,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                      identity);
         }
     }
-    // A declaration with no pad behind it (older builds wiped the identity when leaving the
-    // mode but kept the flag) would pin the engine to "no handheld" forever: undo it.
+    // A declaration with no identity (older builds) would pin "no handheld" forever: undone
     if (Settings::values.builtin_pad_manual.GetValue() &&
         Settings::values.builtin_pad_identity.GetValue().empty()) {
         Settings::values.builtin_pad_manual.SetValue(false);
