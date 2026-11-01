@@ -18,7 +18,7 @@ using Tests::MakeNpdm;
 using Tests::Put32;
 
 u16 LoadStatus(ProgramMetadata& metadata, const std::vector<u8>& bytes) {
-    return static_cast<u16>(metadata.Load(std::make_shared<Tests::MetadataFile>(bytes)));
+    return u16(metadata.Load(std::make_shared<Tests::MetadataFile>(bytes)));
 }
 
 } // namespace
@@ -26,7 +26,7 @@ u16 LoadStatus(ProgramMetadata& metadata, const std::vector<u8>& bytes) {
 TEST_CASE("NPDM supports NX and Ounce ACID layouts", "[core][file_sys]") {
     const bool ounce = GENERATE(false, true);
     ProgramMetadata metadata;
-    REQUIRE(LoadStatus(metadata, MakeNpdm(ounce)) == static_cast<u16>(Loader::ResultStatus::Success));
+    REQUIRE(LoadStatus(metadata, MakeNpdm(ounce)) == u16(Loader::ResultStatus::Success));
     REQUIRE(metadata.GetPlatform() == (ounce ? ContentMetaPlatform::Ounce : ContentMetaPlatform::Nx));
     REQUIRE(metadata.GetTitleID() == 0x0400000000010000ULL);
     REQUIRE(metadata.GetFilesystemPermissions() == 0x4000000000000000ULL);
@@ -67,7 +67,7 @@ TEST_CASE("NPDM rejects malformed blocks", "[core][file_sys]") {
     SECTION("Kernel capabilities outside ACI0") {
         Put32(bytes, 0x430, 0xFFFFFF00);
     }
-    REQUIRE(LoadStatus(metadata, bytes) != static_cast<u16>(Loader::ResultStatus::Success));
+    REQUIRE(LoadStatus(metadata, bytes) != u16(Loader::ResultStatus::Success));
 }
 
 TEST_CASE("Supplied local NPDM samples parse as Ounce", "[.local_sample][file_sys]") {
@@ -78,7 +78,7 @@ TEST_CASE("Supplied local NPDM samples parse as Ounce", "[.local_sample][file_sy
         REQUIRE(input.good());
         const std::vector<u8> bytes{std::istreambuf_iterator<char>(input), {}};
         ProgramMetadata metadata;
-        REQUIRE(LoadStatus(metadata, bytes) == static_cast<u16>(Loader::ResultStatus::Success));
+        REQUIRE(LoadStatus(metadata, bytes) == u16(Loader::ResultStatus::Success));
         REQUIRE(metadata.GetPlatform() == ContentMetaPlatform::Ounce);
         REQUIRE(metadata.GetTitleID() == 0x040074A01BF12000);
         REQUIRE(metadata.GetRemoteMemorySize() == 0x3000000);

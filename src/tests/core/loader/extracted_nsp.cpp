@@ -61,7 +61,7 @@ FileSys::VirtualFile Package(bool ounce, bool with_romfs) {
     std::vector<u32> name_offsets;
     std::size_t payload_size{};
     for (const auto& [name, data] : entries) {
-        name_offsets.push_back(static_cast<u32>(names.size()));
+        name_offsets.push_back(u32(names.size()));
         names += name;
         names.push_back('\0');
         payload_size += data.size();
@@ -69,8 +69,8 @@ FileSys::VirtualFile Package(bool ounce, bool with_romfs) {
     const auto header_size = 0x10 + entries.size() * 0x18 + names.size();
     std::vector<u8> bytes(header_size + payload_size);
     std::memcpy(bytes.data(), "PFS0", 4);
-    Put32(bytes, 4, static_cast<u32>(entries.size()));
-    Put32(bytes, 8, static_cast<u32>(names.size()));
+    Put32(bytes, 4, u32(entries.size()));
+    Put32(bytes, 8, u32(names.size()));
     std::memcpy(bytes.data() + 0x10 + entries.size() * 0x18, names.data(), names.size());
     std::size_t offset{};
     for (std::size_t i = 0; i < entries.size(); ++i) {

@@ -7530,8 +7530,8 @@ bool MainWindow::LoadROM(const QString& filename, Service::AM::FrontendAppletPar
                     tr("Error while loading ROM! %1", "%1 signifies a numeric error code.")
                         .arg(QString::fromStdString(error_code));
                 auto description = QString::fromStdString(
-                    GetResultStatusString(static_cast<Loader::ResultStatus>(error_id)));
-                if (error_id != static_cast<u16>(Loader::ResultStatus::ErrorUnsupportedSwitch2)) {
+                    GetResultStatusString(Loader::ResultStatus(error_id)));
+                if (error_id != u16(Loader::ResultStatus::ErrorUnsupportedSwitch2)) {
                     description =
                         tr("%1<br>Please redump your files or ask on Discord/Stoat for help.",
                            "%1 signifies an error string.")
