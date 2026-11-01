@@ -76,7 +76,8 @@
             "USE_NGHTTP2 OFF",
             "USE_LIBIDN2 OFF",
             "CURL_DISABLE_INSTALL ON",
-            "CURL_ENABLE_EXPORT_TARGET OFF"
+            "CURL_ENABLE_EXPORT_TARGET OFF",
+            "BUILD_EXAMPLES OFF"
         ],
         "package": "CURL",
         "patches": [
@@ -360,7 +361,8 @@
         "min_version": "1.2",
         "options": [
             "ZLIB_BUILD_SHARED OFF",
-            "ZLIB_INSTALL OFF"
+            "ZLIB_INSTALL OFF",
+            "ZLIB_BUILD_TESTING OFF"
         ],
         "package": "ZLIB",
         "repo": "madler/zlib",
@@ -371,7 +373,8 @@
         "hash": "2b006c3c110c38bd2f5896b42d36a38931c8eae261f30552f9a9fd04458d218d8f1a1425f117fd12af545ed77042e4b2d1a1a9b6286c4d0b9d74ef79f20a8f08",
         "min_version": "1.5",
         "options": [
-            "ZSTD_BUILD_SHARED OFF"
+            "ZSTD_BUILD_SHARED OFF",
+            "ZSTD_BUILD_PROGRAMS OFF"
         ],
         "repo": "facebook/zstd",
         "source_subdir": "build/cmake",
