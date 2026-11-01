@@ -7526,6 +7526,14 @@ bool MainWindow::LoadROM(const QString& filename, Service::AM::FrontendAppletPar
                 const std::string error_code = std::format("({:04X}-{:04X})", loader_id, error_id);
                 LOG_CRITICAL(Frontend, "Failed to load ROM! {}", error_code);
 
+                if (error_id == static_cast<u16>(Loader::ResultStatus::ErrorUnsupportedSwitch2)) {
+                    QMessageBox::critical(
+                        this, tr("Switch 2 emulation is unavailable"),
+                        QString::fromStdString(GetResultStatusString(
+                            Loader::ResultStatus::ErrorUnsupportedSwitch2)));
+                    break;
+                }
+
                 const auto title =
                     tr("Error while loading ROM! %1", "%1 signifies a numeric error code.")
                         .arg(QString::fromStdString(error_code));

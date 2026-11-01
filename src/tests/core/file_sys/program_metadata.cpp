@@ -1,0 +1,130 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include "core/file_sys/program_metadata.h"
+#include "core/loader/loader.h"
+#include "tests/core/file_sys/metadata_test_file.h"
+
+namespace FileSys {
+namespace {
+
+void Put32(std::vector<u8>& bytes, std::size_t offset, u32 value) {
+    const u32_le little = value;
+    std::memcpy(bytes.data() + offset, &little, sizeof(little));
+}
+
+void Put64(std::vector<u8>& bytes, std::size_t offset, u64 value) {
+    const u64_le little = value;
+    std::memcpy(bytes.data() + offset, &little, sizeof(little));
+}
+
+std::vector<u8> MakeNpdm(bool ounce) {
+    const u32 body = ounce ? 0x300 : 0x200;
+    const u32 fac = body + 0x40;
+    const u32 acid_size = body + 0x74;
+    const u32 aci = ounce ? 0x400 : 0x300;
+    std::vector<u8> bytes(aci + 0x60);
+    std::memcpy(bytes.data(), "META", 4);
+    bytes[0xC] = 0x27;
+    bytes[0xE] = 0x2C;
+    Put32(bytes, 0x10, ounce ? 0x3000000 : 0);
+    Put32(bytes, 0x70, aci);
+    Put32(bytes, 0x74, 0x60);
+    Put32(bytes, 0x78, 0x80);
+    Put32(bytes, 0x7C, acid_size);
+    std::memcpy(bytes.data() + 0x80 + body, "ACID", 4);
+    Put32(bytes, 0x80 + body + 0x20, fac);
+    Put32(bytes, 0x80 + body + 0x24, 0x2C);
+    Put32(bytes, 0x80 + body + 0x30, body + 0x70);
+    Put32(bytes, 0x80 + body + 0x34, 4);
+    bytes[0x80 + fac] = 1;
+    Put64(bytes, 0x80 + fac + 4, 0x0123456789ABCDEF);
+    std::memcpy(bytes.data() + aci, "ACI0", 4);
+    Put64(bytes, aci + 0x10, 0x0400000000010000);
+    Put32(bytes, aci + 0x20, 0x40);
+    Put32(bytes, aci + 0x24, 0x1C);
+    Put32(bytes, aci + 0x30, 0x5C);
+    Put32(bytes, aci + 0x34, 4);
+    bytes[aci + 0x40] = 1;
+    Put64(bytes, aci + 0x44, 0x4000000000000000);
+    Put32(bytes, aci + 0x5C, 0x30043F7);
+    return bytes;
+}
+
+u16 LoadStatus(ProgramMetadata& metadata, const std::vector<u8>& bytes) {
+    return static_cast<u16>(metadata.Load(std::make_shared<Tests::MetadataFile>(bytes)));
+}
+
+} // namespace
+
+TEST_CASE("NPDM supports NX and Ounce ACID layouts", "[core][file_sys]") {
+    const bool ounce = GENERATE(false, true);
+    ProgramMetadata metadata;
+    REQUIRE(LoadStatus(metadata, MakeNpdm(ounce)) == static_cast<u16>(Loader::ResultStatus::Success));
+    REQUIRE(metadata.GetPlatform() == (ounce ? ContentMetaPlatform::Ounce : ContentMetaPlatform::Nx));
+    REQUIRE(metadata.GetTitleID() == 0x0400000000010000ULL);
+    REQUIRE(metadata.GetFilesystemPermissions() == 0x4000000000000000ULL);
+    REQUIRE(metadata.GetRemoteMemorySize() == (ounce ? 0x3000000U : 0U));
+    REQUIRE(metadata.GetKernelCapabilities() == std::vector<u32>{0x30043F7});
+}
+
+TEST_CASE("NPDM rejects malformed blocks", "[core][file_sys]") {
+    auto bytes = MakeNpdm(true);
+    ProgramMetadata metadata;
+    SECTION("Bad META magic") {
+        bytes[0] = 0;
+    }
+    SECTION("Truncated ACID extent") {
+        Put32(bytes, 0x7C, 0xFFFFFF00);
+    }
+    SECTION("Unknown ACID layout") {
+        bytes[0x380] = 0;
+    }
+    SECTION("Ambiguous ACID layout") {
+        std::memcpy(bytes.data() + 0x280, "ACID", 4);
+    }
+    SECTION("Invalid ACI0 magic") {
+        bytes[0x400] = 0;
+    }
+    SECTION("Overlapping ACI0 and ACID") {
+        Put32(bytes, 0x70, 0x100);
+    }
+    SECTION("FAC outside ACID") {
+        Put32(bytes, 0x3A0, 0xFFFFFF00);
+    }
+    SECTION("FAH outside ACI0") {
+        Put32(bytes, 0x420, 0xFFFFFF00);
+    }
+    SECTION("Misaligned kernel capability size") {
+        Put32(bytes, 0x434, 3);
+    }
+    SECTION("Kernel capabilities outside ACI0") {
+        Put32(bytes, 0x430, 0xFFFFFF00);
+    }
+    REQUIRE(LoadStatus(metadata, bytes) != static_cast<u16>(Loader::ResultStatus::Success));
+}
+
+TEST_CASE("Supplied local NPDM samples parse as Ounce", "[.local_sample][file_sys]") {
+    const char* sample_root = std::getenv("NSP2_SAMPLE_DUMP");
+    REQUIRE(sample_root != nullptr);
+    for (const auto* relative : {"base/exefs/main.npdm", "updates/458752/exefs/main.npdm"}) {
+        std::ifstream input(std::filesystem::path(sample_root) / relative, std::ios::binary);
+        REQUIRE(input.good());
+        const std::vector<u8> bytes{std::istreambuf_iterator<char>(input), {}};
+        ProgramMetadata metadata;
+        REQUIRE(LoadStatus(metadata, bytes) == static_cast<u16>(Loader::ResultStatus::Success));
+        REQUIRE(metadata.GetPlatform() == ContentMetaPlatform::Ounce);
+        REQUIRE(metadata.GetTitleID() == 0x040074A01BF12000);
+        REQUIRE(metadata.GetRemoteMemorySize() == 0x3000000);
+        REQUIRE(metadata.GetFilesystemPermissions() == 0x4000000000000000);
+        REQUIRE(metadata.GetKernelCapabilities().size() == 9);
+    }
+}
+
+} // namespace FileSys

@@ -191,6 +191,8 @@ if(ARCHITECTURE_x86_64)
 endif()
 
 if(MSVC)
+    # The bundled ZBIC source includes unused static Zstandard entry points.
+    set_source_files_properties(zbic_compression.cpp PROPERTIES COMPILE_OPTIONS /wd4505)
     target_compile_definitions(
         common
         PRIVATE # The standard library doesn't provide any replacement for codecvt

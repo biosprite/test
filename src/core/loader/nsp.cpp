@@ -189,6 +189,10 @@ ResultStatus AppLoader_NSP::VerifyIntegrity(std::function<bool(size_t, size_t)> 
 }
 
 ResultStatus AppLoader_NSP::ReadRomFS(FileSys::VirtualFile& out_file) {
+    if (nsp->IsExtractedType()) {
+        out_file = nsp->GetRomFS();
+        return out_file != nullptr ? ResultStatus::Success : ResultStatus::ErrorNoRomFS;
+    }
     return secondary_loader->ReadRomFS(out_file);
 }
 
