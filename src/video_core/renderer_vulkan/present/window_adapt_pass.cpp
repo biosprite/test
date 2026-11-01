@@ -6,6 +6,7 @@
 
 #include "core/frontend/framebuffer_layout.h"
 #include "video_core/framebuffer_config.h"
+#include "video_core/host_shaders/vulkan_present_frag_spv.h"
 #include "video_core/host_shaders/vulkan_present_vert_spv.h"
 #include "video_core/renderer_vulkan/present/layer.h"
 #include "video_core/renderer_vulkan/present/present_push_constants.h"
@@ -36,6 +37,10 @@ WindowAdaptPass::WindowAdaptPass(const Device& device, MemoryAllocator& memory_a
     CreateVertexShader(device);
     CreateRenderPass(device, frame_format);
     CreatePipelines(device);
+    overlay_shader = BuildShader(device, VULKAN_PRESENT_FRAG_SPV);
+    overlay_sampler = CreateNearestNeighborSampler(device);
+    overlay_pipeline = CreateWrappedCoverageBlendingPipeline(
+        device, render_pass, pipeline_layout, std::tie(vertex_shader, overlay_shader));
 }
 
 WindowAdaptPass::~WindowAdaptPass() = default;
@@ -43,7 +48,8 @@ WindowAdaptPass::~WindowAdaptPass() = default;
 void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, Scheduler& scheduler, size_t image_index,
                            std::list<Layer>& layers,
                            std::span<const Tegra::FramebufferConfig> configs,
-                           const Layout::FramebufferLayout& layout, Frame* dst) {
+                           const Layout::FramebufferLayout& layout, Frame* dst,
+                           bool overlay_panels) {
 
     const VkFramebuffer host_framebuffer{*dst->framebuffer};
     const VkRenderPass renderpass{*render_pass};
@@ -84,7 +90,7 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
     std::array<PresentPushConstants, Common::OverlayPanelCount> overlay_push{};
     std::array<VkDescriptorSet, Common::OverlayPanelCount> overlay_set{};
     auto& panels = Common::GetOverlayPanels();
-    for (size_t o = 0; o < panels.size(); ++o) {
+    for (size_t o = 0; overlay_panels && o < panels.size(); ++o) {
         auto& overlay_frame = panels[o];
         auto& quad = overlays[o];
         std::scoped_lock lock{overlay_frame.mutex};
@@ -96,6 +102,8 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
         const VkExtent2D extent{overlay_frame.width, overlay_frame.height};
         if (!quad.ready || quad.extent.width != extent.width ||
             quad.extent.height != extent.height) {
+            // (A frame still on the GPU may be drawing the old image: replaced once it's done)
+            scheduler.Wait(quad.used_tick);
             quad.image = CreateWrappedImage(memory_allocator, extent, overlay_format);
             quad.view = CreateWrappedImageView(device, quad.image, overlay_format);
             quad.pool = CreateWrappedDescriptorPool(device, 1, 1);
@@ -106,11 +114,55 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
             quad.version = 0;
         }
         if (quad.version != overlay_frame.version) {
-            UploadImage(device, memory_allocator, scheduler, quad.image, extent, overlay_format,
-                        overlay_frame.pixels);
+            // Copied through one of the panel's staging buffers, recorded before this frame's
+            // draw: only that buffer's last copy is waited for, never the whole GPU
+            const std::size_t k = quad.next_staging;
+            quad.next_staging ^= 1;
+            scheduler.Wait(quad.staging_tick[k]);
+            auto& staging = quad.staging[k];
+            const std::size_t bytes = overlay_frame.pixels.size();
+            if (!staging || quad.staging_size[k] < bytes) {
+                const VkBufferCreateInfo staging_ci{
+                    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                    .pNext = nullptr,
+                    .flags = 0,
+                    .size = bytes,
+                    .usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+                    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+                    .queueFamilyIndexCount = 0,
+                    .pQueueFamilyIndices = nullptr,
+                };
+                staging = memory_allocator.CreateBuffer(staging_ci, MemoryUsage::Upload);
+                quad.staging_size[k] = bytes;
+            }
+            std::ranges::copy(overlay_frame.pixels, staging.Mapped().begin());
+            staging.Flush();
+            const VkBuffer source = *staging;
+            const VkImage target = *quad.image;
+            const VkBufferImageCopy region{
+                .bufferOffset = 0,
+                .bufferRowLength = extent.width,
+                .bufferImageHeight = extent.height,
+                .imageSubresource{.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+                                  .mipLevel = 0,
+                                  .baseArrayLayer = 0,
+                                  .layerCount = 1},
+                .imageOffset{},
+                .imageExtent{.width = extent.width, .height = extent.height, .depth = 1},
+            };
+            scheduler.RequestOutsideRenderPassOperationContext();
+            scheduler.Record([source, target, region](vk::CommandBuffer cmdbuf) {
+                TransitionImageLayout(cmdbuf, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                      VK_IMAGE_LAYOUT_UNDEFINED);
+                cmdbuf.CopyBufferToImage(source, target, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                         std::array{region});
+                TransitionImageLayout(cmdbuf, target, VK_IMAGE_LAYOUT_GENERAL,
+                                      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            });
+            quad.staging_tick[k] = scheduler.CurrentTick();
             quad.version = overlay_frame.version;
             const VkDescriptorImageInfo image_info{
-                .sampler = *sampler,
+                .sampler = *overlay_sampler,
                 .imageView = *quad.view,
                 .imageLayout = VK_IMAGE_LAYOUT_GENERAL,
             };
@@ -145,6 +197,7 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
         push.vertices[2] = ScreenRectVertex(x, y + h, 0.f, 1.f);
         push.vertices[3] = ScreenRectVertex(x + w, y + h, 1.f, 1.f);
         overlay_draw[o] = true;
+        quad.used_tick = scheduler.CurrentTick();
 
         static u32 logged_quads = 0;
         if (logged_quads < 3) {
@@ -192,7 +245,7 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
             if (!overlay_draw[o]) {
                 continue;
             }
-            cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, *coverage_pipeline);
+            cmdbuf.BindPipeline(VK_PIPELINE_BIND_POINT_GRAPHICS, *overlay_pipeline);
             cmdbuf.PushConstants(graphics_pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT,
                                  overlay_push[o]);
             cmdbuf.BindDescriptorSets(VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout,

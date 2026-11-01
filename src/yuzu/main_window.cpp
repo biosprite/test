@@ -2297,8 +2297,13 @@ bool RealButtonHeld(const RealController& controller) {
         if (it == open_nodes.end()) {
             const int fd =
                 ::open(event.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+            // (Not kept when it can't be opened, such as for a moment as it connects: tried again
+            // next time, or the controller could never be told apart by a press)
+            if (fd < 0) {
+                continue;
+            }
             it = open_nodes.emplace(event, fd).first;
-            for (u16 code = 0; fd >= 0 && code <= ABS_MAX; ++code) {
+            for (u16 code = 0; code <= ABS_MAX; ++code) {
                 input_absinfo info{};
                 if (ioctl(fd, EVIOCGABS(code), &info) == 0 && info.maximum > info.minimum) {
                     ranges[{event, code}] = info;
@@ -2348,11 +2353,14 @@ bool RealButtonHeld(const RealController& controller) {
     return false;
 }
 
-/// Whether BlueZ has a Bluetooth controller connected (nothing when it can't say)
-std::optional<bool> BluezConnected(const std::string& address) {
+/// Asks BlueZ whether a Bluetooth controller is connected, without waiting: the answer comes to
+/// `answer` (on the GUI thread, while `context` lives) when BlueZ gives it, and never when it
+/// can't say
+void AskBluezConnected(const std::string& address, QObject* context,
+                       std::function<void(bool)> answer) {
     QDBusConnection bus = QDBusConnection::systemBus();
     if (!bus.isConnected()) {
-        return std::nullopt;
+        return;
     }
     QString device = QString::fromStdString(address).toUpper();
     device.replace(QLatin1Char(':'), QLatin1Char('_'));
@@ -2365,12 +2373,16 @@ std::optional<bool> BluezConnected(const std::string& address) {
             QStringLiteral("org.bluez"), QStringLiteral("/org/bluez/%1/dev_%2").arg(adapter, device),
             QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
         get << QStringLiteral("org.bluez.Device1") << QStringLiteral("Connected");
-        const QDBusMessage reply = bus.call(get, QDBus::Block, 250);
-        if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()) {
-            return qvariant_cast<QDBusVariant>(reply.arguments().first()).variant().toBool();
-        }
+        auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(get, 1000));
+        QObject::connect(watcher, &QDBusPendingCallWatcher::finished, context,
+                         [answer](QDBusPendingCallWatcher* w) {
+                             const QDBusPendingReply<QDBusVariant> reply = *w;
+                             if (!reply.isError()) {
+                                 answer(reply.value().variant().toBool());
+                             }
+                             w->deleteLater();
+                         });
     }
-    return std::nullopt;
 }
 
 /// Asks BlueZ to disconnect a controller, which turns most controllers off
@@ -2711,12 +2723,14 @@ std::optional<std::pair<int, bool>> BluetoothBattery(const std::string& address)
     return std::nullopt;
 }
 
-/// A Bluetooth LE controller's battery as BlueZ reads it (its battery service: Xbox Series
-/// controllers report it this way, with no power supply in Linux); charging is unknown
-std::optional<std::pair<int, bool>> BluezBattery(const std::string& address) {
+/// Asks BlueZ for a Bluetooth LE controller's battery (its battery service: Xbox Series
+/// controllers report it this way, with no power supply in Linux), without waiting: the percent
+/// comes to `answer` (on the GUI thread, while `context` lives) when BlueZ has one
+void AskBluezBattery(const std::string& address, QObject* context,
+                     std::function<void(int)> answer) {
     QDBusConnection bus = QDBusConnection::systemBus();
     if (!bus.isConnected()) {
-        return std::nullopt;
+        return;
     }
     QString device = QString::fromStdString(address).toUpper();
     device.replace(QLatin1Char(':'), QLatin1Char('_'));
@@ -2729,18 +2743,19 @@ std::optional<std::pair<int, bool>> BluezBattery(const std::string& address) {
             QStringLiteral("org.bluez"), QStringLiteral("/org/bluez/%1/dev_%2").arg(adapter, device),
             QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
         get << QStringLiteral("org.bluez.Battery1") << QStringLiteral("Percentage");
-        // (BlueZ answers from what it holds; read every 10 seconds per controller)
-        const QDBusMessage reply = bus.call(get, QDBus::Block, 250);
-        if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()) {
-            bool ok = false;
-            const int percent =
-                reply.arguments().first().value<QDBusVariant>().variant().toInt(&ok);
-            if (ok && percent >= 0 && percent <= 100) {
-                return std::pair{percent, false};
-            }
-        }
+        auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(get, 1000));
+        QObject::connect(watcher, &QDBusPendingCallWatcher::finished, context,
+                         [answer](QDBusPendingCallWatcher* w) {
+                             const QDBusPendingReply<QDBusVariant> reply = *w;
+                             bool ok = false;
+                             const int percent =
+                                 reply.isError() ? -1 : reply.value().variant().toInt(&ok);
+                             if (ok && percent >= 0 && percent <= 100) {
+                                 answer(percent);
+                             }
+                             w->deleteLater();
+                         });
     }
-    return std::nullopt;
 }
 
 /// The system's own battery (the handheld's own controls run on it)
@@ -3370,7 +3385,9 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
             bound[inst] = *binding;
         }
     }
-    for (size_t i = 0; i < after.size(); ++i) {
+    // (The eight players only: the handheld's own entry, and the one after it, are never a
+    // controller's to take)
+    for (size_t i = 0; i < after.size() && i < static_cast<size_t>(ConsolePlayers); ++i) {
         const auto chosen = sdl_device(after[i]);
         if (!chosen || chosen == sdl_device(before[i])) {
             continue;
@@ -4708,9 +4725,15 @@ void MainWindow::WatchSteamPadInputs() {
 }
 
 void MainWindow::PollControllerActivity() {
-    WatchSteamPadInputs();
-    LearnBluetoothPads();
-    LearnValvePairs();
+    // (Telling controllers apart and their inputs are the automatic modes' alone: in the manual
+    // modes nothing here runs every 40ms)
+    const auto mode = Settings::values.controller_applet_mode.GetValue();
+    if (mode == Settings::AppletMode::ConsoleMode ||
+        mode == Settings::AppletMode::HandheldConsoleMode) {
+        WatchSteamPadInputs();
+        LearnBluetoothPads();
+        LearnValvePairs();
+    }
     // Input shows faster than the 250ms assignment tick: redraw only when who is active changes
     // (or while the hints and history animate)
     if (overlay_rows.empty()) {
@@ -5909,12 +5932,20 @@ void MainWindow::ApplyConsoleControllerMode() {
             // identity, so which reservation is whose cannot be known - but skipping them all
             // pushed returning pads behind the gaps (P2 and P3 left, came back as P5 and P6).
             // An ambiguous pad takes the lowest of those reservations, or a lower free slot,
-            // like a console filling the first open player.
+            // like a console filling the first open player - first one the game is paused
+            // for, if any (a lower one would leave the game paused).
+            const auto before = [&](int slot, int other) {
+                const bool waited = disconnect_paused.contains(slot);
+                if (waited != disconnect_paused.contains(other)) {
+                    return waited;
+                }
+                return slot < other;
+            };
             auto match = pad_slots.end();
             int matches = 0;
             for (auto it = pad_slots.begin(); it != pad_slots.end(); ++it) {
                 if (live.find(it->first) == live.end() && pad_identity[it->first] == ident) {
-                    if (match == pad_slots.end() || it->second < match->second) {
+                    if (match == pad_slots.end() || before(it->second, match->second)) {
                         match = it;
                     }
                     ++matches;
@@ -5925,7 +5956,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 // provably its own, and it takes the lowest one, like an ambiguous pad
                 for (auto it = pad_slots.begin(); it != pad_slots.end(); ++it) {
                     if (live.find(it->first) == live.end() &&
-                        (match == pad_slots.end() || it->second < match->second)) {
+                        (match == pad_slots.end() || before(it->second, match->second))) {
                         match = it;
                     }
                 }
@@ -5941,7 +5972,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                         break;
                     }
                 }
-                if (lowest_free < 0 || match->second < lowest_free) {
+                if (lowest_free < 0 || match->second < lowest_free ||
+                    disconnect_paused.contains(match->second)) {
                     LOG_INFO(Frontend,
                              "console-mode: ambiguous reclaim inst={} ident={} ({} candidates) "
                              "takes the lowest, slot {} from dead inst={}",
@@ -6077,6 +6109,9 @@ void MainWindow::ApplyConsoleControllerMode() {
             requests.swap(state.swap_requests);
         }
         for (const auto& [a, b] : requests) {
+            if (a < 0 || b < 0 || a >= ConsolePlayers || b >= ConsolePlayers || a == b) {
+                continue;
+            }
             u32 pad_a = 0;
             u32 pad_b = 0;
             for (const auto& [id, slot] : pad_slots) {
@@ -6093,11 +6128,15 @@ void MainWindow::ApplyConsoleControllerMode() {
             if (!pad_a && !pad_b) {
                 continue;
             }
-            if (pad_a) {
-                pad_slots[pad_a] = b;
-            }
-            if (pad_b) {
-                pad_slots[pad_b] = a;
+            // Everything on the two players changes places, the players held for controllers
+            // that left too: moving only the connected ones put one on a player still held for
+            // another, and both had it once that one came back
+            for (auto& [id, slot] : pad_slots) {
+                if (slot == a) {
+                    slot = b;
+                } else if (slot == b) {
+                    slot = a;
+                }
             }
             // (A swap is the user's say: a guess is settled)
             pad_guessed.erase(pad_a);
@@ -6324,6 +6363,13 @@ void MainWindow::ApplyConsoleControllerMode() {
                 device.Set("engine", "sdl");
                 device.Set("guid", binding->first);
                 device.Set("port", binding->second);
+                // A motion the set has from elsewhere (a DSU server: a handheld whose own gyro
+                // is wrong or missing) stays; only SDL motion is the device's to fill
+                const auto kept_motions = profile[set_index].motions;
+                const bool motion_kept =
+                    std::any_of(kept_motions.begin(), kept_motions.end(), [](const auto& m) {
+                        return !m.empty() && Common::ParamPackage{m}.Get("engine", "") != "sdl";
+                    });
                 want.buttons.fill({});
                 want.analogs.fill({});
                 want.motions.fill({});
@@ -6335,9 +6381,13 @@ void MainWindow::ApplyConsoleControllerMode() {
                      input_subsystem->GetAnalogMappingForDevice(device)) {
                     want.analogs[index] = param.Serialize();
                 }
-                for (const auto& [index, param] :
-                     input_subsystem->GetMotionMappingForDevice(device)) {
-                    want.motions[index] = param.Serialize();
+                if (motion_kept) {
+                    want.motions = kept_motions;
+                } else {
+                    for (const auto& [index, param] :
+                         input_subsystem->GetMotionMappingForDevice(device)) {
+                        want.motions[index] = param.Serialize();
+                    }
                 }
                 want.profile_name.clear();
                 // Kept as the set's mapping for the session: built again every tick, it asks
@@ -6351,8 +6401,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 if (defaulted.insert(id).second) {
                     LOG_INFO(Frontend,
                              "console-mode: P{} set has no controller mappings: inst={} "
-                             "gets its default mapping",
-                             set_index + 1, id);
+                             "gets its default mapping{}",
+                             set_index + 1, id, motion_kept ? " (its set's motion kept)" : "");
                 }
             }
             // Under Steam the virtual pad has no motion: take the paired real device's. The
@@ -6599,13 +6649,29 @@ void MainWindow::ApplyConsoleControllerMode() {
                     return true;
                 }
 #ifdef __linux__
+                // (BlueZ is asked without waiting, at most every half second a controller; its
+                // answer counts when it came after the player was left without one)
                 for (const auto& [id, slot] : pad_slots) {
                     if (slot != player || live.contains(id)) {
                         continue;
                     }
-                    if (const auto address = inst_address.find(id);
-                        address != inst_address.end() &&
-                        BluezConnected(address->second) == false) {
+                    const auto address = inst_address.find(id);
+                    if (address == inst_address.end()) {
+                        continue;
+                    }
+                    auto& known = bluez_connected[address->second];
+                    if (known.asked_ms == 0 || now_ms - known.asked_ms >= 500) {
+                        known.asked_ms = now_ms;
+                        AskBluezConnected(address->second, this,
+                                          [this, key = address->second](bool on) {
+                                              auto& entry = bluez_connected[key];
+                                              entry.connected = on;
+                                              entry.answered_ms =
+                                                  QDateTime::currentMSecsSinceEpoch();
+                                          });
+                    }
+                    if (!known.connected && known.answered_ms >=
+                                                waiting_since[static_cast<std::size_t>(player)]) {
                         return true;
                     }
                 }
@@ -6820,12 +6886,14 @@ void MainWindow::ApplyConsoleControllerMode() {
         overlay_rows.clear();
         std::erase_if(battery_read, [&](const auto& e) { return !live.contains(e.first); });
         // (A controller that leaves starts afresh when it connects again)
-        std::erase_if(bluez_first, [&](const auto& e) {
+        const auto left = [&](const std::string& key) {
             return std::none_of(live.begin(), live.end(), [&](const auto& pad) {
                 const auto address = inst_address.find(pad.first);
-                return address != inst_address.end() && address->second == e.first;
+                return address != inst_address.end() && address->second == key;
             });
-        });
+        };
+        std::erase_if(bluez_first, [&](const auto& e) { return left(e.first); });
+        std::erase_if(bluez_battery, [&](const auto& e) { return left(e.first); });
         std::erase_if(battery_whose, [&](const auto& e) { return !live.contains(e.first); });
         std::vector<Common::ControllerConsoleState::PlayerRow> tab_rows;
         // Flashes follow the controller behind a player, not just the player: in handheld mode
@@ -6978,7 +7046,28 @@ void MainWindow::ApplyConsoleControllerMode() {
                         found = BluetoothBattery(address->second);
                         source = "power supply";
                         if (!found) {
-                            found = BluezBattery(address->second);
+                            // (Asked without waiting: the last answer counts, and a new answer
+                            // has the battery read again at once)
+                            const std::string& key = address->second;
+                            auto& bluez = bluez_battery[key];
+                            if (bluez.asked_ms == 0 || now_ms - bluez.asked_ms >= 500) {
+                                bluez.asked_ms = now_ms;
+                                AskBluezBattery(key, this, [this, key](int percent) {
+                                    auto& entry = bluez_battery[key];
+                                    const bool moved = entry.percent != percent;
+                                    entry.percent = percent;
+                                    if (moved) {
+                                        for (const auto& [inst, at] : inst_address) {
+                                            if (at == key) {
+                                                battery_read[inst].first = 0;
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                            if (bluez.percent >= 0) {
+                                found = std::pair{bluez.percent, false};
+                            }
                             source = "bluez";
                             // A controller that just connected first reads 50% there (seen with
                             // Xbox controllers: their real charge came about 10 seconds later,
@@ -9379,7 +9468,21 @@ void MainWindow::OpenPerGameConfiguration(u64 title_id, const std::string& file_
         Settings::RestoreGlobalState(QtCommon::system->IsPoweredOn());
         return;
     } else if (result == QDialog::Accepted) {
+        // A console mode drives the running game's players at runtime: a game with its own
+        // controller config keeps its own in the file (the copy read at boot), as a global save
+        // keeps the user's (see SaveAllConfigValues), not the engine's Joy-Cons and profiles
+        std::optional<std::array<Settings::PlayerInput, 10>> engine_players;
+        if (console_profile && game_profiles && QtCommon::system->IsPoweredOn() &&
+            QtCommon::system->GetApplicationProcessProgramID() == title_id &&
+            !Settings::values.players.UsingGlobal()) {
+            auto& game_players = Settings::values.players.GetValue();
+            engine_players = game_players;
+            game_players = *game_profiles;
+        }
         dialog.ApplyConfiguration();
+        if (engine_players && !Settings::values.players.UsingGlobal()) {
+            Settings::values.players.GetValue() = *engine_players;
+        }
     }
 
     const auto reload = UISettings::values.is_game_list_reload_pending.exchange(false);

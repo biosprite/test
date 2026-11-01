@@ -743,6 +743,21 @@ private:
     /// (0 none), and the players a pause was for (resumed when they all have one again)
     std::array<qint64, 10> waiting_since{};
     std::set<int> disconnect_paused;
+    /// What BlueZ last said of a Bluetooth controller (by address): whether it is connected, and
+    /// when it was asked and answered (asked without waiting, see AskBluezConnected)
+    struct BluezConnection {
+        bool connected = true;
+        qint64 asked_ms = 0;
+        qint64 answered_ms = 0;
+    };
+    std::map<std::string, BluezConnection> bluez_connected;
+    /// What BlueZ last said of a Bluetooth controller's battery (by address; -1 nothing yet), and
+    /// when it was asked (asked without waiting, see AskBluezBattery)
+    struct BluezBattery {
+        int percent = -1;
+        qint64 asked_ms = 0;
+    };
+    std::map<std::string, BluezBattery> bluez_battery;
     /// The pause for a disconnect is about to come (its notice is drawn first)
     bool disconnect_pause_pending = false;
     /// The game was seen paused for it (pausing takes a moment: running before then is not a

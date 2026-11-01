@@ -645,12 +645,21 @@ void SDLDriver::HandleGameControllerEvent(const SDL_Event& event) {
         break;
     }
     case SDL_EVENT_JOYSTICK_AXIS_MOTION: {
-        // Half travel: a deliberate push, never resting drift
-        if (event.jaxis.value > 16384 || event.jaxis.value < -16384) {
+        // Half travel: a deliberate push, never resting drift. A trigger rests at one end of its
+        // range (its initial state, -32768 here), not in the middle: its half travel is past the
+        // middle, or every touch and every release back to rest would count.
+        Sint16 rest = 0;
+        const auto moved = GetSDLJoystickBySDLID(event.jaxis.which);
+        SDL_Joystick* const moved_js = moved ? moved->GetSDLJoystick() : nullptr;
+        const bool trigger =
+            moved_js && SDL_GetJoystickAxisInitialState(moved_js, event.jaxis.axis, &rest) &&
+            rest < -16384;
+        if (trigger ? event.jaxis.value > 0
+                    : event.jaxis.value > 16384 || event.jaxis.value < -16384) {
             MarkActivity(event.jaxis.which);
         }
-        if (const auto joystick = GetSDLJoystickBySDLID(event.jaxis.which)) {
-            const PadIdentifier identifier = joystick->GetPadIdentifier();
+        if (moved) {
+            const PadIdentifier identifier = moved->GetPadIdentifier();
             SetAxis(identifier, event.jaxis.axis, event.jaxis.value / 32767.0f);
         }
         break;
@@ -874,7 +883,9 @@ SDLDriver::SDLDriver(std::string input_engine_) : InputEngine(std::move(input_en
         if (Common::ControllerProbes()) {
             LOG_INFO(Input, "Steam Input bypassed: SDL opens every controller");
         }
-    } else {
+    } else if (automatic) {
+        // (Only for the automatic modes, which take the motion from them: in the manual modes
+        // nothing reads them, and SDL opening them next to Steam only gets in Steam's way)
         UnhideMotionControllers();
     }
     LogMotionHardware();

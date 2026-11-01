@@ -38,9 +38,10 @@ public:
                              vk::ShaderModule&& fragment_shader);
     ~WindowAdaptPass();
 
+    /// (With the overlay panels on top only where asked: the screen's, not a capture)
     void Draw(const Device& device, RasterizerVulkan& rasterizer, Scheduler& scheduler, size_t image_index,
               std::list<Layer>& layers, std::span<const Tegra::FramebufferConfig> configs,
-              const Layout::FramebufferLayout& layout, Frame* dst);
+              const Layout::FramebufferLayout& layout, Frame* dst, bool overlay_panels = false);
 
     VkDescriptorSetLayout GetDescriptorSetLayout();
     VkRenderPass GetRenderPass();
@@ -64,6 +65,12 @@ private:
     vk::Pipeline premultiplied_pipeline;
     vk::Pipeline coverage_pipeline;
 
+    // The overlay panels' own pipeline: the plain present shader, sampled pixel for pixel (they
+    // are drawn 1:1 on whole pixels; the scaling filter's shader would blur or ring their text)
+    vk::ShaderModule overlay_shader;
+    vk::Sampler overlay_sampler;
+    vk::Pipeline overlay_pipeline;
+
     // The overlay panels (common/overlay_panels.h): a straight-alpha quad each, composited on
     // top of the layers, for both the accelerated and the unaccelerated present paths.
     struct OverlayQuad {
@@ -74,6 +81,14 @@ private:
         VkExtent2D extent{};
         std::uint64_t version = 0;
         bool ready = false;
+        /// Where the panel's pixels are copied from: two, taken in turn, each written again only
+        /// once the GPU is past its last copy (by then two frames old: normally no wait at all)
+        std::array<vk::Buffer, 2> staging;
+        std::array<std::size_t, 2> staging_size{};
+        std::array<std::uint64_t, 2> staging_tick{};
+        std::size_t next_staging = 0;
+        /// The GPU tick that last drew the image: replaced only once the GPU is past it
+        std::uint64_t used_tick = 0;
     };
     std::array<OverlayQuad, Common::OverlayPanelCount> overlays;
 };

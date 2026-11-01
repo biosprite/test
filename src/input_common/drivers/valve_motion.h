@@ -4,7 +4,10 @@
 #pragma once
 
 #include <chrono>
+#include <atomic>
 #include <cstddef>
+#include <list>
+#include <memory>
 #include <map>
 #include <mutex>
 #include <set>
@@ -56,8 +59,16 @@ private:
     mutable std::mutex mutex;
     std::map<std::string, Device> devices;
     std::set<std::string> reading;
+    /// Nodes that couldn't be opened: tried again only once they are gone and back (else a new
+    /// reader every scan, every 2 seconds)
+    std::set<std::string> unreadable;
     std::size_t next_port{};
-    std::vector<std::jthread> readers;
+    /// The readers, with whether each is done (a done one is dropped at the next scan)
+    struct Reader {
+        std::shared_ptr<std::atomic_bool> done;
+        std::jthread thread;
+    };
+    std::list<Reader> readers;
     std::jthread scanner;
 };
 

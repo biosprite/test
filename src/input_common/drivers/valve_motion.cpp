@@ -97,7 +97,9 @@ void ValveMotion::Scan(std::stop_token stop) {
     namespace fs = std::filesystem;
     while (!stop.stop_requested()) {
         std::error_code error;
+        std::set<std::string> present;
         for (const auto& entry : fs::directory_iterator{"/sys/class/hidraw", error}) {
+            present.insert("/dev/" + entry.path().filename().string());
             std::ifstream uevent{entry.path() / "device" / "uevent"};
             unsigned bus = 0, vendor = 0, product = 0;
             for (std::string line; std::getline(uevent, line);) {
@@ -114,12 +116,23 @@ void ValveMotion::Scan(std::stop_token stop) {
             }
             const std::string path = "/dev/" + entry.path().filename().string();
             std::scoped_lock lock{mutex};
-            if (reading.insert(path).second) {
+            if (!unreadable.contains(path) && reading.insert(path).second) {
                 const std::size_t port = next_port++;
-                readers.emplace_back([this, path, port, product](std::stop_token reader_stop) {
-                    Read(reader_stop, path, port, static_cast<u16>(product));
-                });
+                auto done = std::make_shared<std::atomic_bool>(false);
+                readers.push_back(
+                    {done, std::jthread([this, path, port, product, done](std::stop_token s) {
+                         Read(s, path, port, static_cast<u16>(product));
+                         done->store(true);
+                     })});
             }
+        }
+        {
+            std::scoped_lock lock{mutex};
+            // (A node gone is tried again when it comes back; a finished reader is joined)
+            std::erase_if(unreadable, [&](const std::string& path) {
+                return !present.contains(path);
+            });
+            readers.remove_if([](const Reader& reader) { return reader.done->load(); });
         }
         for (int i = 0; i < 20 && !stop.stop_requested(); ++i) {
             std::this_thread::sleep_for(std::chrono::milliseconds{100});
@@ -135,6 +148,7 @@ void ValveMotion::Read(std::stop_token stop, std::string path, std::size_t port,
     if (fd < 0) {
         std::scoped_lock lock{mutex};
         reading.erase(path);
+        unreadable.insert(path);
         return;
     }
     const PadIdentifier identifier{.guid = Common::UUID{}, .port = port, .pad = 0};
