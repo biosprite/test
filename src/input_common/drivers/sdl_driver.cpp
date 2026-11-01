@@ -23,7 +23,6 @@
 #include "common/thread.h"
 #include "common/vector_math.h"
 #include "input_common/drivers/sdl_driver.h"
-#include "input_common/drivers/valve_motion.h"
 
 namespace InputCommon {
 
@@ -706,8 +705,8 @@ namespace {
 bool IsMotionController(unsigned vendor, unsigned product) {
     switch (vendor) {
     case 0x28DE:
-        // The Steam Deck only: SDL's driver would talk to a Steam Controller alongside Steam.
-        // Its motion comes from ValveMotion, which only listens.
+        // The Steam Deck only: SDL's driver would talk to a Steam Controller alongside Steam
+        // (Bypass Steam Input gives SDL Steam Controllers, motion included)
         return product == 0x1205;
     case 0x054C: // Sony
     case 0x057E: // Nintendo
@@ -820,9 +819,7 @@ void UnhideMotionControllers() {
             continue;
         }
         if (std::sscanf(entry.c_str(), "%x/%x", &vendor, &product) == 2 &&
-            IsMotionController(vendor, product) &&
-            // (Read by ValveMotion instead when it runs)
-            !(ValveMotion::Enabled() && vendor == 0x28DE && ValveMotion::Family(product) != 0)) {
+            IsMotionController(vendor, product)) {
             dropped += entry + ',';
             UnhiddenControllers().insert(vendor << 16 | product);
             {

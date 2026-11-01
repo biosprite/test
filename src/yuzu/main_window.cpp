@@ -189,7 +189,6 @@ static FileSys::VirtualFile VfsDirectoryCreateFileWrapper(const FileSys::Virtual
 // Input //
 #include "hid_core/frontend/emulated_controller.h"
 #include "hid_core/hid_core.h"
-#include "input_common/drivers/valve_motion.h"
 #include "input_common/drivers/virtual_amiibo.h"
 
 // Video Core //
@@ -2579,7 +2578,9 @@ QString ShortControllerName(SDL_JoystickID id, const QString& full) {
     if (vendor == 0x28DE && product == 0x1205) {
         return QStringLiteral("Steam Deck");
     }
-    if (vendor == 0x28DE && InputCommon::ValveMotion::Family(product) != 0) {
+    // (The Steam Controller and the Steam Controller (2026), wired or through a dongle)
+    if (vendor == 0x28DE && (product == 0x1102 || product == 0x1142 || product == 0x1302 ||
+                             product == 0x1304 || product == 0x1305)) {
         return QStringLiteral("Steam Controller");
     }
     switch (PadType(id)) {
@@ -2933,15 +2934,6 @@ void PadRumble(SDL_JoystickID id, Uint16 strength, Uint32 duration_ms) {
         SDL_RumbleGamepad(pad, strength, strength, duration_ms);
         SDL_CloseGamepad(pad);
     }
-}
-
-/// The motion of a Valve controller read directly (experimental reader), as a binding
-std::string ValveMotionParam(std::size_t port) {
-    Common::ParamPackage param;
-    param.Set("engine", "valvemotion");
-    param.Set("motion", 0);
-    param.Set("port", static_cast<int>(port));
-    return param.Serialize();
 }
 
 /// An SDL motion binding for a device, as InputCommon's auto-mapping builds it
@@ -4463,53 +4455,6 @@ void MainWindow::LearnBluetoothPads() {
 #endif
 }
 
-void MainWindow::LearnValvePairs() {
-    // Identical Valve controllers read directly: paired the same way, by a held button
-    const auto devices = input_subsystem
-                             ? input_subsystem->GetValveMotionDevices()
-                             : std::vector<InputCommon::InputSubsystem::ValveMotionDevice>{};
-    if (devices.size() < 2) {
-        return;
-    }
-    std::map<int, std::vector<std::size_t>> held_ports;
-    std::map<int, int> per_family;
-    for (const auto& device : devices) {
-        const int family = InputCommon::ValveMotion::Family(device.product);
-        ++per_family[family];
-        if (device.button_held) {
-            held_ports[family].push_back(device.port);
-        }
-    }
-    std::map<int, std::vector<std::string>> held_pads;
-    {
-        const JoystickApiLock lock;
-        int count = 0;
-        SDL_JoystickID* ids = SDL_GetGamepads(&count);
-        for (int i = 0; i < count; ++i) {
-            const u32 id = ids[i];
-            if (!IsSteamVirtualPad(id) || PadVendor(id) != 0x28DE) {
-                continue;
-            }
-            const int family = InputCommon::ValveMotion::Family(PadProduct(id));
-            if (family != 0 && per_family[family] > 1 && PadAnyButtonPressed(id)) {
-                held_pads[family].push_back(BluetoothKey(id));
-            }
-        }
-        SDL_free(ids);
-    }
-    for (const auto& [family, keys] : held_pads) {
-        const auto ports = held_ports.find(family);
-        if (keys.size() == 1 && ports != held_ports.end() && ports->second.size() == 1 &&
-            valve_pairs[keys.front()] != ports->second.front()) {
-            valve_pairs[keys.front()] = ports->second.front();
-            if (Common::ControllerProbes()) {
-                LOG_INFO(Frontend, "console-mode: {} paired with Valve port {} by a button press",
-                         keys.front(), ports->second.front());
-            }
-        }
-    }
-}
-
 #ifdef __linux__
 namespace {
 
@@ -4681,7 +4626,6 @@ void MainWindow::PollControllerActivity() {
         mode == Settings::AppletMode::HandheldConsoleMode) {
         WatchSteamPadInputs();
         LearnBluetoothPads();
-        LearnValvePairs();
     }
     // Redrawn faster than the 250ms tick, only when who is active changes or while animating
     if (overlay_rows.empty()) {
@@ -6314,46 +6258,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             // Under Steam the virtual pad has no motion: take the paired real device's (the Deck,
             // or the only one of a model)
             u32 motion_source = 0;
-            // Experimental: a Valve controller's motion read from its reports; identical ones
-            // pair by a button press (see LearnValvePairs)
-            std::optional<std::size_t> valve_port;
-            const auto valve_devices = input_subsystem->GetValveMotionDevices();
-            if (Common::SteamPadsInUse() && !valve_devices.empty()) {
-                const Uint16 vendor = is_builtin ? 0x28DE : PadVendor(id);
-                const Uint16 product = is_builtin ? 0x1205 : PadProduct(id);
-                const int family = vendor == 0x28DE ? InputCommon::ValveMotion::Family(product) : 0;
-                std::vector<std::size_t> ports;
-                for (const auto& device : valve_devices) {
-                    if (family != 0 && InputCommon::ValveMotion::Family(device.product) == family) {
-                        ports.push_back(device.port);
-                    }
-                }
-                const auto virtuals = std::count_if(live.begin(), live.end(), [&](const auto& e) {
-                    return PadVendor(e.first) == 0x28DE &&
-                           InputCommon::ValveMotion::Family(PadProduct(e.first)) ==
-                               family;
-                });
-                const auto paired = valve_pairs.find(BluetoothKey(id));
-                if (ports.size() == 1 && (is_builtin || virtuals == 1)) {
-                    valve_port = ports.front();
-                } else if (paired != valve_pairs.end() &&
-                           std::find(ports.begin(), ports.end(), paired->second) != ports.end()) {
-                    valve_port = paired->second;
-                }
-            }
-            // (Probes: logged when it changes, like the real device's below; port + 1, 0 none)
-            const std::size_t valve_logged = valve_port ? *valve_port + 1 : 0;
-            if (valve_logged != logged_valve_port[slot]) {
-                logged_valve_port[slot] = valve_logged;
-                if (Common::ControllerProbes()) {
-                    LOG_INFO(Frontend, "console-mode: P{} motion from {}", slot + 1,
-                             valve_port ? fmt::format("Valve controller port {}", *valve_port)
-                                        : std::string{"no Valve controller"});
-                }
-            }
-            if (valve_port) {
-                want.motions.fill(ValveMotionParam(*valve_port));
-            } else if (Common::SteamPadsInUse()) {
+            if (Common::SteamPadsInUse()) {
                 const Uint16 vendor = is_builtin ? 0x28DE : PadVendor(id);
                 const Uint16 product = is_builtin ? 0x1205 : PadProduct(id);
                 const auto same_model = [vendor, product](u32 other) {
@@ -6379,9 +6284,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                              slot + 1, motion_source);
                 }
             }
-            if (valve_port) {
-                // (Set above)
-            } else if (motion_source) {
+            if (motion_source) {
                 if (const auto source = input_subsystem->GetSDLBinding(motion_source)) {
                     want.motions.fill(SdlMotionParam(source->first, source->second));
                 }

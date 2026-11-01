@@ -47,7 +47,6 @@
 #include "common/controller_console_state.h"
 #include "common/fs/path_util.h"
 #include "common/settings.h"
-#include "input_common/drivers/valve_motion.h"
 #include "qt_common/config/uisettings.h"
 #include "yuzu/configuration/configure_player_assignment.h"
 #include "yuzu/configuration/input_profiles.h"
@@ -640,56 +639,12 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
     steam_layout->addWidget(steam_switch, 0, Qt::AlignVCenter);
     original_bypass = Settings::values.console_bypass_steam.GetValue();
     steam_switch->setChecked(original_bypass);
-    // (Bypass and the reader exclude each other: turning one on turns the other off)
     connect(steam_switch, &QAbstractButton::toggled, this, [this](bool on) {
         Settings::values.console_bypass_steam.SetValue(on);
-        if (on && reader_switch) {
-            reader_switch->setChecked(false);
-        }
         UpdateModeUi();
     });
 
-    // Experimental (Linux): Valve controllers' motion read from their reports, so SDL never
-    // talks to them
-    auto* reader_layout = new QHBoxLayout();
-    reader_layout->setContentsMargins(0, 6, 0, 0);
-    auto* reader_text = new QVBoxLayout();
-    reader_text->setSpacing(1);
-    auto* reader_title =
-        new QLabel(tr("Read Valve Controllers Directly (Experimental)"), steam_box);
-    reader_title->setFont(title_font);
-    auto* reader_note = new QLabel(
-        tr("Reads the motion of the Steam Deck and the Steam Controller (2026) straight from "
-           "the controller, so nothing competes with Steam for them. If a Steam Controller's "
-           "motion doesn't work this way, use Bypass Steam Input. Turns Bypass Steam Input off, "
-           "and the other way round."),
-        steam_box);
-    reader_note->setWordWrap(true);
-    reader_note->setObjectName(QStringLiteral("note"));
-    reader_text->addWidget(reader_title);
-    reader_text->addWidget(reader_note);
-    reader_layout->addLayout(reader_text, 1);
-    reader_switch = new ToggleSwitch(steam_box);
-    reader_switch->setToolTip(tr("On: Eden reads Valve controllers' motion directly"));
-    reader_layout->addWidget(reader_switch, 0, Qt::AlignVCenter);
-    steam_column->addLayout(reader_layout);
     steam_column->addWidget(steam_restart);
-    original_reader = Settings::values.console_valve_reader.GetValue();
-    // (Both on in an old config: Bypass wins, as in the engine)
-    reader_switch->setChecked(original_reader && !original_bypass);
-    connect(reader_switch, &QAbstractButton::toggled, this, [this](bool on) {
-        Settings::values.console_valve_reader.SetValue(on);
-        if (on) {
-            steam_switch->setChecked(false);
-        }
-        UpdateModeUi();
-    });
-#ifndef __linux__
-    // (Linux only)
-    reader_title->setVisible(false);
-    reader_note->setVisible(false);
-    reader_switch->setVisible(false);
-#endif
     layout->addWidget(steam_box);
 
     // Assign Handheld Controller: declare the handheld's own controller (that mode only)
@@ -982,7 +937,6 @@ ConfigurePlayerAssignment::~ConfigurePlayerAssignment() {
         Settings::values.console_button_labels.SetValue(original_labels);
         Settings::values.console_pause_disconnect.SetValue(original_pause);
         Settings::values.console_player_lights.SetValue(original_lights);
-        Settings::values.console_valve_reader.SetValue(original_reader);
     }
 }
 
@@ -1027,11 +981,8 @@ void ConfigurePlayerAssignment::UpdateModeUi() {
     // (Bypass Steam Input: only under Steam; applies to a Modern Console start)
     steam_panel->setVisible(handler_group->checkedId() == HandlerModern &&
                             Common::RunningUnderSteam());
-    // (The reader only runs without Bypass Steam Input)
-    const bool reader_wanted = reader_switch->isChecked() && !steam_switch->isChecked();
     steam_restart->setVisible(steam_switch->isChecked() !=
-                                  Common::GetControllerConsoleState().steam_bypassed ||
-                              reader_wanted != InputCommon::ValveMotion::Enabled());
+                              Common::GetControllerConsoleState().steam_bypassed);
     manual_panel->setVisible(handler_group->checkedId() == HandlerManual);
     // Only the automatic modes have live players to show
     const bool automatic = IsAutomatic(selected);

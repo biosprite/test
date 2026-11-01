@@ -102,9 +102,6 @@ private:
     bool original_pause = false;
     QAbstractButton* lights_switch = nullptr;
     bool original_lights = true;
-    /// Read Valve Controllers Directly (experimental), in the same card
-    QAbstractButton* reader_switch = nullptr;
-    bool original_reader = false;
     QLabel* mode_info = nullptr;
     QWidget* display_box = nullptr;
     QWidget* about_box = nullptr;

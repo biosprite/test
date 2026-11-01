@@ -224,10 +224,6 @@ struct Values {
     /// Under Steam: Eden reads the real controllers instead of Steam's virtual ones. At startup.
     SwitchableSetting<bool> console_bypass_steam{linkage, false, "console_bypass_steam",
                                                  Category::LibraryApplet};
-    /// Experimental, under Steam: read Valve controllers' motion from their raw reports. At
-    /// startup.
-    SwitchableSetting<bool> console_valve_reader{linkage, false, "console_valve_reader",
-                                                 Category::LibraryApplet};
     /// Modern Console: when a game only takes Joy-Cons, controllers act as Joy-Cons
     SwitchableSetting<bool> console_joycon_auto{linkage, true, "console_joycon_auto",
                                                 Category::LibraryApplet};

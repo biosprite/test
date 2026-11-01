@@ -613,12 +613,6 @@ private:
         std::chrono::steady_clock::time_point at;
     };
     std::optional<LoneInput> last_lone_input;
-    /// Experimental reader: Steam's pads paired with the Valve controllers read directly (by
-    /// port), for identical ones told apart by a button press
-    std::map<std::string, std::size_t> valve_pairs;
-    /// Each player's Valve controller port as last logged (port + 1, 0 none)
-    std::array<std::size_t, 10> logged_valve_port{};
-    void LearnValvePairs();
     /// connection instance -> stable identity (serial, else model GUID), to match a returning pad
     std::map<u32, std::string> pad_identity;
     /// identity -> the binding set the controller carries, so its mappings follow it

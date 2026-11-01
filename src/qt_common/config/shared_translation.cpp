@@ -41,7 +41,6 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
     INSERT(Settings, console_history_gaps, QString(), QString());
     INSERT(Settings, console_debug_probes, QString(), QString());
     INSERT(Settings, console_bypass_steam, QString(), QString());
-    INSERT(Settings, console_valve_reader, QString(), QString());
     INSERT(Settings, console_joycon_auto, tr("Use any controller as Joy-Cons"),
            tr("When the game only takes Joy-Cons, controllers act as Joy-Cons."));
     INSERT(Settings, console_pause_disconnect, tr("Pause when a controller disconnects"),
