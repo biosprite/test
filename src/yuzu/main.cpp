@@ -11,6 +11,7 @@
 
 #ifndef _WIN32
 #include <sys/resource.h>
+#else
 #include <QScreen>
 #endif
 
