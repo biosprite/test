@@ -92,12 +92,11 @@ If you are on Windows and prefer to use Clang:
 cmake -S . -B build -GNinja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl
 ```
 
-If you are on macOS and prefer to use the Homebrew clang build:
+If you are on macOS, you **must** use Homebrew's Clang, as Apple Clang is unsupported:
 
 ```sh
 cmake -S . -B build -GNinja -DCMAKE_C_COMPILER="$(brew --prefix llvm)/bin/clang" -DCMAKE_CXX_COMPILER="$(brew --prefix llvm)/bin/clang++"
 ```
-
 
 </details>
 

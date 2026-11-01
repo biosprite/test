@@ -1,13 +1,16 @@
 # Dependencies
 
-To build Eden, you MUST have a C++ compiler. Clang 17+ and GCC 15+ are supported.
+To build Eden, you MUST have a C++ compiler. Clang 19+ and GCC 15+ are supported.
 
 - On Linux, this is usually GCC or Clang. Install it through your distribution's package manager.
 - On Windows, you have two options:
   - Install [Visual Studio](https://visualstudio.microsoft.com/downloads) and select `Desktop development with C++` and `C++ Clang tools for Windows`. You will need to set your C/C++ compiler to `clang-cl`.
-    - You may also use the default MSVC frontend if you install Visual Studio 2022 (not 2026).
+    - The default MSVC frontend might work for 2026 and newer, but it's completely untested and unsupported.
+    - You must also ensure that your CMake version is >= 4.4.0 in this scenario.
   - Install [MSYS2](https://msys2.org) and use Clang or GCC. UCRT64 and CLANGARM64 are the only two supported environments for now.
-- On macOS, the officially supported method is to use [Homebrew](https://brew.sh)'s Clang (`brew install llvm`), but the default AppleClang (`xcode-select --install`) will work as well.
+- On macOS, you must use [Homebrew](https://brew.sh)'s Clang (`brew install llvm`).
+  - The default Apple Clang (`xcode-select --install`) is currently incompatible.
+  - This is because Apple Clang does not currently support C++20 modules. It's currently unknown when/if it will ever support modules, so for now stick to Homebrew.
 
 The following additional tools are also required:
 
