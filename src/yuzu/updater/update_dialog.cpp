@@ -225,8 +225,22 @@ void UpdateDialog::Download() {
         progress->setMaximum(100);
         progress->show();
 
+        // WARNING
+        // close() sets wasCanceled to true, this is not documented but it WILL mess with callback
+        // functions like this one!
         const auto extracted = QtCommon::Compress::extractDir(QString::fromStdString(absFilename.string()),
                                        qstaging, progress_callback);
+
+        if (progress->wasCanceled()) {
+            progress->close();
+
+            QtCommon::Frontend::Information(
+                tr("Extraction cancelled"),
+                tr("Extraction was cancelled by the user."));
+
+            fs::remove_all(stagingDir, ec);
+            return;
+        }
 
         progress->close();
 
@@ -366,11 +380,17 @@ bool UpdateDialog::downloadFile(
         LOG_ERROR(Frontend, "URL {} download cancelled by user", url);
 
         if (path) {
-            std::error_code ec;
-            std::filesystem::remove_all(path.value());
+            try {
+                file.flush();
+                file.close();
+
+                std::error_code ec;
+                std::filesystem::remove_all(path.value());
+            } catch (...) {
+            }
         }
 
-        QtCommon::Frontend::Critical(
+        QtCommon::Frontend::Information(
             tr("Download cancelled"),
             tr("Download was cancelled by the user."));
         return false;
