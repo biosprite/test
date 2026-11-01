@@ -6050,8 +6050,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // Profiles picked in the Controls page: their mappings go on the set the player's
-    // controller carries (part of the user's own setup, so they are kept), on its device
+    // Profiles picked in the Controls page go on the set the player's controller carries
     {
         std::vector<Common::ControllerConsoleState::ProfileRequest> picks;
         {
@@ -6122,21 +6121,14 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // Each live pad's player gets that pad's binding set, pointed at the pad. The slot map
-    // alone is not the routing: the profile binds player N to whatever (guid, port) it was
-    // mapped with, and the driver's ports follow attach order with freed ports reused - so a
-    // slot's pad and the pad that drives the player drifted apart (P1 kept the deck while
-    // the Xbox pad sat on a dead P2). The sets come from the user's own profile and follow
-    // the pad, not the slot: the handheld's own pad carries player one's set (its gyro too,
-    // even when that is a DSU server rather than SDL) to whatever slot it sits on; an
-    // external pad takes its slot's set, minus the handheld's non-SDL motion, plus its own
-    // SDL gyro when it has one and the set has no motion. A pad the driver has not opened
-    // yet is retried next tick.
+    // Each live pad's player gets the pad's binding set, pointed at the pad (bindings address
+    // pads by guid and port, which follow attach order, so the slot map alone isn't the
+    // routing). The handheld's own pad carries player one's set; an external pad its own set,
+    // without the handheld's non-SDL motion, plus its SDL gyro when the set has no motion.
     slot_set = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
-    // Use Any Controller as Joy-Cons: a game that doesn't take Pro Controllers (party modes with
-    // one Joy-Con each, say) gets Joy-Cons. Dual Joy-Cons first (the same buttons, nothing moves),
-    // else a single one held sideways. Only a Pro Controller player is changed, and put back when
-    // the game allows it again; a type set by hand is left alone.
+    // Use Any Controller as Joy-Cons: a game that doesn't take Pro Controllers gets Dual
+    // Joy-Cons, else a single one held sideways. Only a Pro Controller player is changed (and
+    // put back), never a type set by hand.
     {
         std::optional<Core::HID::NpadStyleTag> supported;
         if (QtCommon::system && QtCommon::system->IsPoweredOn() &&
@@ -6212,10 +6204,8 @@ void MainWindow::ApplyConsoleControllerMode() {
             }
             const int slot = it->second;
             const bool is_builtin = builtin_valid && id == builtin_match_id;
-            // The set's key: a Bluetooth controller's address (its bindings and profile follow
-            // it through reconnects, Turn Off and corrected guesses: Steam's handles follow the
-            // connection order), else its identity. A set made before the address was known
-            // moves to it.
+            // The set's key: a Bluetooth controller's address (so its set follows it through
+            // reconnects), else its identity; a set made before the address is known moves to it
             const auto address = inst_address.find(id);
             const std::string set_key =
                 address != inst_address.end() ? "bt:" + address->second : ident;
@@ -6227,8 +6217,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 // (Lent to it on a reclaim, until its address was known)
                 pad_sets.erase(ident);
             }
-            // A controller carries the set it first got for the session: its slot's, unless
-            // another controller has that one (after a swap), then the first set nobody has
+            // A controller keeps the set it first got: its slot's, else the first set nobody has
             if (!is_builtin && !pad_sets.contains(set_key)) {
                 std::set<int> taken;
                 for (const auto& [other, set] : pad_sets) {
@@ -6246,8 +6235,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                     LOG_INFO(Frontend, "console-mode: inst={} carries the P{} set", id, set + 1);
                 }
             }
-            // A set with no controller mappings (no profile picked and nothing remapped this
-            // session) gives the pad its own default mapping, below
+            // A set with no controller mappings gives the pad its default mapping, below
             const auto has_sdl = [](const Settings::PlayerInput& p) {
                 return std::any_of(p.buttons.begin(), p.buttons.end(), [](const std::string& b) {
                     return !b.empty() && Common::ParamPackage{b}.Get("engine", "") == "sdl";
@@ -6256,11 +6244,9 @@ void MainWindow::ApplyConsoleControllerMode() {
             const int set_index = is_builtin ? 0 : pad_sets[set_key];
             slot_set[slot] = set_index;
             Settings::PlayerInput want = players[slot];
-            // A set holding only the own default mapping (no profile, nothing remapped) of a
-            // controller that is gone is rebuilt for this one: that controller's buttons and
-            // motion aren't this one's (an Xbox pad's mapping has no gyro, nor the Deck's back
-            // buttons). (Not while that controller is still connected: identical ones without an
-            // address share a set, and would take turns rebuilding it.)
+            // A set holding only a gone controller's default mapping is rebuilt for this one (an
+            // Xbox pad's has no gyro or back buttons). Not while that controller is connected:
+            // identical ones without an address share a set.
             const u32 defaults_of = set_default_of[static_cast<std::size_t>(set_index)];
             const bool others_defaults = defaults_of != 0 && defaults_of != id &&
                                          !live.contains(defaults_of) &&
@@ -6278,14 +6264,12 @@ void MainWindow::ApplyConsoleControllerMode() {
                 want.profile_name = own.profile_name;
                 RouteSdlBindings(want, binding->first, binding->second);
             } else {
-                // No controller mappings to carry: the controller gets its own default
-                // mapping, for this session
+                // No controller mappings: the controller's default mapping, for this session
                 Common::ParamPackage device;
                 device.Set("engine", "sdl");
                 device.Set("guid", binding->first);
                 device.Set("port", binding->second);
-                // A motion the set has from elsewhere (a DSU server: a handheld whose own gyro
-                // is wrong or missing) stays; only SDL motion is the device's to fill
+                // A DSU server's motion stays; only SDL motion is the device's to fill
                 const auto kept_motions = profile[set_index].motions;
                 const bool motion_kept =
                     std::any_of(kept_motions.begin(), kept_motions.end(), [](const auto& m) {
@@ -6312,9 +6296,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                     }
                 }
                 want.profile_name.clear();
-                // Kept as the set's mapping for the session: built again every tick, it asks
-                // the device for its sensors each time and comes out different once a game
-                // polls them, rewriting the player (and reloading the input) four times a second
+                // Kept for the session: rebuilt every tick, it would differ once a game polls the
+                // sensors and reload the input four times a second
                 auto& own = SessionSet(set_index);
                 own.buttons = want.buttons;
                 own.analogs = want.analogs;
@@ -6328,13 +6311,11 @@ void MainWindow::ApplyConsoleControllerMode() {
                              set_index + 1, id, motion_kept ? " (its set's motion kept)" : "");
                 }
             }
-            // Under Steam the virtual pad has no motion: take the paired real device's. The
-            // deck's own controller is unique (28DE:1205); another model pairs when only one
-            // of it is connected (the virtual pad reports the real controller's ids).
+            // Under Steam the virtual pad has no motion: take the paired real device's (the Deck,
+            // or the only one of a model)
             u32 motion_source = 0;
-            // Experimental: a Valve controller's motion read from its own reports, with no SDL
-            // device (Steam keeps it). The Deck, or the only one of its model, pairs as is;
-            // identical ones pair by a button press (see LearnValvePairs).
+            // Experimental: a Valve controller's motion read from its reports; identical ones
+            // pair by a button press (see LearnValvePairs)
             std::optional<std::size_t> valve_port;
             const auto valve_devices = input_subsystem->GetValveMotionDevices();
             if (Common::SteamPadsInUse() && !valve_devices.empty()) {
@@ -6412,9 +6393,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                         }
                     }
                 }
-                // (Also the handheld's own pad: its set may have been an external's until now,
-                // with that controller's mapping and no motion, when it was the external that
-                // played as player one)
+                // (The handheld's own pad too: its set may have been an external's)
                 const bool no_motion = std::all_of(want.motions.begin(), want.motions.end(),
                                                    [](const std::string& m) { return m.empty(); });
                 if (no_motion && PadHasGyro(id)) {
@@ -6422,8 +6401,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
             }
             auto& player = players[slot];
-            // A single Joy-Con held sideways for a game that only takes Joy-Cons (set above,
-            // never by hand): the buttons and stick arranged to fit
+            // A single sideways Joy-Con (set above): the buttons and stick arranged to fit
             const bool sideways =
                 joycon_auto_set[static_cast<std::size_t>(slot)] &&
                 (player.controller_type == Settings::ControllerType::RightJoycon ||
@@ -6432,8 +6410,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 BindSidewaysJoyCon(want,
                                    player.controller_type == Settings::ControllerType::RightJoycon);
             } else if (Settings::values.console_button_labels.GetValue() && !IsNintendoPad(id)) {
-                // Button Layout by label: an Xbox or PlayStation style controller's A is the
-                // Switch's A (the bindings go by position: its bottom button is the Switch's B)
+                // Button Layout by label: the controller's A is the Switch's A
                 using namespace Settings::NativeButton;
                 std::swap(want.buttons[A], want.buttons[B]);
                 std::swap(want.buttons[X], want.buttons[Y]);
@@ -6454,8 +6431,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // The configuration follows identity: a pad that left keeps its reservation, so it
-    // reclaims its own player when it returns. Only the leaving player is deactivated.
+    // Only the players with a live pad are connected
     for (int i = 0; i < static_cast<int>(players.size()); ++i) {
         bool want = false;
         for (const auto& [id, ident] : live) {
@@ -6471,8 +6447,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // Keyboard and mouse are the manual modes': a game running with no controller is told
-    // so, once per game
+    // A game running with no controller is told so once (keyboard and mouse are Manual's)
     {
         const bool running = QtCommon::system && QtCommon::system->IsPoweredOn();
         const bool any_player = std::any_of(players.begin(), players.end(),
@@ -6519,8 +6494,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // The activation contract: a live pad holds at most one slot, slots stay in range and
-    // never collide. If this ever logs, the engine has a real bug and the log is the proof.
+    // A live pad holds at most one slot, in range, never shared: if this logs, it's a bug
     {
         std::set<int> seen_slots;
         for (const auto& [id, slot] : pad_slots) {
@@ -6535,11 +6509,9 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // Pause When a Controller Disconnects: a player whose controller left (its player held for it)
-    // and didn't come back within 3 seconds pauses the game; it resumes when every player the
-    // pause was for has a controller again (and only if it is still this pause), or when + is
-    // pressed on another controller: then those players are let go (their controllers join
-    // as new players if they come back)
+    // Pause When a Controller Disconnects: a player whose controller left and didn't come back
+    // within 3 seconds pauses the game; it resumes when they all have a controller again, or
+    // with + on another controller (those players are then let go)
     {
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         for (int i = 0; i < static_cast<int>(players.size()) && i < 10; ++i) {
@@ -6574,8 +6546,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             handheld_was_playing;
         const bool running =
             emulation_running && QtCommon::emu_thread && QtCommon::emu_thread->IsRunning();
-        // (Pausing takes a moment: only once the game was seen paused does running again mean
-        // it was resumed by hand)
+        // (Pausing takes a moment: running again counts as a resume by hand only once seen paused)
         if (!disconnect_paused.empty() && !running && !disconnect_pause_pending) {
             disconnect_pause_seen = true;
         }
@@ -6588,17 +6559,15 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
         if (Settings::values.console_pause_disconnect.GetValue() && running &&
             !disconnect_pause_pending) {
-            // A disconnect that is surely real pauses at once: the player's controller turned
-            // off with Turn Off, or one Bluetooth says is no longer connected (turned off, out
-            // of battery or range). Any other waits 3 seconds: Steam drops and adds back its
-            // pads for a moment now and then.
+            // A disconnect that is surely real (Turn Off, or BlueZ says disconnected) pauses at
+            // once; any other waits 3 seconds, as Steam briefly drops its pads now and then
             const auto surely_gone = [&](int player) {
                 if (now_ms - turned_off_at[static_cast<std::size_t>(player)] < 5000) {
                     return true;
                 }
 #ifdef __linux__
-                // (BlueZ is asked without waiting, at most every half second a controller; its
-                // answer counts when it came after the player was left without one)
+                // (BlueZ is asked without waiting, at most every half second; an answer counts if
+                // it came after the controller left)
                 for (const auto& [id, slot] : pad_slots) {
                     if (slot != player || live.contains(id)) {
                         continue;
@@ -6635,11 +6604,9 @@ void MainWindow::ApplyConsoleControllerMode() {
                     gone.insert(i);
                 }
             }
-            // A handover: the handheld's own controls took a player an external controller held
-            // until now (its controller left: the handheld plays when no external is
-            // connected). The game pauses until someone picks the handheld up or reconnects.
-            // (Whichever player the external controller held: after + went on without P1, the
-            // last one to leave was P2's, and the handheld takes P1)
+            // A handover: the last external controller left (whichever player it held) and the
+            // handheld's controls took over. Paused until someone picks the handheld up or
+            // reconnects.
             int handover = -1;
             const bool externals_left =
                 std::any_of(was_external.begin(), was_external.end(), [](bool b) { return b; }) &&
@@ -6702,8 +6669,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                                        "controller to go on without %1")
                                         .arg(who),
                      true});
-                // A paused game shows its last frame, and the overlay is drawn into frames:
-                // the notice is drawn first, and the game paused a moment later
+                // The overlay is drawn into frames: the notice first, the pause a moment later
                 RenderControllerOverlay();
                 disconnect_pause_pending = true;
                 disconnect_pause_seen = false;
@@ -6723,8 +6689,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                         return e.second == player && live.contains(e.first);
                     });
                 });
-            // A handover goes on when an external controller took the player back, or at a
-            // press on the handheld, once let go (so the game never sees it)
+            // A handover goes on when an external controller takes the player back, or at a
+            // press on the handheld (once let go, so the game never sees it)
             if (handover_paused >= 0) {
                 const u32 at = holder[static_cast<std::size_t>(handover_paused)];
                 all_back = at != 0 && !on_handheld(at);
@@ -6775,8 +6741,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // Player Lights: each controller shows its player on its player lights and light bar, in the
-    // player's colour. Not while Steam handles the controllers (even bypassed): Steam sets them.
+    // Player Lights: each controller shows its player in the player's colour (not under Steam,
+    // which sets them)
     if (Settings::values.console_player_lights.GetValue() &&
         !(Common::RunningUnderSteam() && Common::GetControllerConsoleState().steam_pads_present)) {
         std::erase_if(lights_player, [&](const auto& e) { return !live.contains(e.first); });
@@ -6804,8 +6770,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // A player the game doesn't take: its controller type is not among the ones the game
-    // supports (a classic "the controller does nothing"). Always logged, once per change.
+    // A player whose controller type the game doesn't support: logged once per change
     if (QtCommon::system && QtCommon::system->IsPoweredOn()) {
         auto& hid = QtCommon::system->HIDCore();
         const auto supported = hid.GetSupportedStyleTag();
@@ -6837,20 +6802,16 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // The debug overlay is rendered INTO the presented frame (see UpdateRawImage in the
-    // present path): a Qt window can never composite over the game surface in gamescope,
-    // so the text is drawn here and alpha-blended into the frame before the GPU copy.
+    // The controller overlay is drawn into the presented frame (as an overlay panel): no Qt
+    // window can composite over the game under gamescope
     {
-        // One row per player: it pops in green when its pad connects, turns red when the
-        // pad leaves and then goes. Blue (input held) is RenderControllerOverlay's, which also
-        // runs on the fast activity timer. The name drops InputCommon's port number, which
-        // shifts whenever Steam moves a controller to another virtual pad.
+        // One row per player: green when its pad connects, red when it leaves, then gone. The
+        // name drops InputCommon's port number, which shifts as Steam moves controllers.
         constexpr qint64 flash_ms = 1500;
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
         static const QRegularExpression port_number{QStringLiteral(" \\d+(?=( \\(Steam\\))?$)")};
         static const QRegularExpression steam_suffix{QStringLiteral(" \\(Steam\\)$")};
-        // A player's controller as named: its own name ("Xbox One Controller", without Steam's
-        // tag), or the name given to it with its short name ("John (Xbox)")
+        // A controller's name, or the one given to it with its short name ("John (Xbox)")
         const auto name_key = [&](u32 pad) {
             if (builtin_valid && pad == builtin_match_id) {
                 return std::string{"handheld"};
@@ -6860,8 +6821,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             }
             return "id:" + live[pad];
         };
-        // Names given from the Controllers tab: they belong to the controller (its swaps,
-        // reconnects and Turn Off follow it; Bluetooth ones and the handheld's own are kept)
+        // Names given from the Controllers tab belong to the controller
         {
             std::vector<std::pair<int, std::string>> renames;
             {
@@ -6900,9 +6860,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         std::erase_if(bluez_battery, [&](const auto& e) { return left(e.first); });
         std::erase_if(battery_whose, [&](const auto& e) { return !live.contains(e.first); });
         std::vector<Common::ControllerConsoleState::PlayerRow> tab_rows;
-        // Flashes follow the controller behind a player, not just the player: in handheld mode
-        // P1 stays connected while the controller behind it changes. Green when a controller
-        // takes a player; red when one leaves, then green if another takes its place at once.
+        // Flashes follow the controller behind a player (in handheld mode P1 stays connected
+        // while it changes): green when one takes a player, red when one leaves
         for (int i = 0; i < static_cast<int>(players.size()); ++i) {
             u32 pad = 0;
             for (const auto& [id, slot] : pad_slots) {
@@ -6935,9 +6894,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                     }
                 }
                 const auto given = controller_names.find(name_key(pad));
-                // Handheld Console: the controller that took P1 from the handheld's own controls
-                // (they step aside while others are connected) carries the handheld's name when
-                // it has none of its own: it is the same person, docked
+                // Handheld Console: the controller that took P1 from the handheld's controls
+                // carries the handheld's name when it has none (the same person, docked)
                 const auto handed = controller_names.find("handheld");
                 const bool inherits = given == controller_names.end() && i == 0 && handheld &&
                                       builtin_valid && pad != builtin_match_id &&
@@ -6975,9 +6933,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                     }
                 }
                 overlay_row_ident[i] = live[pad];
-                // The input history's: the controller's own, even where identical controllers
-                // share an identity (launched without Steam: their model's GUID), by its
-                // address, else its connection too when another pad has the same identity
+                // The input history's key: the controller's own (its address, else its
+                // connection too when identical controllers share an identity)
                 std::string history_key = name_key(pad);
                 if (history_key.starts_with("id:") &&
                     std::any_of(live.begin(), live.end(), [&](const auto& entry) {
@@ -7012,18 +6969,14 @@ void MainWindow::ApplyConsoleControllerMode() {
             if (flash != 0 && gone == 0 && green_at == 0 && now_ms - flash_since >= flash_ms) {
                 flash = 0;
             }
-            // Its controller's battery: a Bluetooth controller's own (by address), the handheld's
-            // own controls run on the system's, else what SDL knows (never for Steam's virtual
-            // pads, which have no battery: what SDL reports there is not the controller's). Read
-            // every 10 seconds; every 2 while a controller's address gives none yet (a
-            // controller that just connected is read by Linux a few seconds later), every 1 while
-            // BlueZ's first value settles.
+            // The controller's battery: by its Bluetooth address, the system's for the handheld's
+            // own controls, else SDL's (never a Steam virtual pad's). Read every 10 seconds, more
+            // often while a new controller's value settles.
             Battery battery;
             if (pad) {
                 auto& read = battery_read[pad];
-                // Whose reading it is: Steam reshuffles its virtual pads, so a pad can be another
-                // controller from one moment to the next (the deck's own, then an Xbox
-                // controller): another one is read afresh
+                // Whose reading it is: Steam reshuffles its pads, so another controller is read
+                // afresh
                 const bool own = builtin_valid && pad == builtin_match_id;
                 const std::string whose = (own ? "handheld:" : "") + BluetoothKey(pad);
                 if (auto& was = battery_whose[pad]; was != whose) {
@@ -7050,8 +7003,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                         found = BluetoothBattery(address->second);
                         source = "power supply";
                         if (!found) {
-                            // (Asked without waiting: the last answer counts, and a new answer
-                            // has the battery read again at once)
+                            // (Asked without waiting: a new answer triggers a reread)
                             const std::string& key = address->second;
                             auto& bluez = bluez_battery[key];
                             if (bluez.asked_ms == 0 || now_ms - bluez.asked_ms >= 500) {
@@ -7073,10 +7025,9 @@ void MainWindow::ApplyConsoleControllerMode() {
                                 found = std::pair{bluez.percent, false};
                             }
                             source = "bluez";
-                            // A controller that just connected first reads 50% there (seen with
-                            // Xbox controllers: their real charge came about 10 seconds later,
-                            // also when they connected just before Eden started): a first 50%
-                            // counts once it changes, or after 12 seconds
+                            // BlueZ first reads 50% for a new controller (the real charge
+                            // comes about 10 seconds later): a first 50% counts once it changes,
+                            // or after 12 seconds
                             if (found) {
                                 // (By controller: Steam reshuffling its pads is no new connection)
                                 const auto [first, added] =
@@ -7101,8 +7052,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                     if (found) {
                         fresh = {found->first, found->second, false};
                     }
-                    // (Its address gives none yet, or BlueZ's first value is still settling: read
-                    // again sooner, every second while it settles)
+                    // (No value yet, or BlueZ's first one settling: read again sooner)
                     const qint64 read_at = settling                ? now_ms - 9'000
                                            : by_address && !found ? now_ms - 8'000
                                                                    : now_ms;
@@ -7183,8 +7133,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         return;
     }
     // Reloaded whether a game runs or not: the Controls tab reads the players back from the
-    // emulated controllers, so stale ones (the last state of a stopped game) would be written
-    // over the players when it opens, and taken for the user's edits when it closes
+    // emulated controllers, and stale ones would be taken for the user's edits
     if (QtCommon::system) {
         QtCommon::system->HIDCore().ReloadInputDevices();
     }
@@ -9026,9 +8975,8 @@ void MainWindow::HideFullscreen() {
 }
 
 void MainWindow::FitToScreenUnderGamescope(QWidget* window) {
-    // Under gamescope (Steam's Game Mode) a window is scaled to fit the screen together with
-    // any tooltip or popup reaching past it, so a window smaller than the screen grows and
-    // shrinks as they come and go. Filling the screen keeps them inside it.
+    // Under gamescope a window is scaled to fit together with any tooltip reaching past it, so
+    // a smaller window grows and shrinks on hover: filling the screen keeps them inside
     if (!qEnvironmentVariableIsSet("GAMESCOPE_WAYLAND_DISPLAY") &&
         qgetenv("XDG_CURRENT_DESKTOP") != "gamescope") {
         return;
@@ -9160,10 +9108,8 @@ void MainWindow::OnConfigure() {
     const auto old_language_index = Settings::values.language_index.GetValue();
     const bool old_gamemode = UISettings::values.enable_gamemode.GetValue();
 
-    // Taken before the dialog exists: building its Controls tab already writes the players.
-    // The copy in use, not the global one: during a game the tab shows the live players
-    // (from the emulated controllers), while the global copy still holds the routing from
-    // before the game booted - a device comparison against that would invent swaps.
+    // Taken before the dialog exists (its Controls tab writes the players), from the copy in
+    // use: during a game the global copy holds stale routing, which would invent swaps
     const auto players_before = Settings::values.players.GetValue();
     Settings::SetConfiguringGlobal(true);
     ConfigureDialog configure_dialog(this, hotkey_registry, input_subsystem.get(),
@@ -9472,9 +9418,8 @@ void MainWindow::OpenPerGameConfiguration(u64 title_id, const std::string& file_
         Settings::RestoreGlobalState(QtCommon::system->IsPoweredOn());
         return;
     } else if (result == QDialog::Accepted) {
-        // A console mode drives the running game's players at runtime: a game with its own
-        // controller config keeps its own in the file (the copy read at boot), as a global save
-        // keeps the user's (see SaveAllConfigValues), not the engine's Joy-Cons and profiles
+        // A game with its own controller config keeps its own in the file, not the engine's
+        // runtime players (as a global save does, see SaveAllConfigValues)
         std::optional<std::array<Settings::PlayerInput, 10>> engine_players;
         if (console_profile && game_profiles && QtCommon::system->IsPoweredOn() &&
             QtCommon::system->GetApplicationProcessProgramID() == title_id &&
