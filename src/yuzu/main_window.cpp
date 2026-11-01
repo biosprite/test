@@ -2027,8 +2027,16 @@ struct SteamSlot {
 std::optional<SteamSlot> SteamSlotOf(SDL_JoystickID id);
 
 QString PadName(SDL_JoystickID id) {
-    if (const auto slot = SteamSlotOf(id); slot && !slot->name.isEmpty()) {
+    // (Steam names the Deck's own controls with a translation key,
+    // "#SettingsController_SteamController": not a name to show)
+    const auto slot = SteamSlotOf(id);
+    if (slot && !slot->name.isEmpty() && !slot->name.startsWith(QLatin1Char('#'))) {
         return slot->name;
+    }
+    const Uint16 vendor = slot ? slot->vendor : SDL_GetJoystickVendorForID(id);
+    const Uint16 product = slot ? slot->product : SDL_GetJoystickProductForID(id);
+    if (vendor == 0x28DE && product == 0x1205) {
+        return QStringLiteral("Steam Deck");
     }
     const JoystickApiLock lock;
     SDL_Joystick* js = SDL_OpenJoystick(id);
@@ -4226,8 +4234,11 @@ bool MainWindow::HandleOverlayMouse(QEvent* event) {
         RenderControllerOverlay();
         return false;
     }
+    // (The pointer moving with no button held comes as a hover move: the render window gets mouse
+    // moves only while a button is held)
+    const bool hover_move = type == QEvent::HoverMove;
     if (type != QEvent::MouseButtonPress && type != QEvent::MouseMove &&
-        type != QEvent::MouseButtonRelease) {
+        type != QEvent::MouseButtonRelease && !hover_move) {
         return false;
     }
     bool shown = false;
@@ -4257,7 +4268,7 @@ bool MainWindow::HandleOverlayMouse(QEvent* event) {
     };
     const auto* mouse = static_cast<QMouseEvent*>(event);
     // The row under the mouse shows its buttons (not while one is dragged)
-    if (type == QEvent::MouseMove && !overlay_dragging) {
+    if ((type == QEvent::MouseMove || hover_move) && !overlay_dragging) {
         int hover = row_at(at);
         if (hover >= 0 &&
             std::none_of(overlay_rows.begin(), overlay_rows.end(),
@@ -4268,6 +4279,9 @@ bool MainWindow::HandleOverlayMouse(QEvent* event) {
             overlay_hover_player = hover;
             RenderControllerOverlay();
         }
+    }
+    if (hover_move) {
+        return false; // (the rest is the press, drag and release's)
     }
     // A button acts on its press; its release is the overlay's too
     if (overlay_button_down && type == QEvent::MouseButtonRelease) {
@@ -5408,9 +5422,14 @@ void MainWindow::ApplyConsoleControllerMode() {
                 display = QStringLiteral("Nintendo Switch Pro Controller");
                 break;
             default:
-                display = slot->name;
+                display = slot->name.startsWith(QLatin1Char('#')) ? PadName(id) : slot->name;
                 break;
             }
+        }
+        // (Steam's names can be translation keys, "#SettingsController_SteamController" for the
+        // Deck's own controls: not a name to show)
+        if (display.startsWith(QLatin1Char('#'))) {
+            display = PadName(id);
         }
         return std::pair<QString, QString>{display, PadName(id)};
     };
@@ -6714,6 +6733,10 @@ void MainWindow::ApplyConsoleControllerMode() {
         for (std::size_t i = 0; i < holder.size(); ++i) {
             held_by_external[i] = holder[i] != 0 && !on_handheld(holder[i]);
         }
+        const bool handheld_took_over =
+            !std::exchange(handheld_was_playing,
+                           std::any_of(holder.begin(), holder.end(), on_handheld)) &&
+            handheld_was_playing;
         const bool running =
             emulation_running && QtCommon::emu_thread && QtCommon::emu_thread->IsRunning();
         // (Pausing takes a moment: only once the game was seen paused does running again mean
@@ -6780,10 +6803,17 @@ void MainWindow::ApplyConsoleControllerMode() {
             // A handover: the handheld's own controls took a player an external controller held
             // until now (its controller left: the handheld plays when no external is
             // connected). The game pauses until someone picks the handheld up or reconnects.
+            // (Whichever player the external controller held: after + went on without P1, the
+            // last one to leave was P2's, and the handheld takes P1)
             int handover = -1;
-            if (gone.empty() && disconnect_paused.empty()) {
+            const bool externals_left =
+                std::any_of(was_external.begin(), was_external.end(), [](bool b) { return b; }) &&
+                std::none_of(held_by_external.begin(), held_by_external.end(),
+                             [](bool b) { return b; });
+            if (gone.empty() && disconnect_paused.empty() && externals_left &&
+                handheld_took_over) {
                 for (std::size_t i = 0; i < holder.size() && handover < 0; ++i) {
-                    if (on_handheld(holder[i]) && was_external[i]) {
+                    if (on_handheld(holder[i])) {
                         handover = static_cast<int>(i);
                     }
                 }

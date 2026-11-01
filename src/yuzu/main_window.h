@@ -754,6 +754,9 @@ private:
     int handover_paused = -1;
     bool handover_pressed = false;
     std::array<bool, 10> held_by_external{};
+    /// Whether the handheld's own controls held a player at the last tick (a handover is only
+    /// when they take one: in Modern Console they may have played all along)
+    bool handheld_was_playing = false;
     /// What BlueZ last said of a Bluetooth controller (by address): whether it is connected, and
     /// when it was asked and answered (asked without waiting, see AskBluezConnected)
     struct BluezConnection {
