@@ -36,7 +36,6 @@
 #endif
 
 #ifdef _WIN32
-#include <QScreen>
 #include <QSettings>
 #include <windows.h>
 #include "common/windows/timer_resolution.h"
