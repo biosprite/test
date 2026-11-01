@@ -39,7 +39,7 @@ Loader::ResultStatus ProgramMetadata::Load(VirtualFile file) {
 
     // Load acid_file_access per-component instead of the entire struct, since this struct does not
     // reflect the layout of the real data.
-    std::size_t current_offset = acid_header.fac_offset;
+    std::size_t current_offset = npdm_header.acid_offset + acid_header.fac_offset;
     if (sizeof(FileAccessControl::version) != file->ReadBytes(&acid_file_access.version,
                                                               sizeof(FileAccessControl::version),
                                                               current_offset)) {
@@ -57,7 +57,7 @@ Loader::ResultStatus ProgramMetadata::Load(VirtualFile file) {
     }
 
     // Load aci_file_access per-component instead of the entire struct, same as acid_file_access
-    current_offset = aci_header.fah_offset;
+    current_offset = npdm_header.aci_offset + aci_header.fah_offset;
     if (sizeof(FileAccessHeader::version) != file->ReadBytes(&aci_file_access.version,
                                                              sizeof(FileAccessHeader::version),
                                                              current_offset)) {
