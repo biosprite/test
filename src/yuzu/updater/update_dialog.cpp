@@ -226,16 +226,15 @@ void UpdateDialog::Download() {
         const auto extracted = QtCommon::Compress::extractDir(QString::fromStdString(absFilename.string()),
                                        qstaging, progress_callback);
 
-        if (extracted.empty()) {
-            LOG_ERROR(Frontend, "Extracted no files from {}, staging={}", absFilename.string(), stagingDir.string());
+        if (extracted.empty() || !extracted.contains(QStringLiteral("eden.exe"))) {
+            LOG_ERROR(Frontend, "Extracted no valid files from {}, staging={}", absFilename.string(), stagingDir.string());
 
             QtCommon::Frontend::Critical(tr("Failed to extract downloaded file"),
-                                         tr("No files were successfully extracted from %1.")
+                                         tr("No valid files were successfully extracted from %1.")
                                              .arg(QString::fromStdString(absFilename.string())));
 
             progress->close();
             return;
-
         }
 
         // ...then run a small updater shim
@@ -299,7 +298,7 @@ void UpdateDialog::Download() {
 }
 
 bool UpdateDialog::downloadFile(
-    std::string& data, const std::string &url, std::optional<std::filesystem::path> path,
+    std::string& write_data, const std::string &url, std::optional<std::filesystem::path> path,
     QtCommon::Frontend::QtProgressDialog *progress) {
     std::function<bool(std::string_view, intptr_t)> on_data;
 
@@ -313,8 +312,8 @@ bool UpdateDialog::downloadFile(
         file = std::ofstream(path->string(), std::ios::out | std::ios::binary);
 
         // write file in chunks
-        on_data = [&data, filename, &file](std::string_view t_data, intptr_t) {
-            data += t_data;
+        on_data = [&write_data, filename, &file](std::string_view t_data, intptr_t) {
+            write_data += t_data;
 
             try {
                 file.write(t_data.data(), t_data.size());
@@ -332,8 +331,8 @@ bool UpdateDialog::downloadFile(
     } else {
         LOG_INFO(Frontend, "Downloading {}", url);
 
-        on_data = [&data](std::string_view t_data, intptr_t) {
-            data += t_data;
+        on_data = [&write_data](std::string_view t_data, intptr_t) {
+            write_data += t_data;
             return true;
         };
     }
@@ -355,7 +354,7 @@ bool UpdateDialog::downloadFile(
                  cpr::ConnectTimeout{std::chrono::seconds{10}});
 
     if (progress->wasCanceled()) {
-        LOG_ERROR(Frontend, "URL {} download canceled by user", url);
+        LOG_ERROR(Frontend, "URL {} download cancelled by user", url);
 
         if (path) {
             std::error_code ec;

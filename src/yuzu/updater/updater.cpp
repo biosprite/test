@@ -100,7 +100,7 @@ int main(int argc, char** argv) {
     }
 
     // spawn new proc and leave
-    // TODO(crueter); configurable exe name?
+    // TODO(crueter): configurable exe name?
     namespace bp = boost::process::v2;
     const auto exe = fs::path{app_dir} / "eden.exe";
 
