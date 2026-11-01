@@ -114,8 +114,8 @@ void WindowAdaptPass::Draw(const Device& device, RasterizerVulkan& rasterizer, S
             quad.version = 0;
         }
         if (quad.version != overlay_frame.version) {
-            // Copied through one of the panel's staging buffers, recorded before this frame's
-            // draw: only that buffer's last copy is waited for, never the whole GPU
+            // Copied through one of the panel's two staging buffers: only that buffer's last
+            // copy is waited for, never the whole GPU
             const std::size_t k = quad.next_staging;
             quad.next_staging ^= 1;
             scheduler.Wait(quad.staging_tick[k]);

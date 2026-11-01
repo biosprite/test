@@ -65,8 +65,8 @@ private:
     vk::Pipeline premultiplied_pipeline;
     vk::Pipeline coverage_pipeline;
 
-    // The overlay panels' own pipeline: the plain present shader, sampled pixel for pixel (they
-    // are drawn 1:1 on whole pixels; the scaling filter's shader would blur or ring their text)
+    // The overlay panels' own pipeline: the plain present shader, pixel for pixel (the scaling
+    // filter's shader would blur their text)
     vk::ShaderModule overlay_shader;
     vk::Sampler overlay_sampler;
     vk::Pipeline overlay_pipeline;
@@ -81,8 +81,8 @@ private:
         VkExtent2D extent{};
         std::uint64_t version = 0;
         bool ready = false;
-        /// Where the panel's pixels are copied from: two, taken in turn, each written again only
-        /// once the GPU is past its last copy (by then two frames old: normally no wait at all)
+        /// Staging buffers, used in turn: each is written again only once the GPU is past its
+        /// last copy (normally no wait)
         std::array<vk::Buffer, 2> staging;
         std::array<std::size_t, 2> staging_size{};
         std::array<std::uint64_t, 2> staging_tick{};

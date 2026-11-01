@@ -21,9 +21,9 @@ enum class OverlayAnchor {
     TopRight,
 };
 
-/// An image drawn over the game, inside the presented frame itself so it is visible inside
-/// gamescope (Steam's Game Mode): a Qt widget can never composite over the game window. The
-/// frontend fills it (RGBA8, via QPainter) and the presenter blends it in last.
+/// An image drawn over the game inside the presented frame, so it also shows under gamescope,
+/// where no Qt widget can composite over the game. The frontend fills it (RGBA8); the presenter
+/// blends it in last.
 struct OverlayPanel {
     std::mutex mutex;
     std::vector<u8> pixels; ///< RGBA8, width * height * 4
@@ -34,7 +34,7 @@ struct OverlayPanel {
     u64 version = 0;
     OverlayAnchor anchor = OverlayAnchor::TopLeft;
     /// A top-anchored panel sits this share of the screen's height lower (clear of other
-    /// overlays, such as a performance overlay, in the corner)
+    /// overlays in the corner)
     float drop = 0.0f;
 };
 
@@ -73,10 +73,9 @@ struct OverlayRect {
     float height;
 };
 
-/// Where a panel goes on a screen area (left, top, right, bottom): the one placement both the
-/// presenter and the frontend's mouse handling use. Whole pixels: between two, the image's
-/// edge would be filtered with what lies outside it (a dark line). Read with the panel's mutex
-/// held.
+/// Where a panel goes on a screen area (left, top, right, bottom), for both the presenter and
+/// the mouse handling. Whole pixels, or the image's edge blends into a dark line. Call with the
+/// panel's mutex held.
 [[nodiscard]] inline OverlayRect PlaceOverlayPanel(const OverlayPanel& panel, float left,
                                                    float top, float right, float bottom) {
     constexpr float margin = 4.0f;
@@ -90,10 +89,8 @@ struct OverlayRect {
     return {std::floor(x), std::floor(y), width, height};
 }
 
-/// The width a panel against the top left has on a screen area this wide before it reaches
-/// the panels shown against the top right, as they are now (a panel that grows, such as the
-/// controllers' input history, stops short of them). Takes the other panels' mutexes: never
-/// call it with one held.
+/// The width a top-left panel has before it reaches the panels shown at the top right. Takes
+/// the other panels' mutexes: never call it with one held.
 [[nodiscard]] inline float OverlayRoomTopLeft(float screen_width) {
     constexpr float margin = 4.0f;
     constexpr float apart = 8.0f;
