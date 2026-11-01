@@ -107,8 +107,8 @@ void ValveMotion::Scan(std::stop_token stop) {
                     std::sscanf(line.c_str() + 7, "%x:%x:%x", &bus, &vendor, &product);
                 }
             }
-            // The Steam Deck and the Steam Controller (2026); the original Steam Controller was
-            // never tried (its report layout stays below for when it can be tested)
+            // The Steam Deck and the Steam Controller (2026); the original Steam Controller is
+            // untested
             const int family = Family(static_cast<u16>(product));
             if (vendor != VendorValve ||
                 (family != FamilyDeck && family != FamilyController26)) {
@@ -204,8 +204,7 @@ void ValveMotion::Read(std::stop_token stop, std::string path, std::size_t port,
                      product, port, path);
         }
 
-        // As SDL reads them (2000 deg/s and 2 g full scale), in the units and axes Eden's SDL
-        // motion has: rotations per second, and g
+        // SDL's scales (2000 deg/s, 2 g), in Eden's units: rotations per second, and g
         constexpr float gyro_scale = 2000.0f / 360.0f / 32768.0f;
         constexpr float accel_scale = 2.0f / 32768.0f;
         BasicMotion motion{};
@@ -239,8 +238,7 @@ void ValveMotion::Read(std::stop_token stop, std::string path, std::size_t port,
         }
 
         // Silent (Steam keeps the sensors off unless its layout uses the gyro): ask for them,
-        // motion setting only, at most every 2 seconds. A live gyro is never exactly still, and
-        // a controller may keep its accelerometer on with the gyro off.
+        // at most every 2 seconds. A live gyro is never exactly still.
         silent = (zero || gyro_zero) ? silent + 1 : 0;
         if (silent >= 50 && now - last_request > std::chrono::seconds{2}) {
             last_request = now;
@@ -267,7 +265,7 @@ void ValveMotion::Read(std::stop_token stop, std::string path, std::size_t port,
         last_sample = now;
     }
     ::close(fd);
-    // (Only a controller interface was a device: the keyboard and mouse ones never were)
+    // (Only controller interfaces are devices, not the keyboard and mouse ones)
     if (known) {
         LOG_INFO(Input, "Valve controller port {} gone ({})", port, path);
     }

@@ -16,14 +16,11 @@
 
 namespace Common {
 
-/// The state shared between the console-mode engine (in the main window, ticking at
-/// 250ms) and its settings UI (the Controllers tab in Controls): which pads are live, which
-/// one is the handheld's own, the assigned players, the "identify" handshake and swap
-/// requests. The UI reads and declares; the engine observes and obeys.
+/// State shared between the console-mode engine (in the main window) and the Controllers tab:
+/// the UI reads and requests, the engine applies on its next tick.
 struct ControllerConsoleState {
     std::mutex mutex;
-    /// Live pads as (display name, identity): first the ones that could be a handheld's
-    /// controls, then the standalone controllers (a handheld's controls can pose as one)
+    /// Live pads as (display name, identity): possible handheld controls first
     std::vector<std::pair<std::string, std::string>> pads;
     /// How many of `pads` could be a handheld's controls (the first ones)
     std::size_t builtin_pads = 0;
@@ -40,17 +37,14 @@ struct ControllerConsoleState {
         int flash;    ///< 0 none, 1 green (a controller took the player), 2 red (one left)
         long long flash_since; ///< ms since epoch; the flash blinks for 1.5 seconds from here
         std::string profile;   ///< the input profile the player's controller carries ("" none)
-        /// Its Bluetooth controller can be turned off: 0 no (not Bluetooth), 1 not yet (several
-        /// of its model, until a button press tells them apart), 2 yes
+        /// Turn Off: 0 not Bluetooth, 1 not yet (identical ones not told apart), 2 yes
         int turn_off = 0;
-        /// The player its controller started as (-1: this one), and whether its player was a
-        /// guess on a reconnect
+        /// The player its controller started as (-1: this one); a reconnect's guessed player
         int origin = -1;
         bool guessed = false;
         /// The name given to its controller ("" none): `name` is then "Name (Xbox)"
         std::string custom_name;
-        /// Its controller's battery: percent (-1 unknown), charging, and wired (no battery to
-        /// show, or plugged in)
+        /// Battery percent (-1 unknown), charging, wired
         int battery = -1;
         bool charging = false;
         bool wired = false;
@@ -66,36 +60,29 @@ struct ControllerConsoleState {
     bool builtin_remove_request = false;
     /// The removed controller auto-detect leaves alone, by name ("" when not connected)
     std::string handheld_blocked_name;
-    /// Swaps requested from the settings and the overlay, as (player a, player b); the engine
-    /// applies them
-    /// on its next tick, for this session only (the saved controller setup is untouched)
+    /// Swaps requested from the settings and the overlay, for this session only
     std::vector<std::pair<int, int>> swap_requests;
-    /// Players whose Bluetooth controller is to be turned off (disconnected): it sits out until
-    /// it reconnects, and the player is free for the next controller to connect
+    /// Players whose Bluetooth controller is to be turned off; the player is freed
     std::vector<int> remove_requests;
     /// Names given to players' controllers from the Controllers tab ("" takes it off)
     std::vector<std::pair<int, std::string>> rename_requests;
     /// Players whose controller the Controllers tab asked to rumble (a click on its row)
     std::vector<int> rumble_requests;
-    /// An input profile picked for a player: the engine puts the profile's mappings on the set
-    /// the player's controller carries. No name takes the profile off: `restore` puts back the
-    /// mappings the set had before this session's first profile, else only the name goes.
+    /// An input profile picked for a player, put on its controller's set. No name takes it off
+    /// (`restore`: the set's mappings from before this session's first profile come back).
     struct ProfileRequest {
         int player;
         std::string name;
         bool restore = false;
     };
     std::vector<ProfileRequest> profile_requests;
-    /// Bypass Steam Input took effect at startup: SDL has every controller, and the engine
-    /// leaves Steam's virtual pads alone (as launched outside Steam)
+    /// Bypass Steam Input took effect at startup: SDL opens the real controllers
     std::atomic<bool> steam_bypassed{false};
-    /// Whether Steam's virtual pads are around (none when Steam Input is off for Eden), and
-    /// the controller models Steam hid that Eden opened again for their motion (vendor << 16 |
-    /// product): only those are motion sources; any other real controller plays
+    /// Whether Steam's virtual pads are around, and the models Steam hid that Eden opened again
+    /// for their motion (vendor << 16 | product)
     std::atomic<bool> steam_pads_present{false};
     std::set<unsigned> steam_hidden_models;
-    /// Bumped whenever the engine reloads the emulated controllers (a swap, a pad arriving or
-    /// leaving): the Controls page refreshes its player tabs from them when it changes
+    /// Bumped when the engine reloads the emulated controllers: the player tabs refresh
     unsigned long long generation = 0;
 };
 
@@ -112,16 +99,14 @@ struct ControllerConsoleState {
     return launched;
 }
 
-/// True when Steam Input's virtual pads are the players: under Steam, without Bypass Steam
-/// Input, while Steam's pads are around. Otherwise (a direct launch, bypassed, or Steam Input
-/// off for Eden) the real controllers are, and everything works as launched outside Steam.
+/// True when Steam Input's virtual pads are the players: under Steam, not bypassed, with
+/// Steam's pads around. Otherwise the real controllers are, as outside Steam.
 [[nodiscard]] inline bool SteamPadsInUse() {
     const auto& state = GetControllerConsoleState();
     return RunningUnderSteam() && !state.steam_bypassed && state.steam_pads_present;
 }
 
-/// True for a controller model Steam hid that Eden opened again for its motion (a motion source
-/// next to its virtual pad, never a player)
+/// True for a controller model Steam hid that Eden opened again for its motion (never a player)
 [[nodiscard]] inline bool SteamHidModel(unsigned vendor, unsigned product) {
     auto& state = GetControllerConsoleState();
     std::scoped_lock lock{state.mutex};

@@ -34,22 +34,19 @@ public:
     /// Whether the reader runs this session (decided at startup)
     [[nodiscard]] static bool Enabled();
 
-    /// A Valve controller being read: its port in this engine, its device and product, whether
-    /// a button is held (to tell identical controllers apart) and whether its motion arrives
+    /// A Valve controller being read; a held button tells identical controllers apart
     struct Device {
         std::size_t port{};
         std::string path;
         u16 product{};
         bool button_held{};
         bool moving{};
-        /// Its last report: a dongle's slot stays open when its controller turns off, and a
-        /// device that stopped reporting is no longer one
+        /// Its last report: a dongle's slot stays open after its controller turns off
         std::chrono::steady_clock::time_point seen{};
     };
     [[nodiscard]] std::vector<Device> GetDevices() const;
 
-    /// The product family of a Valve controller (the Deck, the Steam Controller or the Steam
-    /// Controller (2026), whatever its connection), 0 for others
+    /// The product family of a Valve controller, whatever its connection; 0 for others
     [[nodiscard]] static int Family(u16 product);
 
 private:
@@ -59,8 +56,7 @@ private:
     mutable std::mutex mutex;
     std::map<std::string, Device> devices;
     std::set<std::string> reading;
-    /// Nodes that couldn't be opened: tried again only once they are gone and back (else a new
-    /// reader every scan, every 2 seconds)
+    /// Nodes that couldn't be opened: tried again only once they are gone and back
     std::set<std::string> unreadable;
     std::size_t next_port{};
     /// The readers, with whether each is done (a done one is dropped at the next scan)
