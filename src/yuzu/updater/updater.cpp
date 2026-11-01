@@ -109,8 +109,6 @@ int main(int argc, char** argv) {
         return 7;
     }
 
-    std::println("Moved everything, read to go {}", exe.string());
-
     try {
         boost::asio::io_context ctx;
         bp::process child(ctx, exe.string(), {});
