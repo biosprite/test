@@ -1971,6 +1971,34 @@ struct JoystickApiLock {
     }
 };
 
+/// Calls `use` with the pad opened as a joystick for the call (under the lock); `fallback` when it
+/// can't be opened
+template <typename T, typename Use>
+T WithJoystick(SDL_JoystickID id, T fallback, Use&& use) {
+    const JoystickApiLock lock;
+    SDL_Joystick* js = SDL_OpenJoystick(id);
+    if (!js) {
+        return fallback;
+    }
+    T result = use(js);
+    SDL_CloseJoystick(js);
+    return result;
+}
+
+/// Calls `use` with the pad opened as a gamepad for the call (under the lock); `fallback` when it
+/// can't be opened
+template <typename T, typename Use>
+T WithGamepad(SDL_JoystickID id, T fallback, Use&& use) {
+    const JoystickApiLock lock;
+    SDL_Gamepad* pad = SDL_OpenGamepad(id);
+    if (!pad) {
+        return fallback;
+    }
+    T result = use(pad);
+    SDL_CloseGamepad(pad);
+    return result;
+}
+
 /// A pad's stable identity: its hardware serial when it reports one, else its model GUID (which
 /// two pads can share: slots are keyed by connection, this only matches returning pads)
 std::string PadIdentity(SDL_JoystickID id) {
@@ -2025,15 +2053,10 @@ QString PadName(SDL_JoystickID id) {
     if (vendor == 0x28DE && product == 0x1205) {
         return QStringLiteral("Steam Deck");
     }
-    const JoystickApiLock lock;
-    SDL_Joystick* js = SDL_OpenJoystick(id);
-    if (!js) {
-        return QStringLiteral("?");
-    }
-    const char* name = SDL_GetJoystickName(js);
-    QString out = name ? QString::fromUtf8(name) : QStringLiteral("?");
-    SDL_CloseJoystick(js);
-    return out;
+    return WithJoystick(id, QStringLiteral("?"), [](SDL_Joystick* js) {
+        const char* name = SDL_GetJoystickName(js);
+        return name ? QString::fromUtf8(name) : QStringLiteral("?");
+    });
 }
 
 /// True for Steam Input's virtual pads, whose GUID and serial aren't stable (Steam re-binds them)
@@ -2043,29 +2066,20 @@ bool IsSteamVirtualPad(SDL_JoystickID id) {
     }
     // Every virtual pad's GUID carries Valve's vendor (0x28DE, bytes 4-5); the name isn't
     // usable (one pad shows as "SteamDeck" and "Xbox" in a session)
-    const JoystickApiLock lock;
-    SDL_Joystick* js = SDL_OpenJoystick(id);
-    if (!js) {
-        return false;
-    }
-    const SDL_GUID guid = SDL_GetJoystickGUID(js);
-    SDL_CloseJoystick(js);
     // Valve makes real controllers too: the virtual gamepad product (0x11FF, bytes 8-9) marks them
-    return guid.data[4] == 0xDE && guid.data[5] == 0x28 && guid.data[8] == 0xFF &&
-           guid.data[9] == 0x11;
+    return WithJoystick(id, false, [](SDL_Joystick* js) {
+        const SDL_GUID guid = SDL_GetJoystickGUID(js);
+        return guid.data[4] == 0xDE && guid.data[5] == 0x28 && guid.data[8] == 0xFF &&
+               guid.data[9] == 0x11;
+    });
 }
 
 /// The OS device node of a pad (e.g. /dev/input/event5); empty where unsupported
 QString PadPath(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Joystick* js = SDL_OpenJoystick(id);
-    if (!js) {
-        return {};
-    }
-    const char* path = SDL_GetJoystickPath(js);
-    QString out = path ? QString::fromUtf8(path) : QString{};
-    SDL_CloseJoystick(js);
-    return out;
+    return WithJoystick(id, QString{}, [](SDL_Joystick* js) {
+        const char* path = SDL_GetJoystickPath(js);
+        return path ? QString::fromUtf8(path) : QString{};
+    });
 }
 
 /// A pad's slot as Steam says now (nothing outside Steam's pads); reread when Steam writes it
@@ -2345,35 +2359,51 @@ bool RealButtonHeld(const RealController& controller) {
     return false;
 }
 
-/// Asks BlueZ whether a controller is connected, without waiting: `answer` gets it on the GUI
+/// A controller's BlueZ object paths, one per Bluetooth adapter
+QStringList BluezDevicePaths(const std::string& address) {
+    QString device = QString::fromStdString(address).toUpper();
+    device.replace(QLatin1Char(':'), QLatin1Char('_'));
+    QStringList paths;
+    const QDir adapters{QStringLiteral("/sys/class/bluetooth")};
+    for (const QString& adapter : adapters.entryList({QStringLiteral("hci*")}, QDir::AllEntries)) {
+        if (!adapter.contains(QLatin1Char(':'))) { // (hci0:12 is a connection, not an adapter)
+            paths.push_back(QStringLiteral("/org/bluez/%1/dev_%2").arg(adapter, device));
+        }
+    }
+    return paths;
+}
+
+/// Asks BlueZ for a property of a controller without waiting: `answer` gets it on the GUI
 /// thread (while `context` lives), or never
-void AskBluezConnected(const std::string& address, QObject* context,
-                       std::function<void(bool)> answer) {
+void AskBluezProperty(const std::string& address, const QString& interface,
+                      const QString& property, QObject* context,
+                      std::function<void(const QVariant&)> answer) {
     QDBusConnection bus = QDBusConnection::systemBus();
     if (!bus.isConnected()) {
         return;
     }
-    QString device = QString::fromStdString(address).toUpper();
-    device.replace(QLatin1Char(':'), QLatin1Char('_'));
-    const QDir adapters{QStringLiteral("/sys/class/bluetooth")};
-    for (const QString& adapter : adapters.entryList({QStringLiteral("hci*")}, QDir::AllEntries)) {
-        if (adapter.contains(QLatin1Char(':'))) {
-            continue; // a connection's entry (hci0:12), not an adapter
-        }
+    for (const QString& path : BluezDevicePaths(address)) {
         QDBusMessage get = QDBusMessage::createMethodCall(
-            QStringLiteral("org.bluez"), QStringLiteral("/org/bluez/%1/dev_%2").arg(adapter, device),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        get << QStringLiteral("org.bluez.Device1") << QStringLiteral("Connected");
+            QStringLiteral("org.bluez"), path, QStringLiteral("org.freedesktop.DBus.Properties"),
+            QStringLiteral("Get"));
+        get << interface << property;
         auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(get, 1000));
         QObject::connect(watcher, &QDBusPendingCallWatcher::finished, context,
                          [answer](QDBusPendingCallWatcher* w) {
                              const QDBusPendingReply<QDBusVariant> reply = *w;
                              if (!reply.isError()) {
-                                 answer(reply.value().variant().toBool());
+                                 answer(reply.value().variant());
                              }
                              w->deleteLater();
                          });
     }
+}
+
+/// Asks BlueZ whether a controller is connected, without waiting (see AskBluezProperty)
+void AskBluezConnected(const std::string& address, QObject* context,
+                       std::function<void(bool)> answer) {
+    AskBluezProperty(address, QStringLiteral("org.bluez.Device1"), QStringLiteral("Connected"),
+                     context, [answer](const QVariant& value) { answer(value.toBool()); });
 }
 
 /// Asks BlueZ to disconnect a controller, which turns most controllers off
@@ -2383,14 +2413,7 @@ void DisconnectBluetooth(const std::string& address) {
         LOG_WARNING(Frontend, "console-mode: no system bus to disconnect {}", address);
         return;
     }
-    QString device = QString::fromStdString(address).toUpper();
-    device.replace(QLatin1Char(':'), QLatin1Char('_'));
-    const QDir adapters{QStringLiteral("/sys/class/bluetooth")};
-    for (const QString& adapter : adapters.entryList({QStringLiteral("hci*")}, QDir::AllEntries)) {
-        if (adapter.contains(QLatin1Char(':'))) {
-            continue; // a connection's entry (hci0:12), not an adapter
-        }
-        const QString path = QStringLiteral("/org/bluez/%1/dev_%2").arg(adapter, device);
+    for (const QString& path : BluezDevicePaths(address)) {
         const QDBusMessage call = QDBusMessage::createMethodCall(
             QStringLiteral("org.bluez"), path, QStringLiteral("org.bluez.Device1"),
             QStringLiteral("Disconnect"));
@@ -2414,67 +2437,42 @@ void DisconnectBluetooth(const std::string& address) {
 
 /// True while any button of a pad is held: the Identify handshake reads this.
 bool PadAnyButtonPressed(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Joystick* js = SDL_OpenJoystick(id);
-    if (!js) {
+    return WithJoystick(id, false, [](SDL_Joystick* js) {
+        const int count = SDL_GetNumJoystickButtons(js);
+        for (int i = 0; i < count; ++i) {
+            if (SDL_GetJoystickButton(js, i)) {
+                return true;
+            }
+        }
         return false;
-    }
-    bool pressed = false;
-    const int count = SDL_GetNumJoystickButtons(js);
-    for (int i = 0; i < count; ++i) {
-        pressed = pressed || SDL_GetJoystickButton(js, i);
-    }
-    SDL_CloseJoystick(js);
-    return pressed;
+    });
 }
 
 /// True while a pad's + (Start, Menu, Options) is held
 bool PadStartHeld(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Gamepad* pad = SDL_OpenGamepad(id);
-    if (!pad) {
-        return false;
-    }
-    const bool held = SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START);
-    SDL_CloseGamepad(pad);
-    return held;
+    return WithGamepad(id, false, [](SDL_Gamepad* pad) {
+        return SDL_GetGamepadButton(pad, SDL_GAMEPAD_BUTTON_START);
+    });
 }
 
 /// Steam's own player index for a pad (-1 when not assigned by Steam Input).
 int PadPlayerIndex(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Joystick* js = SDL_OpenJoystick(id);
-    if (!js) {
-        return -1;
-    }
-    const int index = SDL_GetJoystickPlayerIndex(js);
-    SDL_CloseJoystick(js);
-    return index;
+    return WithJoystick(id, -1, [](SDL_Joystick* js) { return SDL_GetJoystickPlayerIndex(js); });
 }
 
 /// True when SDL reports a gyro on the pad
 bool PadHasGyro(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Gamepad* pad = SDL_OpenGamepad(id);
-    if (!pad) {
-        return false;
-    }
-    const bool gyro = SDL_GamepadHasSensor(pad, SDL_SENSOR_GYRO);
-    SDL_CloseGamepad(pad);
-    return gyro;
+    return WithGamepad(id, false,
+                       [](SDL_Gamepad* pad) { return SDL_GamepadHasSensor(pad, SDL_SENSOR_GYRO); });
 }
 
 /// True while a pad's accelerometer reads nothing (gravity always registers when on)
 bool PadMotionSilent(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Gamepad* pad = SDL_OpenGamepad(id);
-    if (!pad) {
-        return false;
-    }
-    std::array<float, 3> accel{};
-    const bool read = SDL_GetGamepadSensorData(pad, SDL_SENSOR_ACCEL, accel.data(), 3);
-    SDL_CloseGamepad(pad);
-    return read && accel[0] == 0.0f && accel[1] == 0.0f && accel[2] == 0.0f;
+    return WithGamepad(id, false, [](SDL_Gamepad* pad) {
+        std::array<float, 3> accel{};
+        return SDL_GetGamepadSensorData(pad, SDL_SENSOR_ACCEL, accel.data(), 3) &&
+               accel[0] == 0.0f && accel[1] == 0.0f && accel[2] == 0.0f;
+    });
 }
 
 /// Asks the Steam Deck's controller to turn its motion sensors on (Steam keeps them off unless
@@ -2712,34 +2710,14 @@ std::optional<std::pair<int, bool>> BluetoothBattery(const std::string& address)
 /// supply in Linux), without waiting: `answer` gets it on the GUI thread
 void AskBluezBattery(const std::string& address, QObject* context,
                      std::function<void(int)> answer) {
-    QDBusConnection bus = QDBusConnection::systemBus();
-    if (!bus.isConnected()) {
-        return;
-    }
-    QString device = QString::fromStdString(address).toUpper();
-    device.replace(QLatin1Char(':'), QLatin1Char('_'));
-    const QDir adapters{QStringLiteral("/sys/class/bluetooth")};
-    for (const QString& adapter : adapters.entryList({QStringLiteral("hci*")}, QDir::AllEntries)) {
-        if (adapter.contains(QLatin1Char(':'))) {
-            continue; // a connection's entry (hci0:12), not an adapter
-        }
-        QDBusMessage get = QDBusMessage::createMethodCall(
-            QStringLiteral("org.bluez"), QStringLiteral("/org/bluez/%1/dev_%2").arg(adapter, device),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        get << QStringLiteral("org.bluez.Battery1") << QStringLiteral("Percentage");
-        auto* watcher = new QDBusPendingCallWatcher(bus.asyncCall(get, 1000));
-        QObject::connect(watcher, &QDBusPendingCallWatcher::finished, context,
-                         [answer](QDBusPendingCallWatcher* w) {
-                             const QDBusPendingReply<QDBusVariant> reply = *w;
-                             bool ok = false;
-                             const int percent =
-                                 reply.isError() ? -1 : reply.value().variant().toInt(&ok);
-                             if (ok && percent >= 0 && percent <= 100) {
-                                 answer(percent);
-                             }
-                             w->deleteLater();
-                         });
-    }
+    AskBluezProperty(address, QStringLiteral("org.bluez.Battery1"), QStringLiteral("Percentage"),
+                     context, [answer](const QVariant& value) {
+                         bool ok = false;
+                         const int percent = value.toInt(&ok);
+                         if (ok && percent >= 0 && percent <= 100) {
+                             answer(percent);
+                         }
+                     });
 }
 
 /// The system's own battery (the handheld's own controls run on it)
@@ -2879,14 +2857,8 @@ Uint64 PadSteamHandle(SDL_JoystickID id) {
     if (const auto slot = SteamSlotOf(id)) {
         return slot->handle;
     }
-    const JoystickApiLock lock;
-    SDL_Gamepad* pad = SDL_OpenGamepad(id);
-    if (!pad) {
-        return 0;
-    }
-    const Uint64 handle = SDL_GetGamepadSteamHandle(pad);
-    SDL_CloseGamepad(pad);
-    return handle;
+    return WithGamepad(id, Uint64{0},
+                       [](SDL_Gamepad* pad) { return SDL_GetGamepadSteamHandle(pad); });
 }
 
 /// The key a pad's Bluetooth state is kept under: its Steam handle under Steam (it follows the
@@ -2910,21 +2882,20 @@ std::string PadKey(SDL_JoystickID id, const std::string& ident) {
 
 /// True while a pad has an input held: any button, or a stick or trigger past half travel.
 bool PadInputHeld(SDL_JoystickID id) {
-    const JoystickApiLock lock;
-    SDL_Gamepad* pad = SDL_OpenGamepad(id);
-    if (!pad) {
+    return WithGamepad(id, false, [](SDL_Gamepad* pad) {
+        for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT; ++b) {
+            if (SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b))) {
+                return true;
+            }
+        }
+        for (int a = 0; a < SDL_GAMEPAD_AXIS_COUNT; ++a) {
+            const Sint16 value = SDL_GetGamepadAxis(pad, static_cast<SDL_GamepadAxis>(a));
+            if (value > 16384 || value < -16384) {
+                return true;
+            }
+        }
         return false;
-    }
-    bool held = false;
-    for (int b = 0; b < SDL_GAMEPAD_BUTTON_COUNT && !held; ++b) {
-        held = SDL_GetGamepadButton(pad, static_cast<SDL_GamepadButton>(b));
-    }
-    for (int a = 0; a < SDL_GAMEPAD_AXIS_COUNT && !held; ++a) {
-        const Sint16 value = SDL_GetGamepadAxis(pad, static_cast<SDL_GamepadAxis>(a));
-        held = value > 16384 || value < -16384;
-    }
-    SDL_CloseGamepad(pad);
-    return held;
+    });
 }
 
 /// A short rumble pulse on a pad, if it supports rumble.
@@ -3432,9 +3403,7 @@ void MainWindow::RenderControllerOverlay() {
     const auto player_color = [](int player) {
         return ConfigurePlayerAssignment::PlayerColor(player);
     };
-    QFont badge_font;
-    badge_font.setPixelSize(12);
-    badge_font.setBold(true);
+    const QFont badge_font = GameOverlay::Style::LabelFont();
 
     // Hints: a controller that took or left a player, named for a few seconds at the bottom left
     constexpr qint64 hint_ms = 3000;
@@ -3597,11 +3566,8 @@ void MainWindow::RenderControllerOverlay() {
             return {QStringLiteral("SR"), QColor(120, 132, 140)};
         }
     };
-    QFont name_font;
-    name_font.setPixelSize(13);
-    QFont chip_font;
-    chip_font.setPixelSize(11);
-    chip_font.setBold(true);
+    const QFont name_font = GameOverlay::Style::TextFont();
+    const QFont chip_font = GameOverlay::Style::SmallFont();
     const QFontMetrics name_fm{name_font};
     const QFontMetrics chip_fm{chip_font};
 
@@ -3659,7 +3625,7 @@ void MainWindow::RenderControllerOverlay() {
     const bool batteries = std::any_of(overlay_rows.begin(), overlay_rows.end(),
                                        [](const auto& row) { return row.battery >= 0; });
     const int battery_w =
-        batteries ? 8 + chip_fm.horizontalAdvance(QStringLiteral("100%")) + 5 + 16 : 0;
+        batteries ? 8 + chip_fm.horizontalAdvance(QStringLiteral("100%")) + 5 + 20 : 0;
     const int controller_w = inner + badge_w + 8 + name_w + battery_w + inner + 4;
     // Room for as many of the widest chips as the history keeps, so the image keeps its size
     int history_room = show_history ? inner * 2 + history_size * (widest_chip + chip_gap) +
@@ -3686,19 +3652,17 @@ void MainWindow::RenderControllerOverlay() {
     // The controller bubble: its state lights it (blue held, green joined, red left)
     const auto controller_bubble = [&](const OverlayRow& row, bool blink, int at_y) {
         const bool gone = row.pad == 0;
-        QColor fill(14, 14, 18, 175);
+        QColor fill = GameOverlay::Style::Fill;
         if (row.flash == 2) {
             if (blink) {
-                fill = QColor(190, 50, 50, 200);
+                fill = GameOverlay::Style::Bad;
             }
         } else if (!gone && active.contains(row.pad)) {
-            fill = QColor(45, 95, 200, 200);
+            fill = GameOverlay::Style::Active;
         } else if (blink) {
-            fill = QColor(45, 160, 80, 200);
+            fill = GameOverlay::Style::Good;
         }
-        painter.setPen(Qt::NoPen);
-        painter.setBrush(fill);
-        painter.drawRoundedRect(QRectF(1, at_y, controller_w, row_h), row_h / 2.0, row_h / 2.0);
+        GameOverlay::Style::Pill(painter, QRectF(1, at_y, controller_w, row_h), fill);
         QColor badge = player_color(row.player);
         if (gone) {
             badge.setAlpha(110);
@@ -3752,39 +3716,18 @@ void MainWindow::RenderControllerOverlay() {
             painter.setPen(Qt::NoPen);
             return;
         }
-        painter.setPen(gone ? QColor(255, 255, 255, 120) : QColor(240, 240, 240));
+        painter.setPen(gone ? GameOverlay::Style::DimText : GameOverlay::Style::Text);
         painter.drawText(QRect(1 + inner + badge_w + 8, at_y, name_w + 4, row_h),
                          Qt::AlignVCenter | Qt::AlignLeft, overlay_row_name[row.player]);
-        // The battery: a small cell filled to its charge (red when low, a bolt while charging)
+        // The battery's percent, then its icon (the same as the tabs' and the menu bar's)
         if (!gone && row.battery >= 0) {
-            // (The percent first, right-aligned against the icon, so the icons line up)
             const int percent_w = chip_fm.horizontalAdvance(QStringLiteral("100%"));
             const double bx = 1 + inner + badge_w + 8 + name_w + 8 + percent_w + 5;
-            const QRectF cell(bx, at_y + row_h / 2.0 - 4, 14, 8);
-            const QColor charge =
-                row.battery <= 15 && !row.charging ? QColor(235, 70, 70) : QColor(120, 220, 140);
-            painter.setPen(QPen(QColor(230, 230, 230), 1.2));
-            painter.setBrush(Qt::NoBrush);
-            painter.drawRoundedRect(cell, 2, 2);
-            painter.setPen(Qt::NoPen);
-            painter.setBrush(QColor(230, 230, 230));
-            painter.drawRect(QRectF(cell.right() + 0.6, cell.center().y() - 1.5, 1.6, 3));
-            painter.setBrush(charge);
-            painter.drawRect(QRectF(cell.left() + 1.5, cell.top() + 1.5,
-                                    (cell.width() - 3) * (std::clamp)(row.battery, 0, 100) / 100.0,
-                                    cell.height() - 3));
-            if (row.charging) {
-                painter.setPen(QPen(QColor(14, 14, 18), 1.2));
-                const QPointF c = cell.center();
-                const QPointF bolt[3] = {QPointF(c.x() + 1, c.y() - 3),
-                                         QPointF(c.x() - 1.5, c.y() + 0.5),
-                                         QPointF(c.x() + 1.5, c.y() - 0.5)};
-                painter.drawPolyline(bolt, 3);
-                painter.drawLine(bolt[2], QPointF(c.x() - 1, c.y() + 3));
-            }
+            painter.drawPixmap(QPointF(bx, at_y + row_h / 2.0 - 6),
+                               ConfigurePlayerAssignment::Battery(row.battery, row.charging));
             painter.setFont(chip_font);
             painter.setPen(QColor(220, 220, 220));
-            painter.drawText(QRectF(cell.left() - 5 - percent_w, at_y, percent_w, row_h),
+            painter.drawText(QRectF(bx - 5 - percent_w, at_y, percent_w, row_h),
                              Qt::AlignVCenter | Qt::AlignRight,
                              QStringLiteral("%1%").arg(row.battery));
         }
@@ -4020,9 +3963,9 @@ void MainWindow::RenderControllerOverlay() {
         if (chips_w > 0.5) {
             const double bubble_x = 1 + controller_w + bubble_gap;
             const double bubble_w = inner * 2 + chips_w - chip_gap;
-            painter.setBrush(QColor(14, 14, 18, 175));
-            painter.drawRoundedRect(QRectF(bubble_x, y, (std::max)(bubble_w, double{row_h}), row_h),
-                                    row_h / 2.0, row_h / 2.0);
+            GameOverlay::Style::Pill(
+                painter, QRectF(bubble_x, y, (std::max)(bubble_w, double{row_h}), row_h),
+                GameOverlay::Style::Fill);
             double cx = bubble_x + inner;
             for (std::size_t g = 0; g < inputs.size(); ++g) {
                 const auto& input = inputs[g];
@@ -6523,18 +6466,9 @@ void MainWindow::ApplyConsoleControllerMode() {
                     }
                 }
             }
-            if (handover >= 0) {
-                disconnect_paused = {handover};
-                handover_paused = handover;
-                handover_pressed = PadInputHeld(holder[static_cast<std::size_t>(handover)]);
-                LOG_INFO(Frontend, "console-mode: paused, P{} handed over to the built-in controls",
-                         handover + 1);
-                controller_hints.push_back(
-                    {QString{}, handover, false, now_ms, false,
-                     tr("P%1 is on the built-in controls now: press a button on them, or "
-                        "reconnect a controller, to go on")
-                         .arg(handover + 1),
-                     true});
+            // The overlay is drawn into frames: the notice first, the pause a moment later
+            const auto pause_with_notice = [&](int player, const QString& notice) {
+                controller_hints.push_back({QString{}, player, false, now_ms, false, notice, true});
                 RenderControllerOverlay();
                 disconnect_pause_pending = true;
                 disconnect_pause_seen = false;
@@ -6545,6 +6479,17 @@ void MainWindow::ApplyConsoleControllerMode() {
                         OnPauseGame();
                     }
                 });
+            };
+            if (handover >= 0) {
+                disconnect_paused = {handover};
+                handover_paused = handover;
+                handover_pressed = PadInputHeld(holder[static_cast<std::size_t>(handover)]);
+                LOG_INFO(Frontend, "console-mode: paused, P{} handed over to the built-in controls",
+                         handover + 1);
+                pause_with_notice(handover,
+                                  tr("P%1 is on the built-in controls now: press a button on "
+                                     "them, or reconnect a controller, to go on")
+                                      .arg(handover + 1));
             } else if (!gone.empty()) {
                 disconnect_paused = gone;
                 pause_done.insert(gone.begin(), gone.end());
@@ -6565,24 +6510,12 @@ void MainWindow::ApplyConsoleControllerMode() {
                     said = (std::max)(said, now_ms + 2'000);
                 }
                 // (With no other controller left, reconnecting is the only way on)
-                controller_hints.push_back(
-                    {QString{}, *gone.begin(), false, now_ms, false,
-                     live.empty() ? tr("%1 disconnected: reconnect to go on").arg(who)
-                                  : tr("%1 disconnected: reconnect, or press + on another "
-                                       "controller to go on without %1")
-                                        .arg(who),
-                     true});
-                // The overlay is drawn into frames: the notice first, the pause a moment later
-                RenderControllerOverlay();
-                disconnect_pause_pending = true;
-                disconnect_pause_seen = false;
-                QTimer::singleShot(150, this, [this] {
-                    disconnect_pause_pending = false;
-                    if (!disconnect_paused.empty() && emulation_running && QtCommon::emu_thread &&
-                        QtCommon::emu_thread->IsRunning()) {
-                        OnPauseGame();
-                    }
-                });
+                pause_with_notice(*gone.begin(),
+                                  live.empty()
+                                      ? tr("%1 disconnected: reconnect to go on").arg(who)
+                                      : tr("%1 disconnected: reconnect, or press + on another "
+                                           "controller to go on without %1")
+                                            .arg(who));
             }
         } else if (!disconnect_paused.empty() && !running && emulation_running &&
                    !disconnect_pause_pending) {
