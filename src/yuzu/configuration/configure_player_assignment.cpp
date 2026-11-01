@@ -601,9 +601,10 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
     title_font.setBold(true);
     panel_title->setFont(title_font);
     panel_title->setWordWrap(true);
-    auto* panel_note = new QLabel(tr("Like a Steam Deck, Legion Go or ROG Ally on a TV: other "
-                                     "controllers come first, and the built-in controls play "
-                                     "only when none is connected."),
+    auto* panel_note = new QLabel(tr("For a handheld with its own controls, like a Steam Deck, "
+                                     "Legion Go or ROG Ally: connected controllers take the "
+                                     "players first, and the built-in controls play only when "
+                                     "no other controller is connected."),
                                   handheld_panel);
     panel_note->setWordWrap(true);
     panel_note->setObjectName(QStringLiteral("note"));
