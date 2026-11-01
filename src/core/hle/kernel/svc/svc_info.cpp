@@ -15,10 +15,33 @@
 
 namespace Kernel::Svc {
 
+namespace {
+// Switch 2 ids, as documented on SwitchBrew.
+constexpr InfoType RemoteRegionAddress = static_cast<InfoType>(29);
+constexpr InfoType RemoteRegionSize = static_cast<InfoType>(30);
+constexpr InfoType RemoteMemoryUsage = static_cast<InfoType>(31);
+constexpr InfoType RemoteMemoryUsagePeak = static_cast<InfoType>(32);
+constexpr InfoType ProcessPageSize = static_cast<InfoType>(33);
+} // namespace
+
 /// Gets system/memory information for the current process
 Result GetInfo(Core::System& system, u64* result, InfoType info_id_type, Handle handle, u64 info_sub_id) {
     LOG_TRACE(Kernel_SVC, "called info_id={:#x}, info_sub_id={:#x}, handle={:#08x}", info_id_type, info_sub_id, handle);
     u32 info_id = u32(info_id_type);
+    if (info_id_type == RemoteRegionAddress || info_id_type == RemoteRegionSize ||
+        info_id_type == RemoteMemoryUsage || info_id_type == RemoteMemoryUsagePeak ||
+        info_id_type == ProcessPageSize) {
+        R_UNLESS(info_sub_id == 0, ResultInvalidEnumValue);
+
+        const auto& handle_table = GetCurrentProcess(system.Kernel()).GetHandleTable();
+        KScopedAutoObject process = handle_table.GetObject<KProcess>(system.Kernel(), handle);
+        R_UNLESS(process.IsNotNull(), ResultInvalidHandle);
+        R_UNLESS(process->UsesExtendedAcid(), ResultInvalidEnumValue);
+
+        // There is no remote memory, and ordinary mappings use the kernel page size.
+        *result = info_id_type == ProcessPageSize ? PageSize : 0;
+        R_SUCCEED();
+    }
     switch (info_id_type) {
     case InfoType::CoreMask:
     case InfoType::PriorityMask:

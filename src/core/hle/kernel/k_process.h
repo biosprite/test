@@ -139,6 +139,7 @@ private:
     bool m_is_suspended : 1 = false;
     bool m_is_immortal : 1 = false;
     bool m_is_handle_table_initialized : 1 = false;
+    bool m_uses_extended_acid : 1 = false;
 
 private:
     Result StartTermination(KernelCore& kernel);
@@ -212,6 +213,10 @@ public:
 
     u32 GetCreateProcessFlags() const {
         return static_cast<u32>(m_flags);
+    }
+
+    bool UsesExtendedAcid() const {
+        return m_uses_extended_acid;
     }
 
     bool Is64Bit() const {
