@@ -78,6 +78,7 @@ public:
     u32 GetMainThreadStackSize() const;
     u64 GetTitleID() const;
     u64 GetFilesystemPermissions() const;
+    bool UsesExtendedAcid() const;
     u32 GetSystemResourceSize() const;
     PoolPartition GetPoolPartition() const;
     const KernelCapabilityDescriptors& GetKernelCapabilities() const;
@@ -180,6 +181,7 @@ private:
     AciHeader aci_header{};
     AcidHeader acid_header{};
 
+    bool uses_extended_acid = false;
     FileAccessControl acid_file_access{};
     FileAccessHeader aci_file_access{};
 

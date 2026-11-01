@@ -33,6 +33,18 @@ Loader::ResultStatus ProgramMetadata::Load(VirtualFile file) {
         return Loader::ResultStatus::ErrorBadACIDHeader;
     }
 
+    uses_extended_acid = acid_header.magic != std::array{'A', 'C', 'I', 'D'};
+    if (uses_extended_acid) {
+        // The signature area is 0x300 bytes instead of 0x200, so the rest starts 0x100 later.
+        constexpr std::size_t body_offset = 0x200;
+        constexpr std::size_t body_size = sizeof(AcidHeader) - body_offset;
+        auto* const body = reinterpret_cast<u8*>(&acid_header) + body_offset;
+        if (file->ReadBytes(body, body_size, npdm_header.acid_offset + 0x300) != body_size ||
+            acid_header.magic != std::array{'A', 'C', 'I', 'D'}) {
+            return Loader::ResultStatus::ErrorBadACIDHeader;
+        }
+    }
+
     if (sizeof(AciHeader) != file->ReadObject(&aci_header, npdm_header.aci_offset)) {
         return Loader::ResultStatus::ErrorBadACIHeader;
     }
@@ -161,6 +173,10 @@ u32 ProgramMetadata::GetMainThreadStackSize() const {
 
 u64 ProgramMetadata::GetTitleID() const {
     return aci_header.title_id;
+}
+
+bool ProgramMetadata::UsesExtendedAcid() const {
+    return uses_extended_acid;
 }
 
 u64 ProgramMetadata::GetFilesystemPermissions() const {
