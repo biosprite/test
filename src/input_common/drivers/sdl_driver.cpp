@@ -645,9 +645,8 @@ void SDLDriver::HandleGameControllerEvent(const SDL_Event& event) {
         break;
     }
     case SDL_EVENT_JOYSTICK_AXIS_MOTION: {
-        // Half travel: a deliberate push, never resting drift. A trigger rests at one end of its
-        // range (its initial state, -32768 here), not in the middle: its half travel is past the
-        // middle, or every touch and every release back to rest would count.
+        // Half travel, so resting drift never counts. A trigger rests at one end of its range
+        // (-32768 here), so for it half travel is past the middle.
         Sint16 rest = 0;
         const auto moved = GetSDLJoystickBySDLID(event.jaxis.which);
         SDL_Joystick* const moved_js = moved ? moved->GetSDLJoystick() : nullptr;
@@ -707,9 +706,8 @@ namespace {
 bool IsMotionController(unsigned vendor, unsigned product) {
     switch (vendor) {
     case 0x28DE:
-        // The Steam Deck only. Steam Controllers stay with Steam: SDL's driver would talk to them
-        // next to it (they may not take two voices); their motion comes from Read Valve
-        // Controllers Directly (ValveMotion), which only listens.
+        // The Steam Deck only: SDL's driver would talk to a Steam Controller alongside Steam.
+        // Its motion comes from ValveMotion, which only listens.
         return product == 0x1205;
     case 0x054C: // Sony
     case 0x057E: // Nintendo
@@ -719,22 +717,17 @@ bool IsMotionController(unsigned vendor, unsigned product) {
     }
 }
 
-/// Under Steam, takes the motion controllers off Steam's hide list, so SDL also opens the real
-/// devices (for their motion) next to Steam's sensorless virtual pads
-/// The controllers Steam Input hid and Eden opened again for their motion (vendor << 16 |
-/// product): motion sources for the automatic modes only, never offered as input devices, so
-/// the device lists stay as Steam leaves them
+/// Controllers Steam Input hid that Eden opened again for their motion (vendor << 16 | product).
+/// Motion sources only: never offered as input devices.
 std::set<u32>& UnhiddenControllers() {
     static std::set<u32> unhidden;
     return unhidden;
 }
 
-/// Logs the system's motion sensors and HID devices once, for adding handhelds and their gyros
-/// from users' logs: a handheld's built-in gyro is usually a sensor of the system (IIO), not of
-/// its gamepad, so SDL never sees it. Read-only.
+/// Logs the system's motion sensors and HID devices once (Debug Probes), to identify handhelds
+/// from users' logs: a built-in gyro is often a system sensor (IIO) that SDL never sees.
 void LogMotionHardware() {
 #ifdef __linux__
-    // (Debug Probes)
     if (!Common::ControllerProbes()) {
         return;
     }
@@ -747,7 +740,7 @@ void LogMotionHardware() {
     };
     std::error_code error;
     std::string sensors;
-    // (Iterated without exceptions: a device can come or go while it is read)
+    // (No exceptions: a device can disappear while it is read)
     for (fs::directory_iterator it{"/sys/bus/iio/devices", error}, end; !error && it != end;
          it.increment(error)) {
         const fs::path dir = it->path();
@@ -802,6 +795,8 @@ bool IsUnhiddenController(SDL_Joystick* joystick) {
     return UnhiddenControllers().contains(id);
 }
 
+/// Under Steam, takes the motion controllers off Steam's hide list, so SDL also opens the real
+/// devices next to Steam's sensorless virtual pads
 void UnhideMotionControllers() {
     if (!Common::RunningUnderSteam()) {
         return;
@@ -826,7 +821,7 @@ void UnhideMotionControllers() {
         }
         if (std::sscanf(entry.c_str(), "%x/%x", &vendor, &product) == 2 &&
             IsMotionController(vendor, product) &&
-            // (Read directly instead, when the experimental reader runs: Steam keeps them)
+            // (Read by ValveMotion instead when it runs)
             !(ValveMotion::Enabled() && vendor == 0x28DE && ValveMotion::Family(product) != 0)) {
             dropped += entry + ',';
             UnhiddenControllers().insert(vendor << 16 | product);
@@ -884,8 +879,7 @@ SDLDriver::SDLDriver(std::string input_engine_) : InputEngine(std::move(input_en
             LOG_INFO(Input, "Steam Input bypassed: SDL opens every controller");
         }
     } else if (automatic) {
-        // (Only for the automatic modes, which take the motion from them: in the manual modes
-        // nothing reads them, and SDL opening them next to Steam only gets in Steam's way)
+        // (Only the automatic modes read their motion)
         UnhideMotionControllers();
     }
     LogMotionHardware();
@@ -959,10 +953,8 @@ std::vector<Common::ParamPackage> SDLDriver::GetInputDevices() const {
             if (!joystick->GetSDLJoystick()) {
                 continue;
             }
-            // Steam Input hands games virtual pads carrying the real controller's name: say
-            // so, or a pad driven through Steam looks like the raw hardware. The GUID keeps
-            // Steam's ids (Valve 0x28DE, virtual gamepad 0x11FF, little-endian at bytes 4
-            // and 8); SDL's vendor and product report the real controller's instead
+            // Steam's virtual pads carry the real controller's name: mark them. Their GUID
+            // keeps Steam's ids (Valve 0x28DE, virtual gamepad 0x11FF, at bytes 4 and 8).
             const SDL_GUID sdl_guid = SDL_GetJoystickGUID(joystick->GetSDLJoystick());
             const bool steam_virtual = sdl_guid.data[4] == 0xDE && sdl_guid.data[5] == 0x28 &&
                                        sdl_guid.data[8] == 0xFF && sdl_guid.data[9] == 0x11;
