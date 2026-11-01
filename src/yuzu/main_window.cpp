@@ -4882,16 +4882,12 @@ void MainWindow::ApplyConsoleControllerMode() {
         LOG_INFO(Frontend, "console-mode: declared handheld had no identity, back to auto");
     }
 
-    // The live set of gamepads. The map key is the connection instance (always unique:
-    // two pads can share a serial or GUID through Steam Input and must never collapse),
-    // and pad_identity records the stable identity used to reclaim slots.
+    // The live gamepads, keyed by connection instance (always unique); pad_identity keeps the
+    // stable identity used to reclaim slots.
     //
-    // Under Steam Input the virtual pads are not the controllers: every one shares a GUID,
-    // and Steam moves physical controllers between them while they stay connected (the
-    // deck's own controller moves to the newest virtual pad whenever an external one
-    // connects). The Steam handle travels with the physical controller, so it is the
-    // identity there. Steam fills it in a moment after a virtual pad appears: until then the
-    // pad is not live yet (3 seconds at most, then its GUID identity has to do).
+    // Under Steam the virtual pads share one GUID and Steam moves controllers between them, so
+    // the Steam handle (which follows the controller) is the identity. Steam fills it in a
+    // moment after a pad appears: until then the pad isn't live (at most 3 seconds).
     std::map<u32, std::string> live;
     /// Under Steam: real devices unhidden for their motion (never players)
     std::vector<u32> motion_devices;
@@ -4902,22 +4898,18 @@ void MainWindow::ApplyConsoleControllerMode() {
         const JoystickApiLock lock;
         int count = 0;
         SDL_JoystickID* ids = SDL_GetGamepads(&count);
-        // Steam's virtual pads around: none when Steam Input is off for Eden, which then works
-        // as launched outside Steam
+        // Steam's virtual pads around (none when Steam Input is off for Eden)
         Common::GetControllerConsoleState().steam_pads_present =
             std::any_of(ids, ids + count, [](SDL_JoystickID id) { return IsSteamVirtualPad(id); });
         for (int i = 0; i < count; ++i) {
             const u32 id = ids[i];
             present.insert(id);
             first_seen.try_emplace(id, now);
-            // Bypassed: the real controllers play, and Steam's virtual pads (the same
-            // controllers again) are left alone
+            // Bypassed: the real controllers play, Steam's virtual pads are left alone
             if (Common::GetControllerConsoleState().steam_bypassed && IsSteamVirtualPad(id)) {
                 continue;
             }
-            // A real device next to Steam's virtual pads that Steam hid, opened again for its
-            // motion: never a player; logged once, with the virtual pads of the same model. (A
-            // controller Steam leaves alone plays as itself.)
+            // A real device Steam hid, opened again for its motion: never a player
             if (Common::SteamPadsInUse() && !IsSteamVirtualPad(id) &&
                 Common::SteamHidModel(PadVendor(id),
                                       PadProduct(id))) {
@@ -4953,7 +4945,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                     continue;
                 }
             }
-            // What a user's log needs for adding their handheld to the allowlist
+            // (For identifying a user's handheld from their log)
             static std::set<std::string> described;
             if (Common::ControllerProbes() && described.insert(ident).second) {
                 const Uint16 vendor = PadVendor(id);
@@ -4974,11 +4966,9 @@ void MainWindow::ApplyConsoleControllerMode() {
         std::erase_if(first_seen, [&present](const auto& e) { return !present.contains(e.first); });
     }
 
-    // The deck's own controller only reports motion while its motion sensors are on, which Steam
-    // Input leaves off unless its layout uses the gyro (the Steam client does so in Desktop Mode
-    // too, with Eden launched outside Steam): when its motion goes silent, ask for it again (at
-    // most every 2 seconds). Under Steam it is a motion device next to its virtual pad, else
-    // one of the pads itself.
+    // The Deck's controller only reports motion while its sensors are on, which Steam leaves off
+    // unless its layout uses the gyro (in Desktop Mode too): when it goes silent, ask again (at
+    // most every 2 seconds). Under Steam it is a motion device, else one of the pads.
     {
         const auto is_deck = [](u32 id) {
             return PadVendor(id) == 0x28DE && PadProduct(id) == 0x1205;
@@ -5007,8 +4997,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // A controller Steam moved to another virtual pad takes its slot and its handheld latch
-    // along: the slot belongs to the controller, not to the virtual pad
+    // A controller Steam moved to another virtual pad takes its slot along
     if (Common::SteamPadsInUse()) {
         static std::map<std::string, u32> handle_inst;
         std::map<u32, u32> moves; // to <- from
@@ -5044,11 +5033,9 @@ void MainWindow::ApplyConsoleControllerMode() {
                 const auto slot = old_slot.find(from);
                 LOG_INFO(Frontend, "console-mode: Steam moved {} from inst={} to inst={} (P{})",
                          live[to], from, to, slot != old_slot.end() ? slot->second + 1 : 0);
-                // Steam moves a controller on its first use and says so later: meanwhile its
-                // input already comes on its new pad, under the old controller's handle. The one
-                // controller that had input with this pad just before is the one it moved: told
-                // apart without waiting for its next input, and a match made from input that
-                // came during the move (taken for the old controller's) is put right.
+                // Steam moves a controller on its first use and says so later, so its input
+                // already came on the new pad: the one controller that had input with this pad
+                // just before is the one moved (a match made meanwhile is put right)
                 const std::string key = BluetoothKey(to);
                 if (last_lone_input && last_lone_input->pad == to &&
                     std::chrono::steady_clock::now() - last_lone_input->at <
@@ -5057,8 +5044,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                     const std::string& address = last_lone_input->controller;
                     const auto had = pad_bluetooth.find(key);
                     if (had->second != address) {
-                        // (The controller it was taken for is unsure again: the last of its
-                        // model, or its next input, tells)
+                        // (The controller it was taken for is unsure again)
                         for (auto& [other, other_address] : pad_bluetooth) {
                             if (other != key && other_address == address) {
                                 other_address.clear();
@@ -5113,21 +5099,17 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // Publish the live pads to the settings UI, and service the Identify handshake: the
-    // next pad with a button held becomes the handheld's own by declaration, not guess.
-    // Both run whatever the mode: the Controllers tab declares the handheld's pad while the
-    // mode is only picked, before OK applies it.
+    // Publish the live pads to the settings UI, and serve Identify: the next pad with a button
+    // held becomes the handheld's own. Whatever the mode (the tab declares it before OK).
     {
         auto& state = Common::GetControllerConsoleState();
         std::scoped_lock lock{state.mutex};
         state.pads.clear();
-        // Every pad is offered as the handheld's controller, the ones that could be built in
-        // first: a handheld's controls can pose as a standalone controller (an emulated
-        // DualSense for its gyro), and picking is the user's say
+        // Every pad is offered, possible handheld controls first (they can pose as a
+        // standalone controller, such as an emulated DualSense)
         std::vector<std::pair<std::string, std::string>> standalone;
         for (const auto& [id, ident] : live) {
-            // Under Steam every pad shares one GUID identity, so the picker would declare
-            // them all at once: its entries carry the Steam handle there instead
+            // Under Steam the entries carry the Steam handle (every pad shares one GUID)
             const Uint64 handle = Common::SteamPadsInUse() ? PadSteamHandle(id) : 0;
             auto entry = std::pair{PadName(id).toStdString(),
                                    handle ? fmt::format("steamhandle:{:#x}", handle) : ident};
@@ -5139,10 +5121,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
         state.builtin_pads = state.pads.size();
         state.pads.insert(state.pads.end(), standalone.begin(), standalone.end());
-        // A human tap is shorter than 250ms: poll fast while the Identify handshake is
-        // armed so a quick press cannot slip between the samples.
-        // (Faster too while a controller waits for a press to be told apart from its twin, and
-        // while a game is paused for a disconnect, for a quick press of + on another one)
+        // A tap is shorter than 250ms: poll faster while Identify waits, while twins wait for
+        // a press, and while paused for a disconnect (for +)
         console_mode_timer.start(std::chrono::milliseconds{
             state.identify_armed || !disconnect_paused.empty() ? 50
             : pad_bt_pending.empty()                           ? 250
@@ -5153,8 +5133,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 state.identify_armed = false;
             } else {
                 for (const auto& [id, ident] : live) {
-                    // (Any pad: the user presses on the handheld's own on purpose, and its
-                    // controls may pose as a standalone controller)
+                    // (Any pad: the user presses on the handheld's own on purpose)
                     if (PadAnyButtonPressed(id)) {
                         state.identify_armed = false;
                         builtin_pad_id = id;
@@ -5184,8 +5163,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // The Controllers tab's picker declares a pad by its Steam handle under Steam (see the
-    // published entries): keep the handle as such, and the pad's GUID as its identity
+    // Under Steam the picker declares a pad by its Steam handle
     {
         const std::string declared = Settings::values.builtin_pad_identity.GetValue();
         constexpr std::string_view prefix = "steamhandle:";
@@ -5242,8 +5220,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             }
         }
         if (builtin_seen_first) {
-            // Leaving the mode forgets the auto latch: re-selecting it later re-detects. A
-            // declared built-in (the picker or Identify) is the user's choice and stays.
+            // Leaving forgets the auto-detected handheld; a declared one stays
             builtin_pad_id = 0;
             builtin_identity.clear();
             builtin_seen_first = false;
@@ -5256,8 +5233,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         return;
     }
     if (!console_profile) {
-        // Entering a console mode: the user's own players are kept aside, and everything the
-        // engine changes from here on stays runtime only (see SaveAllConfigValues)
+        // Entering a console mode: the user's players are kept aside; the engine's changes stay
+        // runtime only (see SaveAllConfigValues)
         console_profile = Settings::values.players.GetValue(true);
         game_profiles.reset();
         session_sets = ModernStartSets(*console_profile);
@@ -5268,8 +5245,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                      MotionTrace((*console_profile)[0]));
         }
     }
-    // A game booted with input profiles of its own: those players' sets are the profile's, read
-    // before the engine drives the game's copy (a game's copy is read in one go at boot)
+    // A game with input profiles of its own: those players' sets are the profile's
     if (Settings::values.players.UsingGlobal()) {
         game_profiles.reset();
     } else if (!game_profiles) {
@@ -5286,9 +5262,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         builtin_identity = Settings::values.builtin_pad_identity.GetValue();
     }
 
-    // The settings-tab names: the Controls tab lists InputCommon's devices by (guid, port),
-    // so the name is the one of the device this pad is bound as - the same text the user
-    // picks in that tab, not a guess by connect order.
+    // Names as the Controls tab lists them, by the device the pad is bound as
     std::vector<Common::ParamPackage> input_devices;
     if (input_subsystem) {
         input_devices = input_subsystem->GetInputDevices();
@@ -5307,9 +5281,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
             }
         }
-        // Under Steam the list's names are SDL's, up to 3 seconds behind Steam: a pad Steam just
-        // moved a controller to still has the old one's name there (the deck's on P2's), so
-        // until SDL has the same controller type as Steam, the name is Steam's controller's
+        // Under Steam, SDL's names lag up to 3 seconds behind a move: until SDL has Steam's
+        // controller type, the name is Steam's controller's
         if (const auto slot = SteamSlotOf(id);
             slot && SDL_GetGamepadTypeForID(id) != slot->type) {
             switch (slot->type) {
@@ -5333,8 +5306,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 break;
             }
         }
-        // (Steam's names can be translation keys, "#SettingsController_SteamController" for the
-        // Deck's own controls: not a name to show)
+        // (Steam's names can be translation keys: not a name to show)
         if (display.startsWith(QLatin1Char('#'))) {
             display = PadName(id);
         }
@@ -5356,8 +5328,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                  builtin_seen_first ? "" : " (unlatched)");
     }
     {
-        // Steam fills a virtual pad's handle, type and name in a moment after the pad
-        // appears; trace every change, to see whether the handle follows the physical pad
+        // Steam fills a virtual pad's handle, type and name a moment after it appears: traced
         static std::map<u32, std::string> traced_steam;
         for (const auto& [id, ident] : live) {
             const std::string desc = fmt::format(
@@ -5399,10 +5370,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // Bluetooth controllers can be turned off from their player (Turn Off): Eden disconnects
-    // them, which turns most of them off, and turned on again they join as a new player. The
-    // controller sits out (as if it were gone) until then, and the next controller to connect
-    // takes the player. Wired controllers have no such button.
+    // Turn Off: Eden disconnects a Bluetooth controller (most turn off); it sits out until it
+    // reconnects, and the next controller to connect takes the player
     {
         // (By the controller, see BluetoothKey)
         std::map<u32, std::string> keys;
@@ -5461,15 +5430,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         std::erase_if(live, [&](const auto& e) { return benched_pads.contains(e.first); });
     }
 
-    // The built-in's rules apply to exactly one pad: the one we can PROVE is the
-    // handheld's own. Evidence, strongest first:
-    //   1. connection continuity - the latched instance is still alive;
-    //   2. under Steam, player index 0 (the deck's pad holds it - verified in sessions);
-    //   3. a unique identity match (direct launches, where identities are honest).
-    // Anything else and the rules PAUSE. Safe beats clever - the lesson of the X-1
-    // pattern, where an impostor wearing the identity struck the wrong player row.
-    // The handheld's controller removed with its ✕: it is no longer the handheld's, and
-    // auto-detect leaves it alone until it is allowed again (or picked, or identified)
+    // The handheld's controller removed with its ✕: auto-detect leaves it alone until it is
+    // allowed again (or picked, or identified)
     {
         bool remove = false;
         {
@@ -5494,6 +5456,8 @@ void MainWindow::ApplyConsoleControllerMode() {
     const auto is_blocked = [&](u32 id) {
         return !blocked_key.empty() && live.contains(id) && PadKey(id, live[id]) == blocked_key;
     };
+    // The handheld's rules apply only to the pad proven to be its own: the latched instance
+    // still alive, its Steam handle under Steam, or a unique identity match. Otherwise none.
     u32 builtin_match_id = 0;
     bool builtin_valid = false;
     const bool steam_handle_known =
@@ -5503,11 +5467,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         builtin_match_id = builtin_pad_id;
         builtin_valid = true;
     } else if (Common::SteamPadsInUse()) {
-        // Under Steam every virtual pad shares one GUID, and Steam's player index is no
-        // evidence either: a session gave the deck's pad index 4 and an Xbox pad index 0,
-        // which then took the deck's place. The deck's own pad keeps its Steam handle across
-        // sessions (0xff42501d27 in every deck log), so that is the identity. With none
-        // stored yet, a lone pad is the handheld's own, and gets latched below.
+        // Under Steam neither the GUID nor Steam's player index tells the Deck's pad: its Steam
+        // handle, stable across sessions, does. With none stored yet, a lone pad is latched.
         const std::string want = Settings::values.builtin_pad_steam_handle.GetValue();
         int count = 0;
         u32 holder = 0;
@@ -5518,8 +5479,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
                 if (!Settings::values.builtin_pad_steam_manual.GetValue() &&
                     !CouldBeHandheld(PadVendor(id), PadProduct(id))) {
-                    // An earlier build took a standalone controller for the handheld's own
-                    // (a declared one stays: the user's say)
+                    // A standalone controller stored as the handheld's (older builds) is dropped,
+                    // unless the user declared it
                     LOG_INFO(Frontend,
                              "console-mode: stored handheld {} is a {:04x}:{:04x} "
                              "controller, not a handheld's: forgotten",
@@ -5533,10 +5494,9 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
         bool adopted = false;
         if (count == 0) {
-            // No pad holds the stored handle (Steam may hand out a new one after a reboot or
-            // an update), or none is stored yet: the deck's own controller is the one Steam
-            // reports with no gamepad type ("#SettingsController_SteamController"), every
-            // other controller has a real one. Adopt it when exactly one pad fits.
+            // No pad holds the stored handle (it can change after a reboot or update): the
+            // Deck's controller is the only one Steam reports with no gamepad type. Adopted when
+            // exactly one pad fits.
             int fits = 0;
             u32 fit = 0;
             for (const auto& [id, ident] : live) {
@@ -5626,8 +5586,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         const std::string stored{Settings::values.builtin_pad_identity.GetValue()};
         const bool manual = Settings::values.builtin_pad_manual.GetValue();
         if (manual) {
-            // A declaration is the truth: the picker or the Identify button chose this
-            // pad, so the engine obeys it and simply resolves its current instance.
+            // A declared pad (picker or Identify): resolve its current instance
             builtin_identity = stored;
             builtin_seen_first = true;
             builtin_pad_id = 0;
@@ -5647,16 +5606,14 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
             }
         }
-        // (Under Steam the Steam handle resolves the handheld above; this latch stores the
-        // direct launches' identity and must not take a Steam pad's)
+        // (Direct launches only: under Steam the handle resolves it above)
         if (!builtin_pad_id && !manual && !Common::SteamPadsInUse()) {
             auto handheld_candidate = [&]() -> u32 {
                 std::vector<u32> makers;
                 std::vector<u32> decks;
                 for (const auto& [id, ident] : live) {
                     if (IsSteamVirtualPad(id) || is_blocked(id)) {
-                        // A virtual pad carries its launcher's vendor (Valve under Steam
-                        // Input), which is not evidence of handheld hardware at all
+                        // (A virtual pad carries Valve's vendor: no evidence)
                         continue;
                     }
                     const Uint16 vendor = PadVendor(id);
@@ -5674,10 +5631,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 return decks.size() == 1 ? decks.front() : 0;
             };
             const u32 candidate = handheld_candidate();
-            // A pad identified here is the handheld's own from this very tick on: the claims
-            // below must already skip it, or a launch with the externals on gives the deck
-            // P1 and the externals P2.., and releasing the deck's P1 a tick later leaves P1
-            // empty (deck log: "player 1 deactivated", externals on P2-P5)
+            // The handheld's own from this tick on: the claims below must already skip it, or
+            // with externals on at launch it takes P1 and leaves it empty a tick later
             if (candidate) {
                 LOG_INFO(Frontend, "console-mode: handheld {:04x}:{:04x} detected by its maker",
                          PadVendor(candidate), PadProduct(candidate));
@@ -5698,9 +5653,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 builtin_identity = live.begin()->second;
                 builtin_seen_first = true;
                 Settings::values.builtin_pad_identity.SetValue(live.begin()->second);
-                // A lone Steam-virtual pad at the ritual is the handheld's own by
-                // definition (Steam Input wraps it); only raw unknown hardware gets the
-                // note, where the mislabel risk is real.
+                // (A lone Steam virtual pad is the handheld's own: only unknown raw hardware is
+                // noted)
                 if (!builtin_warned && !IsSteamVirtualPad(live.begin()->first)) {
                     QMessageBox::information(
                         this, tr("Assign Handheld Controller"),
@@ -5709,18 +5663,15 @@ void MainWindow::ApplyConsoleControllerMode() {
                     builtin_warned = true;
                 }
             }
-            // Nothing identified: this tick works like Modern, and the mode stays chosen
-            // (the next tick looks again, e.g. once the pads have enumerated)
+            // Nothing identified: this tick works like Modern; the next looks again
         }
     }
 
     auto& players = Settings::values.players.GetValue();
     bool changed = false;
 
-    // A disconnected pad keeps its reservation so a quick blip (Steam virtual pads churn)
-    // reclaims its player - but not forever: after the grace period the slot is free again,
-    // so plugging a DIFFERENT controller cannot leave an earlier player dead for the rest
-    // of the session.
+    // A disconnected pad keeps its reservation so a quick blip reclaims its player, for a grace
+    // period only (a different controller must not leave a player dead)
     {
         static std::map<u32, std::chrono::steady_clock::time_point> pad_last_seen;
         const auto now = std::chrono::steady_clock::now();
@@ -5745,9 +5696,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // The handheld's own pad takes no player while external controllers are around: if it
-    // claimed one while alone, release it so the externals fill the range from player one.
-    // When the externals leave, the built-in claims slot one again - no tiptoeing needed.
+    // The handheld's own pad takes no player while external controllers are around: released,
+    // so they fill from player one. It claims player one again when they leave.
     if (handheld && builtin_valid && live.size() > 1) {
         for (auto it = pad_slots.begin(); it != pad_slots.end();) {
             if (it->first == builtin_match_id) {
@@ -5760,10 +5710,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // Alone, the handheld's own pad is player one. The departed externals' reservations
-    // would otherwise hold the low slots for their grace period and push it to P4 (seen on
-    // the deck: three pads off in a row, ambiguous under Steam), so drop them: externals
-    // that return fill from player one again, in connect order.
+    // Alone, the handheld's own pad is player one: the departed externals' reservations are
+    // dropped (they would push it down), and returning externals fill from player one
     if (handheld && builtin_valid && live.size() == 1) {
         for (auto it = pad_slots.begin(); it != pad_slots.end();) {
             const bool own = it->first == builtin_match_id;
@@ -5783,14 +5731,13 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // The addresses of the Bluetooth controllers holding players, kept while their players are
-    // held for them; promises to away controllers last as long as a reservation (45 seconds)
+    // The addresses of the Bluetooth controllers holding players; promises to away controllers
+    // last as long as a reservation (45 seconds)
     const auto now_steady = std::chrono::steady_clock::now();
     for (const auto& [id, ident] : live) {
         if (const auto known = pad_bluetooth.find(BluetoothKey(id));
             known != pad_bluetooth.end() && !known->second.empty()) {
-            // A controller just told apart: its battery is read now, not at the next reading
-            // (up to 10 seconds later)
+            // A controller just told apart: its battery is read now
             if (auto& address = inst_address[id]; address != known->second) {
                 address = known->second;
                 battery_read.erase(id);
@@ -5804,9 +5751,8 @@ void MainWindow::ApplyConsoleControllerMode() {
         return now_steady - e.second.at > std::chrono::seconds{45};
     });
 
-    // New pads claim the lowest free slot; the handheld's own pad is skipped while
-    // others are around. The claim order follows the pads' player index where one exists:
-    // under Steam that is the ordering players expect, not instance-number luck.
+    // New pads claim the lowest free slot (the handheld's own skipped while others are around),
+    // in player index order where there is one
     std::set<int> used;
     for (const auto& [id, slot] : pad_slots) {
         used.insert(slot);
@@ -5826,22 +5772,17 @@ void MainWindow::ApplyConsoleControllerMode() {
     });
     for (const u32 id : claim_order) {
         const std::string& ident = live.at(id);
-        // The built-in is excluded by IDENTITY: its connection instance changes when the
-        // pad cycles, and matching by instance let a returning built-in claim a slot (P4)
+        // The handheld's own is excluded by identity: its instance changes when it cycles
         if (handheld && builtin_valid && id == builtin_match_id && live.size() > 1) {
             continue;
         }
-        // Steam Input pads used to take their RAW player index as the slot, but Steam's
-        // numbering is not a slot map: a session showed indices 1 and 2 landing on P2 and
-        // P3 with P1 left dead. The index orders the claims (the sort above); the slots
-        // always fill lowest-free below.
+        // Steam's player index only orders the claims; slots fill lowest-free
         if (pad_slots.find(id) == pad_slots.end()) {
-            // How many controllers are away: with more than one, a returning controller that
-            // can't be told apart is a guess
+            // How many controllers are away (with several, an untold return is a guess)
             const auto away = std::count_if(pad_slots.begin(), pad_slots.end(),
                                             [&](const auto& e) { return !live.contains(e.first); });
-            // A Bluetooth controller comes back to its own player by its address: Steam's
-            // handles follow the connection order after a reconnect, not the controller
+            // A Bluetooth controller comes back to its player by address (Steam's handles don't
+            // survive a reconnect)
             const std::string bt_key = BluetoothKey(id);
             const auto known = pad_bluetooth.find(bt_key);
             const std::string address =
@@ -5881,20 +5822,15 @@ void MainWindow::ApplyConsoleControllerMode() {
                     continue;
                 }
             } else if (pad_bt_pending.contains(bt_key) && away > 1) {
-                // Its address is about to be known (a button press tells identical controllers
-                // apart): wait for it a moment rather than guess
+                // Its address is about to be known: wait a moment rather than guess
                 const auto since = claim_wait_since.try_emplace(id, now_steady).first->second;
                 if (now_steady - since < std::chrono::seconds{3}) {
                     continue;
                 }
             }
-            // Reclaim a dangling reservation when the identity matches. A unique match is the
-            // pad's own slot. Identical pads (several Xbox pads through Steam Input) share an
-            // identity, so which reservation is whose cannot be known - but skipping them all
-            // pushed returning pads behind the gaps (P2 and P3 left, came back as P5 and P6).
-            // An ambiguous pad takes the lowest of those reservations, or a lower free slot,
-            // like a console filling the first open player - first one the game is paused
-            // for, if any (a lower one would leave the game paused).
+            // Reclaim a reservation with a matching identity. Identical pads share one, so an
+            // ambiguous pad takes the lowest of them (one the game is paused for first), or a
+            // lower free slot
             const auto before = [&](int slot, int other) {
                 const bool waited = disconnect_paused.contains(slot);
                 if (waited != disconnect_paused.contains(other)) {
@@ -5913,8 +5849,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
             }
             if (matches == 0 && Common::SteamPadsInUse()) {
-                // Steam may hand a returning controller a new handle: then no reservation is
-                // provably its own, and it takes the lowest one, like an ambiguous pad
+                // A new Steam handle on return: no reservation is provably its own, the lowest
+                // is taken
                 for (auto it = pad_slots.begin(); it != pad_slots.end(); ++it) {
                     if (live.find(it->first) == live.end() &&
                         (match == pad_slots.end() || before(it->second, match->second))) {
@@ -5946,9 +5882,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
             }
             if (matches == 1) {
-                // With several away and nothing to tell them apart, this is a guess: marked (?)
-                // until its address proves it or the user swaps it. The player stays promised to
-                // the controller that held it, by its address, should that one come back.
+                // A guess (several away): marked (?) until its address proves it. The player
+                // stays promised to its controller's address
                 const bool guessed = away > 1;
                 LOG_INFO(Frontend,
                          "console-mode: reclaim inst={} ident={} takes slot {} from dead inst={}{}",
@@ -5962,9 +5897,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                         address_claims[held->second] = {match->second, pad_origin[id], now_steady};
                     }
                 }
-                // Its own set comes back with it at once: the set was kept by the address,
-                // which the new connection only learns later (until then it would take the
-                // first set nobody has, another player's mappings)
+                // Its own set comes back at once (kept by the address, learned only later)
                 if (const auto held = inst_address.find(match->first);
                     !guessed && held != inst_address.end() && !pad_sets.contains(ident)) {
                     if (const auto set = pad_sets.find("bt:" + held->second);
@@ -6000,8 +5933,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
             }
             if (!assigned) {
-                // Retire reservations (pads that left long ago) and retry, never a live
-                // pad's slot
+                // Retire reservations and retry, never a live pad's slot
                 for (auto it = pad_slots.begin(); it != pad_slots.end();) {
                     const bool live_pad = live.find(it->first) != live.end();
                     if (!live_pad) {
@@ -6042,8 +5974,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         });
     }
 
-    // A guessed controller whose address became known: right where it is (the guess held), or
-    // moved to the player it really had, the guessed one left free for its controller
+    // A guessed controller whose address became known stays, or moves to its real player
     for (auto it = pad_guessed.begin(); it != pad_guessed.end();) {
         const u32 id = *it;
         const auto known = pad_bluetooth.find(BluetoothKey(id));
@@ -6073,9 +6004,7 @@ void MainWindow::ApplyConsoleControllerMode() {
         it = pad_guessed.erase(it);
     }
 
-    // Swaps requested from the settings or the overlay: the two players' pads trade slots (or
-    // one moves, when the other player has none), for this session only. The routing below
-    // re-points them at once.
+    // Swaps from the settings or the overlay: the pads trade slots, for this session
     {
         std::vector<std::pair<int, int>> requests;
         {
@@ -6103,9 +6032,8 @@ void MainWindow::ApplyConsoleControllerMode() {
             if (!pad_a && !pad_b) {
                 continue;
             }
-            // Everything on the two players changes places, the players held for controllers
-            // that left too: moving only the connected ones put one on a player still held for
-            // another, and both had it once that one came back
+            // Everything on the two players changes places, held players too (else a returning
+            // controller could find its player taken)
             for (auto& [id, slot] : pad_slots) {
                 if (slot == a) {
                     slot = b;
