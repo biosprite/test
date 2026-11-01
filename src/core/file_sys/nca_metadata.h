@@ -75,7 +75,7 @@ struct CNMTHeader {
     u64_le title_id;
     u32_le title_version;
     TitleType type;
-    ContentMetaPlatform platform;
+    u8 reserved;
     u16_le table_offset;
     u16_le number_content_entries;
     u16_le number_meta_entries;
@@ -86,7 +86,7 @@ struct CNMTHeader {
     std::array<u8, 4> reserved3;
 };
 static_assert(sizeof(CNMTHeader) == 0x20, "CNMTHeader has incorrect size.");
-static_assert(offsetof(CNMTHeader, platform) == 0xD, "CNMT platform has incorrect offset.");
+static_assert(offsetof(CNMTHeader, reserved) == 0xD, "CNMT platform has incorrect offset.");
 
 // A class representing the format used by NCA metadata files, typically named {}.cnmt.nca or
 // meta0.ncd. These describe which NCA's belong with which titles in the registered cache.

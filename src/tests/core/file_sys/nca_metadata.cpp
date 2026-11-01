@@ -11,15 +11,16 @@ namespace FileSys {
 TEST_CASE("CNMT serializes platform values", "[core][file_sys]") {
     const auto platform = GENERATE(ContentMetaPlatform::Nx, ContentMetaPlatform::Ounce,
                                    static_cast<ContentMetaPlatform>(0x7f));
-    CNMTHeader header{};
-    header.title_id = 0x0100000000000000;
-    header.type = TitleType::Application;
-    header.platform = platform;
-    header.table_offset = sizeof(OptionalHeader);
+    const CNMTHeader header{
+        .title_id = 0x0100000000000000,
+        .type = TitleType::Application,
+        .reserved = static_cast<u8>(platform),
+        .table_offset = sizeof(OptionalHeader),
+    };
     CNMT metadata(header, {}, {}, {});
 
     const auto serialized = metadata.Serialize();
-    REQUIRE(serialized[0xD] == static_cast<u8>(platform));
+    REQUIRE(serialized[0xD] == metadata.GetHeader().reserved);
     CNMT parsed(std::make_shared<Tests::MetadataFile>(serialized));
     REQUIRE(parsed.GetPlatform() == platform);
     REQUIRE(parsed.Serialize() == serialized);
@@ -28,10 +29,10 @@ TEST_CASE("CNMT serializes platform values", "[core][file_sys]") {
 TEST_CASE("CNMT does not merge platforms", "[core][file_sys]") {
     CNMTHeader nx_header{};
     nx_header.type = TitleType::Application;
-    nx_header.platform = ContentMetaPlatform::Nx;
+    nx_header.reserved = static_cast<u8>(ContentMetaPlatform::Nx);
     nx_header.table_offset = sizeof(OptionalHeader);
     auto ounce_header = nx_header;
-    ounce_header.platform = ContentMetaPlatform::Ounce;
+    ounce_header.reserved = static_cast<u8>(ContentMetaPlatform::Ounce);
     ounce_header.number_content_entries = 1;
 
     ContentRecord content{};

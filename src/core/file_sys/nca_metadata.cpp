@@ -65,7 +65,7 @@ TitleType CNMT::GetType() const {
 }
 
 ContentMetaPlatform CNMT::GetPlatform() const {
-    return header.platform;
+    return static_cast<ContentMetaPlatform>(header.reserved);
 }
 
 const std::vector<ContentRecord>& CNMT::GetContentRecords() const {
