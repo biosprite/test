@@ -72,12 +72,10 @@ public:
     /// Update the input devices combobox.
     void UpdateInputDeviceCombobox();
 
-    /// Redraws the tab from its emulated controller, after something else reloaded it (the
-    /// automatic player assignment re-pointing the player at another pad)
+    /// Redraws the tab from its emulated controller after the engine reloaded it
     void RefreshFromController();
 
-    /// While the players are assigned automatically, the player's connection, device and motion
-    /// are not the user's to change: the tab hides those choices
+    /// In the automatic modes the tab hides the connection, device and motion choices
     void SetConnectionLocked(bool locked);
 
     /// Updates the list of controller profiles.
@@ -93,8 +91,8 @@ public:
     [[nodiscard]] std::optional<std::pair<std::string, int>> CurrentSdlDevice() const;
     /// Clear's work: every binding emptied
     void ClearMappings();
-    /// The player's motion bindings, kept across Clear and Defaults while players are assigned
-    /// automatically (motion is the engine's there, and hidden); none otherwise
+    /// The player's motion bindings, kept across Clear and Defaults in the automatic modes
+    /// (motion is hidden there); none otherwise
     [[nodiscard]] std::vector<Common::ParamPackage> KeptMotions() const;
     void RestoreMotions(const std::vector<Common::ParamPackage>& motions);
 
@@ -198,8 +196,7 @@ private:
     bool is_powered_on;
     /// Players are assigned automatically: the connection and controller are not this tab's
     bool connection_locked{};
-    /// The SDL controller (guid, port) the player's bindings point at, as last seen: Defaults
-    /// maps it while the device list is hidden, also after Clear emptied the bindings
+    /// The SDL controller (guid, port) the bindings last pointed at, for Defaults after Clear
     std::optional<std::pair<std::string, int>> locked_device;
     bool style_applied{};
     bool home_centred{};
@@ -207,8 +204,8 @@ private:
     /// The section boxes given a bold title in the automatic modes
     std::vector<QPointer<QGroupBox>> bolded_boxes;
 
-    /// The profile card shown instead of the Profile group while players are assigned
-    /// automatically. It drives the same profile list (comboProfiles stays the selection).
+    /// The profile card shown instead of the Profile group in the automatic modes (comboProfiles
+    /// stays the selection)
     void BuildProfileCard();
     void UpdateProfileCard();
     /// The selected profile's mapping, kept to tell when the tab's mapping differs from it

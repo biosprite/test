@@ -206,8 +206,7 @@ struct Values {
     /// Show the controller debug overlay (the real pad state plus the logic's actions)
     SwitchableSetting<bool> console_debug_overlay{linkage, true, "console_debug_overlay",
                                                   Category::LibraryApplet};
-    /// Modern Console: the input profile each player number starts a session with, by name,
-    /// comma-separated in player order (empty: the player's usual controls)
+    /// Modern Console: each player's starting input profile, comma-separated in player order
     Setting<std::string> modern_seat_profiles{linkage, std::string{}, "modern_seat_profiles",
                                               Category::LibraryApplet};
     /// Name a controller on screen for a moment when it takes a player or leaves one
@@ -222,38 +221,31 @@ struct Values {
         linkage, 5, 1, 30, "console_history_seconds", Category::LibraryApplet};
     SwitchableSetting<bool> console_history_gaps{linkage, false, "console_history_gaps",
                                                  Category::LibraryApplet};
-    /// Modern Console under Steam: Eden reads the controllers itself instead of Steam Input's
-    /// virtual ones. Read at startup.
+    /// Under Steam: Eden reads the real controllers instead of Steam's virtual ones. At startup.
     SwitchableSetting<bool> console_bypass_steam{linkage, false, "console_bypass_steam",
                                                  Category::LibraryApplet};
-    /// Experimental, under Steam in Modern Console: read the motion of Valve's controllers from
-    /// their raw reports instead of SDL opening them. Read at startup.
+    /// Experimental, under Steam: read Valve controllers' motion from their raw reports. At
+    /// startup.
     SwitchableSetting<bool> console_valve_reader{linkage, false, "console_valve_reader",
                                                  Category::LibraryApplet};
-    /// Modern Console: when a game only takes Joy-Cons, players' controllers act as Joy-Cons (Dual
-    /// Joy-Cons, or a single one held sideways with the buttons arranged to fit)
+    /// Modern Console: when a game only takes Joy-Cons, controllers act as Joy-Cons
     SwitchableSetting<bool> console_joycon_auto{linkage, true, "console_joycon_auto",
                                                 Category::LibraryApplet};
-    /// Modern Console: pause the game when a player's controller is turned off (Turn Off, or
-    /// Bluetooth says so) or has been gone for 3 seconds
-    /// (resumed when a controller takes the player again)
+    /// Modern Console: pause when a player's controller is turned off or gone for 3 seconds,
+    /// resume when a controller takes the player again
     SwitchableSetting<bool> console_pause_disconnect{linkage, true, "console_pause_disconnect",
                                                      Category::LibraryApplet};
-    /// Modern Console: controllers' player lights and light bars show their player (for the
-    /// controllers Eden reads itself; Steam sets them for its own)
+    /// Modern Console: controllers' player lights and light bars show their player
     SwitchableSetting<bool> console_player_lights{linkage, true, "console_player_lights",
                                                   Category::LibraryApplet};
-    /// Modern Console: an Xbox or PlayStation style controller's buttons by their labels (its A is
-    /// the Switch's A) instead of their positions
+    /// Modern Console: Xbox and PlayStation style buttons by label instead of position
     SwitchableSetting<bool> console_button_labels{linkage, false, "console_button_labels",
                                                   Category::LibraryApplet};
-    /// Detailed controller traces in the log (every assignment tick), for bug reports. The
-    /// devices are described either way (what adding a handheld to the allowlist needs).
+    /// Detailed controller traces in the log, for bug reports
     SwitchableSetting<bool> console_debug_probes{linkage, false, "console_debug_probes",
                                                  Category::LibraryApplet};
 
-    /// True when the user declared the handheld's own pad by hand (the picker or the
-    /// Identify button); the auto latch must not overwrite it
+    /// The user picked the handheld's own pad (picker or Identify): auto-detect keeps it
     SwitchableSetting<bool> builtin_pad_manual{linkage, false, "builtin_pad_manual",
                                                Category::Core};
 
@@ -261,16 +253,15 @@ struct Values {
     SwitchableSetting<std::string> builtin_pad_identity{linkage, std::string{},
                                                         "builtin_pad_identity", Category::Core};
 
-    /// Under Steam Input, the Steam handle of the handheld's own pad: its virtual pad shares
-    /// the GUID of every other one, but this handle stays the same across sessions
-    /// A controller the user removed as the handheld's own (its Steam handle under Steam, else
-    /// its identity): auto-detect leaves it alone until it is allowed again, picked or identified
+    /// A controller the user removed as the handheld's own (Steam handle, else identity):
+    /// auto-detect skips it until it is allowed again
     SwitchableSetting<std::string> builtin_pad_blocked{linkage, std::string{},
                                                        "builtin_pad_blocked", Category::Core};
+    /// Under Steam, the handheld's own pad's Steam handle: stable across sessions, unlike the
+    /// virtual pads' shared GUID
     SwitchableSetting<std::string> builtin_pad_steam_handle{
         linkage, std::string{}, "builtin_pad_steam_handle", Category::Core};
-    /// True when the user declared the Steam handle (the picker or the Identify button): kept
-    /// whatever the pad reports, such as a handheld's controls posing as a DualSense
+    /// The user picked the Steam handle (picker or Identify): kept whatever the pad reports
     SwitchableSetting<bool> builtin_pad_steam_manual{linkage, false, "builtin_pad_steam_manual",
                                                      Category::Core};
     SwitchableSetting<MemoryLayout, true> memory_layout_mode{linkage,

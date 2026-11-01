@@ -47,8 +47,7 @@ class ConfigureInput;
 
 void OnDockedModeChanged(bool last_state, bool new_state, Core::System& system);
 
-/// The settings dialog's tab bar in the automatic modes: the player tabs are bubbles in their
-/// player's colour (the tab's data), the selected one filled; the other tabs are unchanged
+/// The settings tab bar in the automatic modes: player tabs drawn as bubbles in their colour
 class PlayerTabStyle : public QProxyStyle {
 public:
     explicit PlayerTabStyle(const QString& base);
@@ -58,9 +57,8 @@ public:
                            const QWidget* widget) const override;
 };
 
-/// Under Eden's dark themes their style sheet draws the tabs, never PlayerTabStyle: this layer
-/// over the tab bar paints the player tabs' bubbles instead (under the tab buttons, which stay
-/// usable)
+/// Under Eden's dark themes the style sheet draws the tabs: this layer paints the player tabs'
+/// bubbles instead
 class PlayerTabOverlay : public QWidget {
 public:
     PlayerTabOverlay(QTabBar* bar, QColor background);
@@ -132,16 +130,14 @@ private:
 
     std::array<ConfigureInputPlayer*, 8> player_controllers{};
     ConfigurePlayerAssignment* assignment = nullptr;
-    /// Follows the automatic player assignment: the player tabs and the connected boxes are
-    /// redrawn when it reloads the controllers while the dialog is open
+    /// Redraws the player tabs when the engine reloads the controllers
     QTimer* follow_timer = nullptr;
     unsigned long long followed_generation = 0;
     std::function<void()> mirror_console_mode;
     /// The settings dialog's tab widget whose tab clicks rumble the players' controllers
     QTabWidget* rumble_tabs = nullptr;
     std::array<QWidget*, 8> player_tabs{};
-    /// Dragging the player tabs (the automatic modes): the tab bar watched, and the tab order
-    /// when the drag began
+    /// Dragging the player tabs: the tab bar, and the order when the drag began
     QTabWidget* drag_tabs = nullptr;
     /// The tab bar drawn with PlayerTabStyle (its player tabs as bubbles)
     QPointer<QTabBar> pill_bar;
@@ -157,11 +153,9 @@ private:
     bool tab_dragging = false;
     std::array<QString, 8> player_tab_titles{};
     std::vector<Common::ControllerConsoleState::PlayerRow> last_rows;
-    /// How each player tab is lit, as the menu bar's chips (0 idle, 1 input held, 2 green
-    /// blink, 3 red blink)
+    /// How each player tab is lit (0 idle, 1 input held, 2 green blink, 3 red blink)
     std::array<int, 8> tab_lit{};
-    /// The battery each player tab shows as its icon (percent * 2 + charging, -1 none), so the
-    /// icon is only set again when it changes
+    /// The battery each player tab shows (percent * 2 + charging, -1 none)
     std::array<int, 8> tab_battery{-1, -1, -1, -1, -1, -1, -1, -1};
     std::array<QPointer<QToolButton>, 8> tab_lefts;
     std::array<QPointer<QToolButton>, 8> tab_rights;

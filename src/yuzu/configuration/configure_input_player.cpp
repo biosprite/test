@@ -955,8 +955,8 @@ void ConfigureInputPlayer::SetConnectionLocked(bool locked) {
     const bool changed = connection_locked != locked || !style_applied;
     connection_locked = locked;
     style_applied = true;
-    // The automatic modes draw the tab like the Controllers tab: rounded cards and fields, with
-    // the same spacing as before (the page fills the Deck's screen exactly)
+    // The automatic modes draw the tab like the Controllers tab, keeping the spacing (the page
+    // fills the Deck's screen exactly)
     if (changed) {
         setStyleSheet(
             locked ? ConfigurePlayerAssignment::Themed(QStringLiteral(
@@ -1004,8 +1004,7 @@ void ConfigureInputPlayer::SetConnectionLocked(bool locked) {
                          ConfigurePlayerAssignment::ModernComboStyle()
                    : QString{});
         if (!locked) {
-            // The manual modes get the tab exactly as it was: Home back at the right, the
-            // buttons back in their boxes as laid out
+            // The manual modes get the tab exactly as it was
             if (home_centred) {
                 home_centred = false;
                 ui->miscButtons->setStretch(0, 0);
@@ -1037,15 +1036,13 @@ void ConfigureInputPlayer::SetConnectionLocked(bool locked) {
         }
         if (locked) {
             ConfigurePlayerAssignment::ModernizeCombos(this);
-            // The section titles are bold (a style sheet cannot bold only a title: the box's
-            // font is bold and everything in it goes back to normal)
+            // Bold section titles (a style sheet can't bold only a title)
             QFont normal = font();
             normal.setBold(false); // explicit, or the box's bold is inherited after all
             QFont bold = normal;
             bold.setBold(true);
             for (QGroupBox* box : findChildren<QGroupBox*>()) {
-                // A section has no box around it (a button's label box may sit in a plain
-                // widget inside one)
+                // No box around a section
                 bool inside_box = false;
                 for (QWidget* up = box->parentWidget(); up && up != this; up = up->parentWidget()) {
                     inside_box = inside_box || qobject_cast<QGroupBox*>(up) != nullptr;
@@ -1062,20 +1059,18 @@ void ConfigureInputPlayer::SetConnectionLocked(bool locked) {
                 }
                 bolded_boxes.push_back(box);
             }
-            // Home sits under the middle of the controller: the row's spacer on the left gets
-            // a stretch on the right to balance it
+            // Home centred under the controller
             if (!home_centred) {
                 home_centred = true;
                 ui->miscButtons->setStretch(0, 1);
                 ui->miscButtons->addStretch(1);
             }
-            // Connect Controller's drop-down sits at the top of its box, level with the Mapping
-            // Profile card's (which has its status line below)
+            // Connect Controller's drop-down level with the profile card's
             if (QLayout* connect = ui->groupConnectedController->layout()) {
                 connect->setAlignment(ui->comboControllerType, Qt::AlignTop);
             }
-            // L, R, Minus and Plus line up with ZL and ZR: under the button, a fixed space the
-            // size of ZL's trigger slider (and its spacing), so all six boxes hold the same
+            // L, R, Minus and Plus line up with ZL and ZR: a fixed space the size of ZL's
+            // trigger slider under each
             if (!shoulders_raised) {
                 shoulders_raised = true;
                 const int slider = ui->sliderZLThreshold->sizeHint().height();
@@ -1120,8 +1115,7 @@ void ConfigureInputPlayer::SetConnectionLocked(bool locked) {
 
 namespace {
 
-/// A binding without its controller (guid, port), its fields in one order: what a profile
-/// keeps for this player whichever controller it has
+/// A binding without its controller (guid, port), its fields in a fixed order
 std::string MappingKey(const std::string& raw) {
     if (raw.empty()) {
         return {};
@@ -1150,8 +1144,8 @@ std::string MappingKey(const std::string& raw) {
     return out;
 }
 
-/// Asks the controller assignment engine to put a profile on a player's controller ("" only
-/// drops the name): it owns the mappings while players are assigned automatically
+/// Asks the engine to put a profile on a player's controller ("" drops it): the engine owns the
+/// mappings in the automatic modes
 void RequestProfile(std::size_t player, const QString& name, bool restore = false) {
     auto& state = Common::GetControllerConsoleState();
     std::scoped_lock lock{state.mutex};
@@ -1205,8 +1199,7 @@ void ConfigureInputPlayer::BuildProfileCard() {
     card_duplicate = action(tr("Duplicate"), tr("Copy the selected profile under a new name"));
     card_delete = action(tr("Delete"), tr("Delete the selected profile; this player keeps its "
                                           "current mapping"));
-    // Takes the profile off this player: its mappings from before the profile come back
-    // (Inside the drop-down)
+    // (Inside the drop-down) takes the profile off: the mappings from before it come back
     card_remove = ConfigurePlayerAssignment::AddClearButton(card_profiles);
     card_remove->setToolTip(tr("Remove the profile from this player"));
     row->addWidget(card_profiles, 1);
@@ -1235,8 +1228,7 @@ void ConfigureInputPlayer::BuildProfileCard() {
     connect(card_duplicate, &QPushButton::clicked, this, &ConfigureInputPlayer::DuplicateProfile);
     connect(card_delete, &QPushButton::clicked, this, &ConfigureInputPlayer::DeleteProfileAsked);
 
-    // The engine owns the mappings here: picking or saving a profile goes through it, or its
-    // next pass would put the player's previous mappings back
+    // The engine owns the mappings here: picking or saving a profile goes through it
     connect(card_profiles, qOverload<int>(&QComboBox::activated), this, [this](int index) {
         ui->comboProfiles->setCurrentIndex(index);
         RequestProfile(player_index, ui->comboProfiles->currentText());
@@ -1516,9 +1508,8 @@ void ConfigureInputPlayer::UpdateInputDeviceCombobox() {
 }
 
 void ConfigureInputPlayer::RestoreDefaults() {
-    // While players are assigned automatically the device list is hidden (and may say "Any"):
-    // the defaults are the player's controller's, the one its bindings point at (or pointed at
-    // before Clear)
+    // In the automatic modes the device list is hidden (and may say "Any"): the defaults are
+    // those of the controller the bindings point at, or pointed at before Clear
     if (connection_locked) {
         if (const auto device = CurrentSdlDevice()) {
             locked_device = device;
@@ -2233,8 +2224,8 @@ void ConfigureInputPlayer::LoadProfile() {
 
     ApplyConfiguration();
 
-    // While players are assigned automatically, the profile's mappings go onto the controller
-    // this player has now: the controller saved with the profile would read as a swap
+    // In the automatic modes the profile goes onto the player's current controller (the one
+    // saved with it would read as a swap)
     auto& player = Settings::values.players.GetValue()[player_index];
     const auto device = connection_locked ? SdlDevice(player) : std::nullopt;
 

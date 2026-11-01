@@ -159,8 +159,7 @@ public:
     /// The SDL guid and port that bindings use for an SDL joystick instance, if SDL has it open.
     [[nodiscard]] std::optional<std::pair<std::string, int>> GetSDLBinding(u32 sdl_instance) const;
 
-    /// The Valve controllers read directly (experimental, see ValveMotion): their port in the
-    /// "valvemotion" engine, product, whether a button is held and whether motion arrives
+    /// The Valve controllers read directly (see ValveMotion)
     struct ValveMotionDevice {
         std::size_t port;
         u16 product;
@@ -169,8 +168,7 @@ public:
     };
     [[nodiscard]] std::vector<ValveMotionDevice> GetValveMotionDevices() const;
 
-    /// When an SDL joystick instance last had a deliberate input (button, d-pad, a stick or
-    /// trigger past half travel), if ever.
+    /// When an SDL joystick last had a deliberate input (a stick or trigger past half travel)
     [[nodiscard]] std::optional<std::chrono::steady_clock::time_point> GetSDLLastActivity(
         u32 sdl_instance) const;
 
