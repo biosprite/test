@@ -482,9 +482,9 @@ protected:
                 const QRectF percent(cell.left() - 2 - percent_w, rect.top(), percent_w,
                                      rect.height());
                 painter.save();
-                QFont small = painter.font();
-                small.setPointSizeF(small.pointSizeF() * 0.85);
-                painter.setFont(small);
+                QFont percent_font = painter.font();
+                percent_font.setPointSizeF(percent_font.pointSizeF() * 0.85);
+                painter.setFont(percent_font);
                 painter.setPen(ink);
                 painter.drawText(percent, Qt::AlignVCenter | Qt::AlignRight,
                                  QStringLiteral("%1%").arg(row.battery));
