@@ -471,14 +471,25 @@ protected:
             }
             painter.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2);
             const QColor ink = lit ? QColor(Qt::white) : color;
-            // The controller's battery, at the right end (inside the arrow)
+            // The controller's battery's percent, then its icon, at the right end (inside the
+            // arrow)
             QRectF label = rect;
             if (row.battery >= 0 && batteries) {
                 const QRectF cell(rect.right() - (several ? 16 : 6) - battery_w,
                                   rect.center().y() - 6, battery_w, 12);
                 painter.drawPixmap(cell.topLeft(),
                                    ConfigurePlayerAssignment::Battery(row.battery, row.charging));
-                label.setRight(cell.left() + (several ? 16 : 6));
+                const QRectF percent(cell.left() - 2 - percent_w, rect.top(), percent_w,
+                                     rect.height());
+                painter.save();
+                QFont small = painter.font();
+                small.setPointSizeF(small.pointSizeF() * 0.85);
+                painter.setFont(small);
+                painter.setPen(ink);
+                painter.drawText(percent, Qt::AlignVCenter | Qt::AlignRight,
+                                 QStringLiteral("%1%").arg(row.battery));
+                painter.restore();
+                label.setRight(percent.left() + (several ? 16 : 6));
             }
             // With other players around: the grip, and the arrows swapping with a neighbour
             painter.setPen(ink);
@@ -643,7 +654,9 @@ private:
     static constexpr int chip_gap = 4;
     /// A chip's battery, when its controller tells its charge (and the room it takes)
     static constexpr int battery_w = 20;
-    static constexpr int battery_room = battery_w + 4;
+    /// Its percent after it ("100%" fits)
+    static constexpr int percent_w = 28;
+    static constexpr int battery_room = battery_w + percent_w + 4;
 
     /// A chip's width among these players: wider with arrows and the grip (several players),
     /// and with a battery (unless the chips are too many for the menu bar with them)
@@ -3717,7 +3730,7 @@ void MainWindow::RenderControllerOverlay() {
     const bool batteries = std::any_of(overlay_rows.begin(), overlay_rows.end(),
                                        [](const auto& row) { return row.battery >= 0; });
     const int battery_w =
-        batteries ? 8 + 16 + 4 + chip_fm.horizontalAdvance(QStringLiteral("100%")) : 0;
+        batteries ? 8 + chip_fm.horizontalAdvance(QStringLiteral("100%")) + 5 + 16 : 0;
     const int controller_w = inner + badge_w + 8 + name_w + battery_w + inner + 4;
     // Room for as many of the widest chips as the history keeps (and the times between them),
     // so the image keeps its size as the bubbles change; without the history, room for a
@@ -3819,7 +3832,9 @@ void MainWindow::RenderControllerOverlay() {
                          Qt::AlignVCenter | Qt::AlignLeft, overlay_row_name[row.player]);
         // The battery: a small cell filled to its charge (red when low, a bolt while charging)
         if (!gone && row.battery >= 0) {
-            const double bx = 1 + inner + badge_w + 8 + name_w + 8;
+            // (The percent first, right-aligned against the icon, so the icons line up)
+            const int percent_w = chip_fm.horizontalAdvance(QStringLiteral("100%"));
+            const double bx = 1 + inner + badge_w + 8 + name_w + 8 + percent_w + 5;
             const QRectF cell(bx, at_y + row_h / 2.0 - 4, 14, 8);
             const QColor charge =
                 row.battery <= 15 && !row.charging ? QColor(235, 70, 70) : QColor(120, 220, 140);
@@ -3844,8 +3859,8 @@ void MainWindow::RenderControllerOverlay() {
             }
             painter.setFont(chip_font);
             painter.setPen(QColor(220, 220, 220));
-            painter.drawText(QRectF(cell.right() + 5, at_y, 40, row_h),
-                             Qt::AlignVCenter | Qt::AlignLeft,
+            painter.drawText(QRectF(cell.left() - 5 - percent_w, at_y, percent_w, row_h),
+                             Qt::AlignVCenter | Qt::AlignRight,
                              QStringLiteral("%1%").arg(row.battery));
         }
         painter.setPen(Qt::NoPen);

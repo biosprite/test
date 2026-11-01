@@ -1516,10 +1516,71 @@ void ConfigureInputPlayer::UpdateInputDeviceCombobox() {
 }
 
 void ConfigureInputPlayer::RestoreDefaults() {
+    // While players are assigned automatically the device list is hidden (and may say "Any"):
+    // the defaults are the player's controller's, the one its bindings point at (or pointed at
+    // before Clear)
+    if (connection_locked) {
+        if (const auto device = CurrentSdlDevice()) {
+            locked_device = device;
+        }
+        if (locked_device) {
+            const auto it = std::find_if(
+                input_devices.begin(), input_devices.end(), [this](const auto& param) {
+                    return param.Get("engine", "") == "sdl" &&
+                           param.Get("guid", "") == locked_device->first &&
+                           param.Get("port", 0) == locked_device->second;
+                });
+            if (it != input_devices.end()) {
+                ui->comboDevices->setCurrentIndex(
+                    static_cast<int>(std::distance(input_devices.begin(), it)));
+            }
+        }
+    }
+    // (Motion is the engine's in these modes, and hidden: a DSU binding stays)
+    const auto motions = KeptMotions();
     UpdateMappingWithDefaults();
+    RestoreMotions(motions);
+}
+
+std::optional<std::pair<std::string, int>> ConfigureInputPlayer::CurrentSdlDevice() const {
+    for (int button_id = 0; button_id < Settings::NativeButton::NumButtons; ++button_id) {
+        const auto param = emulated_controller->GetButtonParam(button_id);
+        if (param.Get("engine", "") == "sdl") {
+            return std::pair<std::string, int>{param.Get("guid", ""), param.Get("port", 0)};
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<Common::ParamPackage> ConfigureInputPlayer::KeptMotions() const {
+    std::vector<Common::ParamPackage> motions;
+    if (connection_locked) {
+        for (int motion_id = 0; motion_id < Settings::NativeMotion::NumMotions; ++motion_id) {
+            motions.push_back(
+                emulated_controller->GetMotionParam(static_cast<std::size_t>(motion_id)));
+        }
+    }
+    return motions;
+}
+
+void ConfigureInputPlayer::RestoreMotions(const std::vector<Common::ParamPackage>& motions) {
+    for (std::size_t motion_id = 0; motion_id < motions.size(); ++motion_id) {
+        emulated_controller->SetMotionParam(motion_id, motions[motion_id]);
+    }
 }
 
 void ConfigureInputPlayer::ClearAll() {
+    // (The controller is remembered, for Defaults afterwards)
+    if (const auto device = CurrentSdlDevice()) {
+        locked_device = device;
+    }
+    // (Motion is the engine's in the automatic modes, and hidden: a DSU binding stays)
+    const auto motions = KeptMotions();
+    ClearMappings();
+    RestoreMotions(motions);
+}
+
+void ConfigureInputPlayer::ClearMappings() {
     for (int button_id = 0; button_id < Settings::NativeButton::NumButtons; ++button_id) {
         const auto* const button = button_map[button_id];
         if (button == nullptr) {

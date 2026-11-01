@@ -1424,8 +1424,8 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
             name_line->addWidget(name_label);
             if (battery) {
                 name_line->addSpacing(6);
-                name_line->addWidget(battery);
                 name_line->addWidget(battery_text);
+                name_line->addWidget(battery);
             }
             name_line->addWidget(name_edit, 1);
             name_line->addWidget(name_edit_button);

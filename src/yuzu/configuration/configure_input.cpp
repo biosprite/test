@@ -246,6 +246,30 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
         if (mirror_console_mode) {
             mirror_console_mode();
         }
+        // The player tabs carry their battery's percent only while every tab fits with it: with
+        // many players the tab bar would scroll (or squeeze the labels, on macOS). Judged with
+        // "100%" for each, so a changing charge doesn't make the percents come and go.
+        bool tab_percents = true;
+        if (tabs) {
+            QFont bold = tabs->tabBar()->font();
+            bold.setBold(true);
+            const QFontMetrics fm{bold};
+            int shown_extra = 0;
+            int most_extra = 0;
+            for (int t = 0; t < tabs->count(); ++t) {
+                if (!tabs->isTabVisible(t) || tabs->tabIcon(t).isNull()) {
+                    continue;
+                }
+                const QString text = tabs->tabText(t);
+                const int at = text.lastIndexOf(QLatin1Char(' '));
+                if (text.endsWith(QLatin1Char('%')) && at > 0) {
+                    shown_extra += fm.horizontalAdvance(text.mid(at));
+                }
+                most_extra += fm.horizontalAdvance(QStringLiteral(" 100%"));
+            }
+            const int need = tabs->tabBar()->sizeHint().width() - shown_extra + most_extra;
+            tab_percents = need <= tabs->width() - 8;
+        }
         // Several players: the tabs drag and carry arrows; one alone has nothing to reorder
         const bool several =
             std::count_if(rows.begin(), rows.end(), [](const auto& r) { return !r.leaving; }) > 1;
@@ -298,7 +322,10 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                     const int battery = automatic && shown && row->battery >= 0 && !row->leaving
                                             ? row->battery * 2 + (row->charging ? 1 : 0)
                                             : -1;
-                    if (tab_battery[i] != battery) {
+                    // (Also when the tab lost it: the dialog takes the player tabs out and puts
+                    // them back as its pages change, and a tab put back has no icon)
+                    if (tab_battery[i] != battery ||
+                        tabs->tabIcon(index).isNull() != (battery < 0)) {
                         tab_battery[i] = battery;
                         tabs->setTabIcon(index,
                                          battery < 0 ? QIcon{}
@@ -311,8 +338,14 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                     } else if (shown) {
                         // The grip says the tab drags, like the Controllers tab's rows (alone,
                         // there is nothing to reorder)
-                        set_text(several ? QStringLiteral("\u283F P%1").arg(i + 1)
-                                         : QStringLiteral("P%1").arg(i + 1));
+                        // (Its battery's percent in the label, so the tab has room for it; the
+                        // icon is drawn after it)
+                        const QString percent = battery < 0 || !tab_percents
+                                                    ? QString{}
+                                                    : QStringLiteral(" %1%").arg(row->battery);
+                        set_text((several ? QStringLiteral("\u283F P%1").arg(i + 1)
+                                          : QStringLiteral("P%1").arg(i + 1)) +
+                                 percent);
                         const QString battery_tip =
                             battery < 0 ? QString{}
                             : row->charging
@@ -550,6 +583,21 @@ std::optional<PlayerTabLook> TabLook(const QVariant& data) {
     return PlayerTabLook{list[0].value<QColor>(), list[1].toInt()};
 }
 
+/// A player tab's label with its battery after it, the two centred together in the area
+void PaintTabLabel(QPainter& painter, const QRect& area, const QString& text, const QIcon& icon,
+                   const QSize& icon_size) {
+    if (icon.isNull()) {
+        painter.drawText(area, Qt::AlignCenter, text);
+        return;
+    }
+    const int text_w = QFontMetrics(painter.font()).horizontalAdvance(text);
+    const int left = area.center().x() - (text_w + 4 + icon_size.width()) / 2;
+    painter.drawText(QRect(left, area.top(), text_w + 2, area.height()),
+                     Qt::AlignVCenter | Qt::AlignLeft, text);
+    icon.paint(&painter, QRect(left + text_w + 4, area.center().y() - icon_size.height() / 2,
+                               icon_size.width(), icon_size.height()));
+}
+
 /// Like the menu bar's chips: an outline in the player's colour, filled while its controller
 /// has an input held; the selected tab the other way round. Blinks fill green or red.
 struct TabPaint {
@@ -638,25 +686,34 @@ void PlayerTabStyle::drawControl(ControlElement element, const QStyleOption* opt
         painter->restore();
         return;
     }
-    // The label: bold, white on a filled tab, else in the player's colour
-    QStyleOptionTab label{*tab};
-    label.palette.setColor(QPalette::WindowText, paint.ink);
-    label.palette.setColor(QPalette::ButtonText, paint.ink);
+    // The label: bold, white on a filled tab, else in the player's colour, with its battery
+    // after it (between the tab's arrows)
     painter->save();
     QFont font = painter->font();
     font.setBold(true);
     painter->setFont(font);
-    QProxyStyle::drawControl(element, &label, painter, widget);
+    painter->setPen(paint.ink);
+    const QRect area = tab->rect.adjusted(tab->leftButtonSize.width(), 0,
+                                          -tab->rightButtonSize.width(), 0);
+    PaintTabLabel(*painter, area, tab->text, tab->icon, tab->iconSize);
     painter->restore();
 }
 
 QSize PlayerTabStyle::sizeFromContents(ContentsType type, const QStyleOption* option,
                                        const QSize& size, const QWidget* widget) const {
     QSize result = QProxyStyle::sizeFromContents(type, option, size, widget);
-    // Room for a bubble's rounded ends and bold label (a player tab starts with its grip)
+    // Room for a bubble's rounded ends and bold label (a player tab starts with its grip, or
+    // carries its battery)
     const auto* tab = qstyleoption_cast<const QStyleOptionTab*>(option);
-    if (type == CT_TabBarTab && tab && tab->text.startsWith(QChar(0x283F))) {
+    if (type == CT_TabBarTab && tab &&
+        (tab->text.startsWith(QChar(0x283F)) || !tab->icon.isNull())) {
         result += QSize(14, 4);
+        if (widget) {
+            QFont bold = widget->font();
+            bold.setBold(true);
+            result.rwidth() += (std::max)(0, QFontMetrics(bold).horizontalAdvance(tab->text) -
+                                                 widget->fontMetrics().horizontalAdvance(tab->text));
+        }
     }
     return result;
 }
@@ -707,20 +764,8 @@ void PlayerTabOverlay::paintEvent(QPaintEvent*) {
         font.setBold(true);
         painter.setFont(font);
         painter.setPen(paint.ink);
-        // The battery icon, left of the label, the two centred together
-        const QIcon icon = bar->tabIcon(i);
-        if (icon.isNull()) {
-            painter.drawText(text, Qt::AlignCenter, bar->tabText(i));
-            return;
-        }
-        const QSize icon_size = bar->iconSize();
-        const int text_w = QFontMetrics(font).horizontalAdvance(bar->tabText(i));
-        const int left = text.center().x() - (icon_size.width() + 4 + text_w) / 2;
-        icon.paint(&painter,
-                   QRect(left, text.center().y() - icon_size.height() / 2, icon_size.width(),
-                         icon_size.height()));
-        painter.drawText(QRect(left + icon_size.width() + 4, text.top(), text_w + 2, text.height()),
-                         Qt::AlignVCenter | Qt::AlignLeft, bar->tabText(i));
+        // The battery after the label
+        PaintTabLabel(painter, text, bar->tabText(i), bar->tabIcon(i), bar->iconSize());
     };
     for (int i = 0; i < bar->count(); ++i) {
         const auto look = TabLook(bar->tabData(i));

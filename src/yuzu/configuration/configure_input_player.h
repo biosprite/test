@@ -89,6 +89,15 @@ public:
     /// Clear all input configuration.
     void ClearAll();
 
+    /// The SDL controller (guid, port) the player's bindings point at now, if any
+    [[nodiscard]] std::optional<std::pair<std::string, int>> CurrentSdlDevice() const;
+    /// Clear's work: every binding emptied
+    void ClearMappings();
+    /// The player's motion bindings, kept across Clear and Defaults while players are assigned
+    /// automatically (motion is the engine's there, and hidden); none otherwise
+    [[nodiscard]] std::vector<Common::ParamPackage> KeptMotions() const;
+    void RestoreMotions(const std::vector<Common::ParamPackage>& motions);
+
 signals:
     /// Emitted when this controller is (dis)connected by the user.
     void Connected(bool connected);
@@ -189,6 +198,9 @@ private:
     bool is_powered_on;
     /// Players are assigned automatically: the connection and controller are not this tab's
     bool connection_locked{};
+    /// The SDL controller (guid, port) the player's bindings point at, as last seen: Defaults
+    /// maps it while the device list is hidden, also after Clear emptied the bindings
+    std::optional<std::pair<std::string, int>> locked_device;
     bool style_applied{};
     bool home_centred{};
     bool shoulders_raised{};
