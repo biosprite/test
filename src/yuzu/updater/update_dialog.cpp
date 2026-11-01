@@ -133,7 +133,6 @@ void UpdateDialog::Download() {
 
     const auto filename = m_asset.asset.name;
     const auto absFilename = tmpDir / filename;
-    std::ofstream file(absFilename.c_str(), std::ios::out | std::ios::binary);
 
     auto progress =
         QtCommon::Frontend::newProgressDialog(tr("Downloading..."), tr("Cancel"), 0, 100);
@@ -149,64 +148,13 @@ void UpdateDialog::Download() {
         return !progress->wasCanceled();
     };
 
-    // write file in chunks
     std::string tmp_data;
-    auto on_data = [&tmp_data, filename, &file](std::string_view t_data, intptr_t) {
-        tmp_data += t_data;
-        try {
-            file.write(t_data.data(), t_data.size());
-        } catch (std::exception &e) {
-            LOG_ERROR(Frontend, "Could not write {} bytes to file {}, error{}=", t_data.size(),
-                        filename, e.what());
-            QtCommon::Frontend::Critical(
-                tr("Failed to save file"),
-                tr("Could not write to file %1.").arg(QString::fromStdString(filename)));
-            return false;
-        }
+    const auto download_res =
+        downloadFile(tmp_data, m_asset.asset.browser_download_url, absFilename, progress.get());
 
-        return true;
-    };
-
-    const auto url = m_asset.asset.browser_download_url;
-
-    cpr::SslOptions opts;
-#ifdef YUZU_BUNDLED_OPENSSL
-    opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
-#endif
-
-    const auto res = cpr::Get(
-        cpr::Url{url},
-        cpr::ProgressCallback([&progress_callback](size_t total, size_t now, size_t, size_t, intptr_t) -> bool {
-            return progress_callback(now, total);
-        }),
-        cpr::WriteCallback{on_data},
-        opts,
-        cpr::ConnectTimeout{std::chrono::seconds{10}}
-    );
-
-    progress->close();
-
-    if (res.error || res.status_code < 200 || res.status_code >= 300) {
-        if (res.error)
-            LOG_ERROR(Frontend, "Failed to download {}: {}", url, res.error.message);
-        else
-            LOG_ERROR(Frontend, "Received status code {} for {}", res.status_code, url);
-
-        QtCommon::Frontend::Critical(
-            tr("Failed to download file"),
-            tr("Could not download file %1. Check your logs for more information.")
-                .arg(QString::fromStdString(url)));
+    if (!download_res) {
+        progress->close();
         return;
-    }
-
-    try {
-        file.flush();
-        file.close();
-    } catch (const std::exception& e) {
-        LOG_WARNING(Frontend, "Could not commit to file {}, error={}", filename, e.what());
-        QtCommon::Frontend::Critical(
-            tr("Failed to save file"),
-            tr("Could not commit to file %1.").arg(QString::fromStdString(filename)));
     }
 
     // TODO(crueter): Test
@@ -346,9 +294,103 @@ void UpdateDialog::Download() {
             return;
         }
 
-        // qDebug() << p.arguments();
-        // p.waitForStarted();
-
         QCoreApplication::exit(0);
     }
+}
+
+bool UpdateDialog::downloadFile(
+    std::string& data, std::string_view url, std::optional<std::filesystem::path> path,
+    QtCommon::Frontend::QtProgressDialog *progress) {
+    std::function<bool(std::string_view, intptr_t)> on_data;
+
+    std::ofstream file;
+
+    if (path) {
+        LOG_INFO(Frontend, "Downloading {} to {}", url, path->string());
+
+        const auto filename = path->filename();
+        file = std::ofstream(path->string(), std::ios::out | std::ios::binary);
+
+        // write file in chunks
+        on_data = [&data, filename, &file](std::string_view t_data, intptr_t) {
+            data += t_data;
+
+            try {
+                file.write(t_data.data(), t_data.size());
+            } catch (std::exception& e) {
+                LOG_ERROR(Frontend, "Could not write {} bytes to file {}, error{}=", t_data.size(),
+                          filename, e.what());
+                QtCommon::Frontend::Critical(
+                    tr("Failed to save file"),
+                    tr("Could not write to file %1.").arg(QString::fromStdString(filename)));
+                return false;
+            }
+
+            return true;
+        };
+    } else {
+        LOG_INFO(Frontend, "Downloading {}", url);
+
+        on_data = [&data](std::string_view t_data, intptr_t) {
+            data += t_data;
+        };
+    }
+
+    auto callback = [&progress](size_t total, size_t now, size_t, size_t, intptr_t) {
+        QGuiApplication::processEvents();
+        if (total_size > 0)
+            progress->setValue(int((now * 100) / total));
+        return !progress->wasCanceled();
+    };
+
+    cpr::SslOptions opts;
+#ifdef YUZU_BUNDLED_OPENSSL
+    opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
+#endif
+
+    const auto res =
+        cpr::Get(cpr::Url{url}, cpr::ProgressCallback(callback), cpr::WriteCallback{on_data}, opts,
+                 cpr::ConnectTimeout{std::chrono::seconds{10}});
+
+    if (progress->wasCanceled()) {
+        LOG_ERROR(Frontend, "URL {} download canceled by user", url);
+
+        std::error_code ec;
+        fs::remove_all(path);
+
+        QtCommon::Frontend::Critical(
+            tr("Download cancelled"),
+            tr("Download was cancelled by the user."));
+        return false;
+    } else if (res.error) {
+        LOG_ERROR(Frontend, "URL {} returned error {}", url, res.error.message);
+
+        QtCommon::Frontend::Critical(
+            tr("Failed to download file"),
+            tr("URL %1 returned error %2.")
+                .arg(QString::fromStdString(url), QString::fromStdString(res.error.message)));
+        return false;
+    } else if (res.status_code < 200 || res.status_code >= 300) {
+        LOG_ERROR(Frontend, "URL {} returned status {}", url, res.status_code);
+
+        QtCommon::Frontend::Critical(
+            tr("Failed to download file"),
+            tr("URL %1 returned status code %2.")
+                .arg(QString::fromStdString(url), QString::number(res.status_code)));
+        return false;
+    }
+
+    try {
+        file.flush();
+        file.close();
+    } catch (const std::exception& e) {
+        const auto err = std::format("Could not commit to file {}, OS returned error {}", filename, e.what());
+        LOG_WARNING(Frontend, err);
+
+        QtCommon::Frontend::Critical(
+            tr("Failed to save file"),
+            tr("Could not commit to file %1.").arg(QString::fromStdString(filename)));
+    }
+
+    return true;
 }
