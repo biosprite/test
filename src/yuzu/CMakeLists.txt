@@ -459,3 +459,15 @@ endif()
 target_link_libraries(yuzu PRIVATE OpenSSL::SSL OpenSSL::Crypto SDL3::SDL3)
 
 create_target_directory_groups(yuzu)
+
+# Small updater shim.
+if (WIN32)
+    add_executable(updater updater/updater.cpp)
+    set_target_properties(updater PROPERTIES OUTPUT_NAME "eden-updater")
+
+    if (BOOST_NO_HEADERS)
+        target_link_libraries(updater PRIVATE Boost::process)
+    else()
+        target_link_libraries(updater PRIVATE Boost::headers)
+    endif()
+endif()

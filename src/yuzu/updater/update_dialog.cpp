@@ -112,7 +112,8 @@ void UpdateDialog::Download() {
     fs::path appDir = QCoreApplication::applicationDirPath().toStdString();
     fs::path parentDir = appDir.parent_path();
     std::string appDirName = appDir.filename().string();
-    fs::path oldDir = parentDir / fmt::format("{}_{}", appDirName, Common::g_build_version);
+    fs::path oldDir = parentDir / std::format("{}_{}", appDirName, std::string{Common::g_build_version});
+    fs::path stagingDir = parentDir / std::format("{}_{}", appDirName, "staging");
 
     std::error_code ec;
     fs::path tmpDir = fs::temp_directory_path(ec);
@@ -155,8 +156,9 @@ void UpdateDialog::Download() {
         } catch (std::exception &e) {
             LOG_ERROR(Frontend, "Could not write {} bytes to file {}, error{}=", t_data.size(),
                         filename, e.what());
-            QtCommon::Frontend::Critical(tr("Failed to save file"),
-                                         tr("Could not write to file %1.").arg(QString::fromStdString(filename)));
+            QtCommon::Frontend::Critical(
+                tr("Failed to save file"),
+                tr("Could not write to file %1.").arg(QString::fromStdString(filename)));
             return false;
         }
 
@@ -228,30 +230,40 @@ void UpdateDialog::Download() {
     progress->close();
 
     // Download is complete.
-    if (filename.ends_with(".dmg") || filename.ends_with(".exe")) {
-        // dmg, exe will just open it and let the OS handle the rest.
-        auto localUrl = QUrl::fromLocalFile(QString::fromStdString(filename));
+    if (filename.ends_with(".dmg") || filename.ends_with(".exe") || filename.ends_with(".tar.gz")) {
+        // dmg, exe, tarball will just open it and let the OS handle the rest.
+        auto localUrl = QUrl::fromLocalFile(QString::fromStdString(absFilename.string()));
         QDesktopServices::openUrl(localUrl);
     } else if (filename.ends_with(".zip")) {
-        // zip will request the user to keep the old version or not,
-        // then unzip to the current app dir and replace everything.
+        // This path should only ever trigger on Windows.
+        // If it did somehow anyways, open it and let the OS handle it.
+#ifndef _WIN32
+        auto localUrl = QUrl::fromLocalFile(QString::fromStdString(absFilename.string()));
+        QDesktopServices::openUrl(localUrl);
+        return;
+#endif
+
+        // request the user to keep the old version or not...
         auto button = QtCommon::Frontend::Question(
             tr("Download Complete"),
-            tr("Would you like to keep the old version of Eden? This will be stored in %1 in the "
-               "same directory as your current file.")
+            tr("Would you like to keep the old version of Eden in a separate folder (%1)?")
                 .arg(QString::fromStdString(oldDir.filename().string())));
 
-        // TODO windows disallows paging dead exe
-        fs::rename(appDir, oldDir);
-
-        fs::create_directories(appDir);
-
+        // ...then extract to a staging dir...
         progress->setLabelText(tr("Extracting..."));
         progress->setValue(0);
         progress->setMaximum(100);
         progress->show();
         QtCommon::Compress::extractDir(QString::fromStdString(absFilename.string()),
-                                       QString::fromStdString(appDir.string()), progress_callback);
+                                       QString::fromStdString(stagingDir.string()), progress_callback);
+
+        // ...then run a small updater shim
+        // FIXME copy to cache dir, then run.
+
+        // TODO windows disallows paging dead exe
+        fs::rename(appDir, oldDir);
+
+        fs::create_directories(appDir);
 
         if (button == QtCommon::Frontend::Yes) {
             fs::remove_all(oldDir);
