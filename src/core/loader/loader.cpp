@@ -393,6 +393,12 @@ std::unique_ptr<AppLoader> GetLoader(Core::System& system, FileSys::VirtualFile 
     FileType type = IdentifyFile(file);
     const FileType filename_type = GuessFromFilename(file->GetName());
 
+    // "main" is also a valid NSO, but loading it alone skips the rest of the ExeFS.
+    if (type == FileType::NSO && filename_type == FileType::DeconstructedRomDirectory &&
+        IdentifyFileLoader<AppLoader_DeconstructedRomDirectory>(file)) {
+        type = FileType::DeconstructedRomDirectory;
+    }
+
     // Special case: 00 is either a NCA or NAX.
     if (type != filename_type && !(file->GetName() == "00" && type == FileType::NAX)) {
         LOG_WARNING(Loader, "File {} has a different type ({}) than its extension.",
