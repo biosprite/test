@@ -3013,13 +3013,19 @@ bool RouteSdlBindings(Settings::PlayerInput& player, const std::string& guid, in
 /// The binding sets Modern Console starts from: the user's players without their mappings or
 /// profiles. Modern Console never takes the manual modes' mappings (keyboard and mouse
 /// included): each controller gets its own default mapping, or its player's picked profile.
+/// Only a DSU server's motion stays (a handheld whose own gyro is wrong or missing, set up once
+/// in the manual Controls): the console modes don't expose motion.
 std::array<Settings::PlayerInput, 10> ModernStartSets(
     const std::array<Settings::PlayerInput, 10>& user_players) {
     auto sets = user_players;
     for (auto& set : sets) {
         set.buttons.fill({});
         set.analogs.fill({});
-        set.motions.fill({});
+        for (std::string& motion : set.motions) {
+            if (Common::ParamPackage{motion}.Get("engine", "") != "cemuhookudp") {
+                motion.clear();
+            }
+        }
         set.profile_name.clear();
     }
     return sets;
@@ -6001,6 +6007,20 @@ void MainWindow::ApplyConsoleControllerMode() {
                         address_claims[held->second] = {match->second, pad_origin[id], now_steady};
                     }
                 }
+                // Its own set comes back with it at once: the set was kept by the address,
+                // which the new connection only learns later (until then it would take the
+                // first set nobody has, another player's mappings)
+                if (const auto held = inst_address.find(match->first);
+                    !guessed && held != inst_address.end() && !pad_sets.contains(ident)) {
+                    if (const auto set = pad_sets.find("bt:" + held->second);
+                        set != pad_sets.end()) {
+                        pad_sets[ident] = set->second;
+                        if (Common::ControllerProbes()) {
+                            LOG_INFO(Frontend, "console-mode: inst={} carries its own P{} set back",
+                                     id, set->second + 1);
+                        }
+                    }
+                }
                 pad_slots[id] = match->second;
                 pad_identity[id] = ident;
                 pad_identity.erase(match->first);
@@ -6319,6 +6339,10 @@ void MainWindow::ApplyConsoleControllerMode() {
             if (set_key != ident && !pad_sets.contains(set_key) && pad_sets.contains(ident)) {
                 pad_sets[set_key] = pad_sets[ident];
                 pad_sets.erase(ident);
+            } else if (set_key != ident && pad_sets.contains(set_key) &&
+                       pad_sets.contains(ident) && pad_sets[ident] == pad_sets[set_key]) {
+                // (Lent to it on a reclaim, until its address was known)
+                pad_sets.erase(ident);
             }
             // A controller carries the set it first got for the session: its slot's, unless
             // another controller has that one (after a swap), then the first set nobody has
@@ -6368,7 +6392,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                 const auto kept_motions = profile[set_index].motions;
                 const bool motion_kept =
                     std::any_of(kept_motions.begin(), kept_motions.end(), [](const auto& m) {
-                        return !m.empty() && Common::ParamPackage{m}.Get("engine", "") != "sdl";
+                        return !m.empty() &&
+                               Common::ParamPackage{m}.Get("engine", "") == "cemuhookudp";
                     });
                 want.buttons.fill({});
                 want.analogs.fill({});
