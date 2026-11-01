@@ -26,9 +26,8 @@ class QTimer;
 class QToolButton;
 class QWidget;
 
-/// The Controllers tab of the Controls settings: how players are assigned (by hand, or
-/// automatically from the connected controllers), which controller is the handheld's own
-/// built-in one, and the live list of players with a swap per row.
+/// The Controllers tab: how players are assigned, the handheld's own controller, and the live
+/// list of players.
 class ConfigurePlayerAssignment : public QWidget {
     Q_OBJECT
 
@@ -44,13 +43,11 @@ public:
     /// Puts a widget above everything else in the tab
     void AddTopWidget(QWidget* widget);
 
-    /// A row of joined buttons, one checked at a time (the group gets them, with these ids)
     /// Rounded fields and outlined buttons, as the Controllers tab draws them
     static QString ModernComboStyle();
     static QString OutlinedButtonStyle();
-    /// A style sheet for the current theme: Eden's dark themes paint with style sheets and
-    /// leave the palette light, so there the palette colours become dark-friendly ones
-    /// (and "muted-text" is the colour of a note)
+    /// A style sheet for the current theme: under a dark look the palette colours become
+    /// dark-friendly ones ("muted-text" is a note's colour)
     static QString Themed(QString style);
     /// The accent colour, as Themed gives palette(highlight)
     static QColor Accent(const QWidget* widget);
@@ -63,6 +60,7 @@ public:
     /// Lets the open lists of a widget's drop-downs follow ModernComboStyle
     static void ModernizeCombos(QWidget* root);
 
+    /// A row of joined buttons, one checked at a time (the group gets them, with these ids)
     static QWidget* MakeSegmented(QWidget* parent, const QStringList& labels,
                                   const std::vector<int>& ids, QButtonGroup* group);
 
@@ -81,9 +79,8 @@ private:
     void RequestSwap(int a, int b);
     void RequestRumble(int player);
 
-    /// The handler (Manual, Modern Console). Under Manual, the controller applet a game sees
-    /// (Disabled, Custom Frontend, Real Hardware); under Modern Console, whether this is a
-    /// handheld with built-in controls (Handheld Console).
+    /// The handler (Manual, Modern Console): under Manual the controller applet, under Modern
+    /// Console whether this is a handheld
     enum Handler { HandlerManual, HandlerModern };
     QButtonGroup* handler_group = nullptr;
     QFrame* manual_panel = nullptr;
@@ -95,8 +92,7 @@ private:
     QAbstractButton* steam_switch = nullptr;
     QLabel* steam_restart = nullptr;
     bool original_bypass = false;
-    /// The Gameplay card: Use Any Controller as Joy-Cons, Button Layout, Pause When a Controller
-    /// Disconnects, Player Lights
+    /// The Gameplay card
     QWidget* gameplay_box = nullptr;
     QAbstractButton* joycon_switch = nullptr;
     bool original_joycon = true;
@@ -138,8 +134,7 @@ private:
     QComboBox* builtin_picker = nullptr;
     QPushButton* builtin_identify = nullptr;
     QLabel* builtin_status = nullptr;
-    /// The ✕ inside the picker that removes the handheld's controller, and the removed one
-    /// kept from auto-detect, with the way to allow it again
+    /// Removing the handheld's controller (the ✕), and allowing a removed one again
     QToolButton* builtin_remove = nullptr;
     QWidget* blocked_row = nullptr;
     QLabel* blocked_label = nullptr;

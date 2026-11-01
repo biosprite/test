@@ -183,7 +183,7 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
     });
 
     // Console Mode first in the Controllers tab: a mirror of the player tabs' Docked/Handheld
-    // choice, which stays the one applied (and the one player 1's Handheld type locks)
+    // choice, which stays the one applied
     {
         auto* console_box = new QGroupBox(tr("Console Mode"), assignment);
         auto* console_layout = new QHBoxLayout(console_box);
@@ -228,8 +228,7 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
             rows = state.players;
         }
         last_rows = rows;
-        // Automatic assignment owns the players: only their tabs show, and their connection
-        // cannot be toggled by hand
+        // In the automatic modes only the players' tabs show, and connection can't be toggled
         const auto mode = Settings::values.controller_applet_mode.GetValue();
         const bool automatic = mode == Settings::AppletMode::ConsoleMode ||
                                mode == Settings::AppletMode::HandheldConsoleMode;
@@ -238,17 +237,15 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
              parent = parent->parentWidget()) {
             tabs = qobject_cast<QTabWidget*>(parent);
         }
-        // The tabs follow the engine's rows and flashes, like the overlay: a green label when a
-        // controller takes the player, red when one leaves (the tab hides once its row is gone)
+        // The tabs follow the engine's rows and flashes, like the overlay
         constexpr long long flash_ms = 1500;
         const long long now = QDateTime::currentMSecsSinceEpoch();
         // The player tabs' choice can be locked (player 1 set to Handheld) without toggling
         if (mirror_console_mode) {
             mirror_console_mode();
         }
-        // The player tabs carry their battery's percent only while every tab fits with it: with
-        // many players the tab bar would scroll (or squeeze the labels, on macOS). Judged with
-        // "100%" for each, so a changing charge doesn't make the percents come and go.
+        // The tabs show the battery percent only while they all fit with it (else the bar
+        // scrolls, or squeezes the labels on macOS). Judged with "100%" so it doesn't flicker.
         bool tab_percents = true;
         if (tabs) {
             QFont bold = tabs->tabBar()->font();
@@ -282,8 +279,7 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
             tab_lit[i] = 0;
             if (automatic) {
                 shown = engine_active && row != rows.end();
-                // As the menu bar's chips light: red when the controller left, then input held,
-                // then the green blink when a controller takes the player
+                // Lit as the menu bar's chips are
                 const long long elapsed = shown ? now - row->flash_since : 0;
                 const bool blink =
                     shown && row->flash != 0 && elapsed < flash_ms && (elapsed / 125) % 2 == 0;
@@ -300,8 +296,7 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                     if (player_tab_titles[i].isEmpty()) {
                         player_tab_titles[i] = tabs->tabText(index);
                     }
-                    // Only what changed: each of these lays the tab bar out again, and done every
-                    // pass that shook it under the Midnight Blue themes
+                    // Only what changed: each of these lays the tab bar out again
                     const auto set_text = [tabs, index](const QString& text) {
                         if (tabs->tabText(index) != text) {
                             tabs->setTabText(index, text);
@@ -322,8 +317,7 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                     const int battery = automatic && shown && row->battery >= 0 && !row->leaving
                                             ? row->battery * 2 + (row->charging ? 1 : 0)
                                             : -1;
-                    // (Also when the tab lost it: the dialog takes the player tabs out and puts
-                    // them back as its pages change, and a tab put back has no icon)
+                    // (Also when the tab lost it: the dialog re-adds the tabs on page changes)
                     if (tab_battery[i] != battery ||
                         tabs->tabIcon(index).isNull() != (battery < 0)) {
                         tab_battery[i] = battery;
@@ -336,10 +330,8 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                         set_text(player_tab_titles[i]);
                         set_tip({});
                     } else if (shown) {
-                        // The grip says the tab drags, like the Controllers tab's rows (alone,
-                        // there is nothing to reorder)
-                        // (Its battery's percent in the label, so the tab has room for it; the
-                        // icon is drawn after it)
+                        // The grip shows the tab drags; the percent is in the label so the tab
+                        // has room for it (the icon is drawn after it)
                         const QString percent = battery < 0 || !tab_percents
                                                     ? QString{}
                                                     : QStringLiteral(" %1%").arg(row->battery);
@@ -360,15 +352,14 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
             }
             player_controllers[i]->SetConnectionLocked(automatic);
         }
-        // In the automatic modes the player tabs drag to change the player order, and the
-        // selected tab reads bold
+        // In the automatic modes the player tabs drag to change the player order
         if (tabs) {
             const bool controls_page = tabs->indexOf(player_tabs[0]) >= 0;
             tabs_editable = automatic && engine_active && controls_page && several;
             // Under the dark themes Qt's drag would show the theme's tab: Eden drags it instead
             tabs->setMovable(tabs_editable && !UISettings::IsDarkTheme());
-            // Pill tabs in the players' colours, the selected one filled (the tab bar is the
-            // settings dialog's, shared with the other pages: only on this page, in these modes)
+            // Pill tabs in the players' colours (the tab bar is shared with the dialog's other
+            // pages: only on this page)
             QTabBar* bar = tabs->tabBar();
             const bool pills = automatic && controls_page;
             // (The bar is remembered: under a style sheet its style() is a wrapper, not ours)
@@ -384,11 +375,8 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
                 bar->setStyle(nullptr);
                 pill_bar = nullptr;
             }
-            // The Midnight Blue themes give a hovered tab a 1-pixel border on three sides and
-            // narrow its padding: the tab and the whole tab bar change size, the page below
-            // moves, and with the hover lost it moves back, shaking. A hovered tab keeps its
-            // size: their padding (8 at the sides, 2 above and below) less that border (the
-            // bottom one grows from 2 to 3). (Every page of the settings dialog shares this bar.)
+            // The Midnight Blue themes resize a hovered tab (a 1-pixel border, less padding), so
+            // the page shook on hover: the hovered tab keeps its size
             const bool midnight = QString::fromStdString(UISettings::values.theme)
                                       .contains(QStringLiteral("midnight"));
             const QString steady =
@@ -454,8 +442,7 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
             }
         }
 
-        // Clicking a player's tab rumbles its controller in the automatic modes, so the user
-        // can tell which controller the tab is about (tab changes made by the code do not)
+        // Clicking a player's tab rumbles its controller, to tell which one it is
         if (tabs && tabs != rumble_tabs) {
             rumble_tabs = tabs;
             connect(tabs->tabBar(), &QTabBar::tabBarClicked, this, [this, tabs](int index) {
@@ -565,8 +552,7 @@ void ConfigureInput::PropagatePlayerNumberChanged(size_t player_index, bool chec
 
 namespace {
 
-/// A player tab's colour and how it is lit (0 idle, 1 input held, 2 green blink, 3 red blink),
-/// as its data carries them; nothing for the other tabs
+/// A player tab's colour and how it is lit, from its data; nothing for other tabs
 struct PlayerTabLook {
     QColor accent;
     int lit = 0;
@@ -598,16 +584,15 @@ void PaintTabLabel(QPainter& painter, const QRect& area, const QString& text, co
                                icon_size.width(), icon_size.height()));
 }
 
-/// Like the menu bar's chips: an outline in the player's colour, filled while its controller
-/// has an input held; the selected tab the other way round. Blinks fill green or red.
+/// Like the menu bar's chips: outlined, filled while an input is held; the selected tab the
+/// other way round
 struct TabPaint {
     bool filled;
     QColor fill;
     QColor ink;
 };
 
-/// A chevron drawn as an icon, so it sits centred in its button (a text character sits on the
-/// font's baseline); dimmed when the button is disabled
+/// A chevron drawn as an icon, so it sits centred in its button; dimmed when disabled
 QIcon ChevronIcon(const QColor& ink, bool left, qreal ratio) {
     const auto draw = [&](int alpha) {
         QPixmap pixmap(QSize(14, 14) * ratio);
@@ -653,8 +638,7 @@ void PlayerTabStyle::drawControl(ControlElement element, const QStyleOption* opt
         QProxyStyle::drawControl(element, option, painter, widget);
         return;
     }
-    // The tab is found by its text: a dragged tab is painted into an image of its own, where
-    // its position says nothing
+    // Found by its text: a dragged tab is painted into an image of its own
     int index = -1;
     for (int i = 0; i < bar->count() && index < 0; ++i) {
         if (bar->tabText(i) == tab->text) {
@@ -702,8 +686,7 @@ void PlayerTabStyle::drawControl(ControlElement element, const QStyleOption* opt
 QSize PlayerTabStyle::sizeFromContents(ContentsType type, const QStyleOption* option,
                                        const QSize& size, const QWidget* widget) const {
     QSize result = QProxyStyle::sizeFromContents(type, option, size, widget);
-    // Room for a bubble's rounded ends and bold label (a player tab starts with its grip, or
-    // carries its battery)
+    // Room for a player tab's rounded ends and bold label
     const auto* tab = qstyleoption_cast<const QStyleOptionTab*>(option);
     if (type == CT_TabBarTab && tab &&
         (tab->text.startsWith(QChar(0x283F)) || !tab->icon.isNull())) {
@@ -860,8 +843,7 @@ void ConfigureInput::ApplyDroppedOrder(const std::vector<int>& dropped, int drag
         return;
     }
 
-    // Place k takes the controller player dropped[k] has now, as one swap at a time (the
-    // engine applies them in order)
+    // Place k takes the controller player dropped[k] has now, one swap at a time
     std::map<int, int> holder;
     for (const int place : places) {
         holder[place] = place;
@@ -981,8 +963,7 @@ void ConfigureInput::UpdateTabArrows() {
         // (A tab's buttons go when the tab is removed, as on leaving the Controls page)
         auto& left = tab_lefts[player];
         auto& right = tab_rights[player];
-        // Only a shown tab carries arrows: a hidden tab's buttons would float over the tab bar
-        // and swap a controller onto a player nobody holds
+        // Only a shown tab carries arrows (a hidden tab's would float over the bar)
         if (!movable || !tabs->isTabVisible(index)) {
             if (left || right) {
                 tabs->tabBar()->setTabButton(index, QTabBar::LeftSide, nullptr);
@@ -995,14 +976,13 @@ void ConfigureInput::UpdateTabArrows() {
         if (!left || !right) {
             const auto make = [this, player](Qt::ArrowType arrow, int step) {
                 auto* button = new QToolButton;
-                // A chevron icon in the tab's ink (set below): the dark themes' arrow images are
-                // large solid triangles
+                // A chevron in the tab's ink (the dark themes' arrows are large triangles)
                 button->setProperty("left", arrow == Qt::LeftArrow);
                 button->setIconSize(QSize(14, 14));
                 button->setAutoRaise(true);
                 button->setFixedSize(20, 20);
-                // The size a style sheet reports is the size the tab makes room for (the dark
-                // themes say 12 pixels, and the tab text went under the buttons)
+                // The tab makes room for the size a style sheet reports (12 pixels under the dark
+                // themes, too small)
                 button->setStyleSheet(QStringLiteral("QToolButton { width: 20px; height: 20px; "
                                                      "padding: 0px; border: none; "
                                                      "background: transparent; }"));
