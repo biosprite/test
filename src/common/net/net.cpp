@@ -50,7 +50,6 @@ std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
             for (const auto& s : suffixes) {
                 const auto it = std::ranges::find_if(
                     assets, [&s](const Asset& a) -> bool {
-                        std::cout << "ASSET " << a.name << " SUFFIX " << s << std::endl;
                         return a.name.ends_with(s);
                     });
 

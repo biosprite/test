@@ -74,7 +74,6 @@ UpdateDialog::UpdateDialog(const Common::Net::Release& release, QWidget* parent)
     if (assets.empty()) {
         ui->groupBox->setHidden(true);
         connect(this, &QDialog::accepted, this, [release]() {
-            qDebug() << release.html_url;
             QDesktopServices::openUrl(QUrl{QString::fromStdString(release.html_url)});
         });
     } else if (assets.size() == 1) {
@@ -171,10 +170,10 @@ void UpdateDialog::Download() {
         }
     }
 
-    progress->close();
-
     // Download is complete.
     if (filename.ends_with(".dmg") || filename.ends_with(".exe") || filename.ends_with(".tar.gz")) {
+        progress->close();
+
         // dmg, exe, tarball will just open it and let the OS handle the rest.
         auto localUrl = QUrl::fromLocalFile(QString::fromStdString(absFilename.string()));
         QDesktopServices::openUrl(localUrl);
@@ -182,6 +181,8 @@ void UpdateDialog::Download() {
         // This path should only ever trigger on Windows.
         // If it did somehow anyways, open it and let the OS handle it.
 #ifndef _WIN32
+        progress->close();
+
         auto localUrl = QUrl::fromLocalFile(QString::fromStdString(absFilename.string()));
         QDesktopServices::openUrl(localUrl);
         return;
@@ -211,8 +212,9 @@ void UpdateDialog::Download() {
             return;
         }
 
-        auto progress_callback = [&](size_t processed_size, size_t total_size) {
+        auto progress_callback = [&](size_t total_size, size_t processed_size) {
             QGuiApplication::processEvents();
+
             if (total_size > 0)
                 progress->setValue(int((processed_size * 100) / total_size));
             return !progress->wasCanceled();
@@ -226,14 +228,23 @@ void UpdateDialog::Download() {
         const auto extracted = QtCommon::Compress::extractDir(QString::fromStdString(absFilename.string()),
                                        qstaging, progress_callback);
 
-        if (extracted.empty() || !extracted.contains(QStringLiteral("eden.exe"))) {
+        progress->close();
+
+        bool found = false;
+        for (const auto &file : std::as_const(extracted)) {
+            if (file.contains(QStringLiteral("eden.exe"))) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
             LOG_ERROR(Frontend, "Extracted no valid files from {}, staging={}", absFilename.string(), stagingDir.string());
 
             QtCommon::Frontend::Critical(tr("Failed to extract downloaded file"),
                                          tr("No valid files were successfully extracted from %1.")
                                              .arg(QString::fromStdString(absFilename.string())));
 
-            progress->close();
             return;
         }
 
@@ -266,7 +277,6 @@ void UpdateDialog::Download() {
                          QString::fromStdString(copy_ec.message()),
                          qstaging));
 
-            progress->close();
             return;
         }
 
@@ -289,7 +299,6 @@ void UpdateDialog::Download() {
                                             "release is extracted in %4.")
                                              .arg(qupdater, qstaging));
 
-            progress->close();
             return;
         }
 
