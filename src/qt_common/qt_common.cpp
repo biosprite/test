@@ -29,10 +29,10 @@
 #include <thread>
 #include <QPainter>
 
-#if !defined(WIN32) && !defined(__APPLE__)
-#include <qpa/qplatformnativeinterface.h>
-#elif defined(__APPLE__)
+#if defined(__APPLE__)
 #include <objc/message.h>
+#else
+#include <qpa/qplatformnativeinterface.h>
 #endif
 
 #ifdef _WIN32
@@ -84,10 +84,7 @@ Core::Frontend::EmuWindow::WindowSystemInfo GetWindowSystemInfo(QWindow* window)
     Core::Frontend::EmuWindow::WindowSystemInfo wsi;
     wsi.type = GetWindowSystemType();
 
-#if defined(WIN32)
-    // Our Win32 Qt external doesn't have the private API.
-    wsi.render_surface = reinterpret_cast<void*>(window->winId());
-#elif defined(__APPLE__)
+#if defined(__APPLE__)
     id layer = reinterpret_cast<id (*)(id, SEL)>(objc_msgSend)(
         reinterpret_cast<id>(window->winId()), sel_registerName("layer"));
 
