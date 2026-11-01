@@ -109,11 +109,13 @@ struct MotionQuirk {
     std::array<bool, 3> accel;
     std::array<bool, 3> gyro;
 };
+#ifdef __linux__
 constexpr std::array motion_quirks{
     // InputPlumber's virtual DualSense (or DualSense Edge) for the built-in IMU
     MotionQuirk{"AYN Odin 3", 0x054C, 0x0CE6, {false, true, false}, {true, false, true}},
     MotionQuirk{"AYN Odin 3", 0x054C, 0x0DF2, {false, true, false}, {true, false, true}},
 };
+#endif
 
 /// The quirk for a controller, when it is a handheld's own virtual one (never a real
 /// controller of the same model connected to it)
@@ -141,10 +143,13 @@ const MotionQuirk* FindMotionQuirk([[maybe_unused]] SDL_Gamepad* gamepad) {
     if (!path) {
         return nullptr;
     }
+    // (SDL opens it as /dev/hidrawN with its own DualSense driver, else as /dev/input/eventN)
     const std::string node = std::filesystem::path{path}.filename().string();
+    const char* const sys_class =
+        node.starts_with("event") ? "/sys/class/input" : "/sys/class/hidraw";
     std::error_code error;
     const auto device = std::filesystem::canonical(
-        std::filesystem::path{"/sys/class/hidraw"} / node / "device", error);
+        std::filesystem::path{sys_class} / node / "device", error);
     if (error || device.string().find("/devices/virtual/") == std::string::npos) {
         return nullptr;
     }
