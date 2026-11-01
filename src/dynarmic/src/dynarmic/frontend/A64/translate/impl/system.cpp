@@ -37,6 +37,27 @@ bool TranslatorVisitor::HINT([[maybe_unused]] Imm<4> CRm, [[maybe_unused]] Imm<3
     return true;
 }
 
+bool TranslatorVisitor::PACAUT_reg(bool Z, [[maybe_unused]] Imm<3> op, Reg Rn, [[maybe_unused]] Reg Rd) {
+    if (Z && Rn != Reg::R31) {
+        return UnallocatedEncoding();
+    }
+    return true;
+}
+
+bool TranslatorVisitor::XPAC_1([[maybe_unused]] bool D, [[maybe_unused]] Reg Rd) {
+    return true;
+}
+
+bool TranslatorVisitor::PACGA(Reg Rm, Reg Rn, Reg Rd) {
+    // No keys, so no real PAC: any deterministic mix of both operands will do.
+    const IR::U64 modifier = Rm == Reg::SP ? IR::U64{SP(64)} : IR::U64{X(64, Rm)};
+    const IR::U64 rotated = ir.Eor(ir.LogicalShiftLeft(modifier, ir.Imm8(13)), ir.LogicalShiftRight(modifier, ir.Imm8(51)));
+    const IR::U64 mixed = ir.Eor(X(64, Rn), rotated);
+    const IR::U64 folded = ir.Eor(mixed, ir.LogicalShiftRight(mixed, ir.Imm8(32)));
+    X(64, Rd, ir.LogicalShiftLeft(folded, ir.Imm8(32)));
+    return true;
+}
+
 bool TranslatorVisitor::NOP() {
     return true;
 }

@@ -131,6 +131,7 @@ struct TranslatorVisitor final {
     bool SEVL();
     bool XPAC_1(bool D, Reg Rd);
     bool XPAC_2();
+    bool PACAUT_reg(bool Z, Imm<3> op, Reg Rn, Reg Rd);
     bool PACIA_1(bool Z, Reg Rn, Reg Rd);
     bool PACIA_2();
     bool PACIB_1(bool Z, Reg Rn, Reg Rd);
@@ -325,6 +326,10 @@ struct TranslatorVisitor final {
     bool LDUMIN(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool SWP(bool A, bool R, Reg Rs, Reg Rn, Reg Rt);
     bool LDAPR(Reg Rn, Reg Rt);
+    bool AtomicMemOp(Imm<2> size, bool A, bool R, Reg Rs, Imm<4> op, Reg Rn, Reg Rt);
+    bool LDAPR_sz(Imm<2> size, Reg Rn, Reg Rt);
+    bool CompareAndSwap(Imm<2> size, bool L, Reg Rs, bool o0, Reg Rn, Reg Rt);
+    bool CompareAndSwapPair(bool sz, bool L, Reg Rs, bool o0, Reg Rn, Reg Rt);
 
     // Loads and stores - Load/Store register (register offset)
     bool STRx_reg(Imm<2> size, Imm<1> opc_1, Reg Rm, Imm<3> option, bool S, Reg Rn, Reg Rt);

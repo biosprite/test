@@ -2632,3 +2632,199 @@ TEST_CASE("A64: Rounding", "[a64]") {
     CHECK(jit.GetVector(5) == Vector{0x4000000040000000, 0x4000000040000000});
     CHECK(jit.GetVector(6) == Vector{0x4000000040000000, 0x4000000040000000});
 }
+
+TEST_CASE("A64: LSE atomic memory operations", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    env.code_mem.emplace_back(0xf822002c);  // LDADD X2, X12, [X1]
+    env.code_mem.emplace_back(0x782310cd);  // LDCLRH W3, W13, [X6]
+    env.code_mem.emplace_back(0xb8e420ee);  // LDEORAL W4, W14, [X7]
+    env.code_mem.emplace_back(0x3825410f);  // LDSMAXB W5, W15, [X8]
+    env.code_mem.emplace_back(0x78307131);  // LDUMINH W16, W17, [X9]
+    env.code_mem.emplace_back(0xb832315f);  // LDSET W18, WZR, [X10]
+    env.code_mem.emplace_back(0xf8f38174);  // SWPAL X19, X20, [X11]
+    env.code_mem.emplace_back(0x14000000);  // B .
+
+    env.MemoryWrite(0x500000, 0x1111111111111111, 8);
+    env.MemoryWrite(0x500008, 0xffffffffffffffff, 8);
+    env.MemoryWrite(0x500010, 0xaaaaaaaa55555555, 8);
+    env.MemoryWrite(0x500018, 0x4242424242424280, 8);
+    env.MemoryWrite(0x500020, 0x1122334455668000, 8);
+    env.MemoryWrite(0x500028, 0x7, 8);
+    env.MemoryWrite(0x500030, 0x2222222222222222, 8);
+    jit.SetRegister(1, 0x500000);
+    jit.SetRegister(6, 0x500008);
+    jit.SetRegister(7, 0x500010);
+    jit.SetRegister(8, 0x500018);
+    jit.SetRegister(9, 0x500020);
+    jit.SetRegister(10, 0x500028);
+    jit.SetRegister(11, 0x500030);
+    jit.SetRegister(2, 0x101010101010101);
+    jit.SetRegister(3, 0xf0f0);
+    jit.SetRegister(4, 0xffffffff);
+    jit.SetRegister(5, 0x7f);
+    jit.SetRegister(16, 0x7fff);
+    jit.SetRegister(18, 0x70);
+    jit.SetRegister(19, 0x3333333333333333);
+    jit.SetRegister(12, 0xdeadbeefdeadbeef);
+    jit.SetRegister(13, 0xdeadbeefdeadbeef);
+    jit.SetRegister(14, 0xdeadbeefdeadbeef);
+    jit.SetRegister(15, 0xdeadbeefdeadbeef);
+    jit.SetRegister(17, 0xdeadbeefdeadbeef);
+    jit.SetRegister(20, 0xdeadbeefdeadbeef);
+    jit.SetPC(0);
+
+    env.ticks_left = env.code_mem.size();
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.GetRegister(12) == 0x1111111111111111);
+    REQUIRE(jit.GetRegister(13) == 0xffff);
+    REQUIRE(jit.GetRegister(14) == 0x55555555);
+    REQUIRE(jit.GetRegister(15) == 0x80);
+    REQUIRE(jit.GetRegister(17) == 0x8000);
+    REQUIRE(jit.GetRegister(20) == 0x2222222222222222);
+    REQUIRE(env.MemoryRead(0x500000, 8) == 0x1212121212121212);
+    REQUIRE(env.MemoryRead(0x500008, 8) == 0xffffffffffff0f0f);
+    REQUIRE(env.MemoryRead(0x500010, 8) == 0xaaaaaaaaaaaaaaaa);
+    REQUIRE(env.MemoryRead(0x500018, 8) == 0x424242424242427f);
+    REQUIRE(env.MemoryRead(0x500020, 8) == 0x1122334455667fff);
+    REQUIRE(env.MemoryRead(0x500028, 8) == 0x77);
+    REQUIRE(env.MemoryRead(0x500030, 8) == 0x3333333333333333);
+}
+
+TEST_CASE("A64: LSE compare and swap", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    env.code_mem.emplace_back(0xc8e27c23);  // CASA X2, X3, [X1]
+    env.code_mem.emplace_back(0x48a47cc5);  // CASH W4, W5, [X6]
+    env.code_mem.emplace_back(0x4868fcea);  // CASPAL X8, X9, X10, X11, [X7]
+    env.code_mem.emplace_back(0x082c7e0e);  // CASP W12, W13, W14, W15, [X16]
+    env.code_mem.emplace_back(0x14000000);  // B .
+
+    env.MemoryWrite(0x500000, 0x123456789abcdef, 8);
+    env.MemoryWrite(0x500008, 0xfedcba9876543210, 8);
+    env.MemoryWrite(0x500010, 0x1111111111111111, 8);
+    env.MemoryWrite(0x500018, 0x2222222222222222, 8);
+    env.MemoryWrite(0x500030, 0xbbbbbbbbaaaaaaaa, 8);
+    jit.SetRegister(1, 0x500000);
+    jit.SetRegister(2, 0x123456789abcdef);
+    jit.SetRegister(3, 0xdeadbeefdeadbeef);
+    jit.SetRegister(6, 0x500008);
+    jit.SetRegister(4, 0x1234);
+    jit.SetRegister(5, 0xffff);
+    jit.SetRegister(7, 0x500010);
+    jit.SetRegister(8, 0x1111111111111111);
+    jit.SetRegister(9, 0x2222222222222222);
+    jit.SetRegister(10, 0x5555555555555555);
+    jit.SetRegister(11, 0x6666666666666666);
+    jit.SetRegister(16, 0x500030);
+    jit.SetRegister(12, 0xaaaaaaaa);
+    jit.SetRegister(13, 0xcccccccc);
+    jit.SetRegister(14, 0x12121212);
+    jit.SetRegister(15, 0x34343434);
+    jit.SetPC(0);
+
+    env.ticks_left = env.code_mem.size();
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.GetRegister(2) == 0x123456789abcdef);
+    REQUIRE(jit.GetRegister(4) == 0x3210);
+    REQUIRE(jit.GetRegister(8) == 0x1111111111111111);
+    REQUIRE(jit.GetRegister(9) == 0x2222222222222222);
+    REQUIRE(jit.GetRegister(12) == 0xaaaaaaaa);
+    REQUIRE(jit.GetRegister(13) == 0xbbbbbbbb);
+    REQUIRE(env.MemoryRead(0x500000, 8) == 0xdeadbeefdeadbeef);
+    REQUIRE(env.MemoryRead(0x500008, 8) == 0xfedcba9876543210);
+    REQUIRE(env.MemoryRead(0x500010, 8) == 0x5555555555555555);
+    REQUIRE(env.MemoryRead(0x500018, 8) == 0x6666666666666666);
+    REQUIRE(env.MemoryRead(0x500030, 8) == 0xbbbbbbbbaaaaaaaa);
+}
+
+TEST_CASE("A64: RCpc LDAPR", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    env.code_mem.emplace_back(0x38bfc022);  // LDAPRB W2, [X1]
+    env.code_mem.emplace_back(0x78bfc023);  // LDAPRH W3, [X1]
+    env.code_mem.emplace_back(0xb8bfc024);  // LDAPR W4, [X1]
+    env.code_mem.emplace_back(0xf8bfc025);  // LDAPR X5, [X1]
+    env.code_mem.emplace_back(0x14000000);  // B .
+
+    env.MemoryWrite(0x500000, 0x8877665544332211, 8);
+    jit.SetRegister(1, 0x500000);
+    jit.SetRegister(2, 0xffffffffffffffff);
+    jit.SetRegister(3, 0xffffffffffffffff);
+    jit.SetRegister(4, 0xffffffffffffffff);
+    jit.SetRegister(5, 0xffffffffffffffff);
+    jit.SetPC(0);
+
+    env.ticks_left = env.code_mem.size();
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.GetRegister(2) == 0x11);
+    REQUIRE(jit.GetRegister(3) == 0x2211);
+    REQUIRE(jit.GetRegister(4) == 0x44332211);
+    REQUIRE(jit.GetRegister(5) == 0x8877665544332211);
+}
+
+TEST_CASE("A64: Pointer authentication", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    env.code_mem.emplace_back(0xdac10041);  // PACIA X1, X2
+    env.code_mem.emplace_back(0xdac11041);  // AUTIA X1, X2
+    env.code_mem.emplace_back(0xdac123e3);  // PACIZA X3
+    env.code_mem.emplace_back(0xdac13fe3);  // AUTDZB X3
+    env.code_mem.emplace_back(0xdac143e4);  // XPACI X4
+    env.code_mem.emplace_back(0x9ac23025);  // PACGA X5, X1, X2
+    env.code_mem.emplace_back(0x9ac230e6);  // PACGA X6, X7, X2
+    env.code_mem.emplace_back(0x14000000);  // B .
+
+    jit.SetRegister(1, 0x7fff12345678);
+    jit.SetRegister(2, 0x1234);
+    jit.SetRegister(3, 0x7fff0000aaaa);
+    jit.SetRegister(4, 0x7fff00001000);
+    jit.SetRegister(7, 0x7fff12345679);
+    jit.SetPC(0);
+
+    env.ticks_left = env.code_mem.size();
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.GetRegister(1) == 0x7fff12345678);
+    REQUIRE(jit.GetRegister(3) == 0x7fff0000aaaa);
+    REQUIRE(jit.GetRegister(4) == 0x7fff00001000);
+    REQUIRE((jit.GetRegister(5) & 0xffffffff) == 0);
+    REQUIRE(jit.GetRegister(5) != 0);
+    REQUIRE(jit.GetRegister(5) != jit.GetRegister(6));
+}
+
+TEST_CASE("A64: RETAA, RETAB", "[a64]") {
+    A64TestEnv env;
+    A64::UserConfig jit_user_config{};
+    jit_user_config.callbacks = &env;
+    A64::Jit jit{jit_user_config};
+
+    env.code_mem.assign(0x200 / 4 + 1, 0x14000000);  // B .
+    env.code_mem[0x0 / 4] = 0xd65f0bff;    // RETAA
+    env.code_mem[0x100 / 4] = 0xd280401e;  // MOV X30, #0x200
+    env.code_mem[0x104 / 4] = 0xd65f0fff;  // RETAB
+
+    jit.SetRegister(30, 0x100);
+    jit.SetPC(0);
+
+    env.ticks_left = 4;
+    CheckedRun([&]() { jit.Run(); });
+
+    REQUIRE(jit.GetRegister(30) == 0x200);
+    REQUIRE(jit.GetPC() == 0x200);
+}
