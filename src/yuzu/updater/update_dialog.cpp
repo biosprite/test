@@ -31,6 +31,7 @@
 #include <openssl/evp.h>
 
 #include <QDesktopServices>
+#include <QProcess>
 
 #undef GetSaveFileName
 
@@ -109,29 +110,30 @@ UpdateDialog::~UpdateDialog() {
 // TODO: migrate to QtCommon
 void UpdateDialog::Download() {
     namespace fs = std::filesystem;
-    fs::path appDir = QCoreApplication::applicationDirPath().toStdString();
-    fs::path parentDir = appDir.parent_path();
-    std::string appDirName = appDir.filename().string();
-    fs::path oldDir = parentDir / std::format("{}_{}", appDirName, std::string{Common::g_build_version});
-    fs::path stagingDir = parentDir / std::format("{}_{}", appDirName, "staging");
+    const auto appDir = fs::path{QCoreApplication::applicationDirPath().toStdString()}.make_preferred();
+
+    const auto parentDir = appDir.parent_path();
+    const auto appDirName = appDir.filename().string();
+    const auto oldDir = parentDir / std::format("{}_{}", appDirName, std::string{Common::g_build_version});
+    const auto stagingDir = parentDir / std::format("{}_{}", appDirName, "staging");
 
     std::error_code ec;
-    fs::path tmpDir = fs::temp_directory_path(ec);
+    auto tmpDir = fs::temp_directory_path(ec);
 
     if (ec) {
         // tmp dir creation failed, just use cache
         LOG_WARNING(Frontend, "Failed to create temporary directory: {}", ec.message());
-        tmpDir = Common::FS::GetEdenPath(Common::FS::EdenPath::CacheDir) / "update/download";
+        tmpDir = Common::FS::GetEdenPath(Common::FS::EdenPath::CacheDir) / "update" / "download";
     } else {
-        tmpDir /= "eden/update/download";
+        tmpDir = tmpDir / "eden" / "update" / "download";
     }
 
     fs::remove_all(tmpDir);
     fs::create_directories(tmpDir);
 
     const auto filename = m_asset.asset.name;
-    const auto absFilename = tmpDir / m_asset.asset.name;
-    std::ofstream file(absFilename, std::ios::out | std::ios::binary);
+    const auto absFilename = tmpDir / filename;
+    std::ofstream file(absFilename.c_str(), std::ios::out | std::ios::binary);
 
     auto progress =
         QtCommon::Frontend::newProgressDialog(tr("Downloading..."), tr("Cancel"), 0, 100);
@@ -199,6 +201,7 @@ void UpdateDialog::Download() {
 
     try {
         file.flush();
+        file.close();
     } catch (const std::exception& e) {
         LOG_WARNING(Frontend, "Could not commit to file {}, error={}", filename, e.what());
         QtCommon::Frontend::Critical(
@@ -249,24 +252,103 @@ void UpdateDialog::Download() {
             tr("Would you like to keep the old version of Eden in a separate folder (%1)?")
                 .arg(QString::fromStdString(oldDir.filename().string())));
 
+        const auto qstaging = QString::fromStdString(stagingDir.string());
+
         // ...then extract to a staging dir...
+        std::error_code st_ec;
+        fs::create_directories(stagingDir, st_ec);
+
+        if (st_ec) {
+            LOG_ERROR(Frontend, "Could not create staging directory {}: {}", stagingDir.string(), st_ec.message());
+
+            QtCommon::Frontend::Critical(
+                tr("Failed to create staging directory"),
+                tr("Could not create the staging directory %1.\n\nOS returned error: %2\n\nEnsure "
+                   "you have write permissions in the current app directory, or try manually "
+                   "updating.").arg(qstaging, QString::fromStdString(st_ec.message())));
+
+            return;
+        }
+
         progress->setLabelText(tr("Extracting..."));
         progress->setValue(0);
         progress->setMaximum(100);
         progress->show();
-        QtCommon::Compress::extractDir(QString::fromStdString(absFilename.string()),
-                                       QString::fromStdString(stagingDir.string()), progress_callback);
+
+        const auto extracted = QtCommon::Compress::extractDir(QString::fromStdString(absFilename.string()),
+                                       qstaging, progress_callback);
+
+        if (extracted.empty()) {
+            LOG_ERROR(Frontend, "Extracted no files from {}, staging={}", absFilename.string(), stagingDir.string());
+
+            QtCommon::Frontend::Critical(tr("Failed to extract downloaded file"),
+                                         tr("No files were successfully extracted from %1.")
+                                             .arg(QString::fromStdString(absFilename.string())));
+
+            progress->close();
+            return;
+
+        }
 
         // ...then run a small updater shim
         // FIXME copy to cache dir, then run.
+        // TODO: error handling
+        const auto updater = appDir / "eden-updater.exe";
+        const auto cached_updater =
+            Common::FS::GetEdenPath(Common::FS::EdenPath::CacheDir) / "eden-updater.exe";
 
-        // TODO windows disallows paging dead exe
-        fs::rename(appDir, oldDir);
+        const auto qcachedUpdater = QString::fromStdString(cached_updater.string());
+        const auto qupdater = QString::fromStdString(updater.string());
+        const auto qappDir = QString::fromStdString(appDir.string());
+        const auto qoldDir = QString::fromStdString(oldDir.string());
 
-        fs::create_directories(appDir);
+        std::error_code copy_ec;
+        // ignore remove failures
+        fs::remove_all(cached_updater, copy_ec);
+        fs::copy_file(updater.native(), cached_updater.native(), copy_ec);
 
-        if (button == QtCommon::Frontend::Yes) {
-            fs::remove_all(oldDir);
+        if (copy_ec) {
+            LOG_ERROR(Frontend, "Failed to copy updater executable: {}", copy_ec.message());
+
+            QtCommon::Frontend::Critical(
+                tr("Failed to run updater"),
+                tr("Could not copy the updater executable (%1) to the local cache directory "
+                   "(%2).\nOS returned error: %3\n\nThe new release is extracted in %4.")
+                    .arg(qupdater,
+                         qcachedUpdater,
+                         QString::fromStdString(copy_ec.message()),
+                         qstaging));
+
+            progress->close();
+            return;
         }
+
+        const auto pid = QString::number(QCoreApplication::applicationPid());
+        const auto keep_old = button == QtCommon::Frontend::Yes ? QStringLiteral("1") : QStringLiteral("0");
+        const auto pwd = QString::fromStdString(cached_updater.parent_path().string());
+
+        // clang-format off
+        auto pres = QProcess::startDetached(
+            qcachedUpdater,
+            {pid, qappDir, qoldDir, qstaging, keep_old},
+            pwd);
+        // clang-format on
+
+        if (!pres) {
+            LOG_ERROR(Frontend, "Failed to start updater executable");
+
+            QtCommon::Frontend::Critical(tr("Failed to run updater"),
+                                         tr("Could not run the updater executable (%1)\n\nThe new "
+                                            "release is extracted in %4.")
+                                             .arg(qupdater, qstaging));
+
+            progress->close();
+            return;
+        }
+
+        // qDebug() << p.arguments();
+        // p.waitForStarted();
+
+        QCoreApplication::exit(0);
     }
 }
