@@ -3359,6 +3359,7 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
         if (!edited) {
             continue;
         }
+        set_default_of[target] = 0; // (the user's own mapping now)
         LOG_INFO(Frontend, "console-mode: Controls edit on P{} kept for the session in set P{}",
                  i + 1, target + 1);
     }
@@ -5053,16 +5054,28 @@ void MainWindow::ApplyConsoleControllerMode() {
     }
 
     // The deck's own controller only reports motion while its motion sensors are on, which Steam
-    // Input leaves off unless its layout uses the gyro: when its motion goes silent, ask for it
-    // again (at most every 2 seconds)
+    // Input leaves off unless its layout uses the gyro (the Steam client does so in Desktop Mode
+    // too, with Eden launched outside Steam): when its motion goes silent, ask for it again (at
+    // most every 2 seconds). Under Steam it is a motion device next to its virtual pad, else
+    // one of the pads itself.
     {
-        const auto deck = std::find_if(motion_devices.begin(), motion_devices.end(), [](u32 id) {
-            return PadVendor(id) == 0x28DE &&
-                   PadProduct(id) == 0x1205;
-        });
+        const auto is_deck = [](u32 id) {
+            return PadVendor(id) == 0x28DE && PadProduct(id) == 0x1205;
+        };
+        std::optional<u32> deck;
+        if (const auto it = std::find_if(motion_devices.begin(), motion_devices.end(), is_deck);
+            it != motion_devices.end()) {
+            deck = *it;
+        } else if (!Common::SteamPadsInUse()) {
+            for (const auto& [id, ident] : live) {
+                if (is_deck(id) && PadPath(id).startsWith(QStringLiteral("/dev/hidraw"))) {
+                    deck = id;
+                    break;
+                }
+            }
+        }
         const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-        if (deck != motion_devices.end() && now_ms - deck_motion_asked_at >= 2000 &&
-            PadMotionSilent(*deck)) {
+        if (deck && now_ms - deck_motion_asked_at >= 2000 && PadMotionSilent(*deck)) {
             deck_motion_asked_at = now_ms;
             const QString path = PadPath(*deck);
             EnableDeckMotion(path);
@@ -5300,6 +5313,7 @@ void MainWindow::ApplyConsoleControllerMode() {
             address_origin.clear();
             address_claims.clear();
             slot_set = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+            set_default_of.fill(0);
             set_before_profile.clear();
             LOG_INFO(Frontend, "console-mode: left, the user's players are restored");
             if (QtCommon::system && QtCommon::system->IsPoweredOn()) {
@@ -6388,7 +6402,21 @@ void MainWindow::ApplyConsoleControllerMode() {
             const int set_index = is_builtin ? 0 : pad_sets[set_key];
             slot_set[slot] = set_index;
             Settings::PlayerInput want = players[slot];
-            if (has_sdl(profile[set_index])) {
+            // A set holding only the own default mapping (no profile, nothing remapped) of a
+            // controller that is gone is rebuilt for this one: that controller's buttons and
+            // motion aren't this one's (an Xbox pad's mapping has no gyro, nor the Deck's back
+            // buttons). (Not while that controller is still connected: identical ones without an
+            // address share a set, and would take turns rebuilding it.)
+            const u32 defaults_of = set_default_of[static_cast<std::size_t>(set_index)];
+            const bool others_defaults = defaults_of != 0 && defaults_of != id &&
+                                         !live.contains(defaults_of) &&
+                                         profile[set_index].profile_name.empty();
+            if (others_defaults && Common::ControllerProbes()) {
+                LOG_INFO(Frontend,
+                         "console-mode: P{} set holds inst={}'s defaults: rebuilt for inst={}",
+                         set_index + 1, defaults_of, id);
+            }
+            if (has_sdl(profile[set_index]) && !others_defaults) {
                 const auto& own = profile[set_index];
                 want.buttons = own.buttons;
                 want.analogs = own.analogs;
@@ -6437,6 +6465,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 own.buttons = want.buttons;
                 own.analogs = want.analogs;
                 own.motions = want.motions;
+                set_default_of[static_cast<std::size_t>(set_index)] = id;
                 static std::set<u32> defaulted;
                 if (defaulted.insert(id).second) {
                     LOG_INFO(Frontend,
@@ -6521,12 +6550,17 @@ void MainWindow::ApplyConsoleControllerMode() {
                 if (const auto source = input_subsystem->GetSDLBinding(motion_source)) {
                     want.motions.fill(SdlMotionParam(source->first, source->second));
                 }
-            } else if (!is_builtin) {
-                for (std::string& motion : want.motions) {
-                    if (is_handheld_motion(motion)) {
-                        motion.clear();
+            } else {
+                if (!is_builtin) {
+                    for (std::string& motion : want.motions) {
+                        if (is_handheld_motion(motion)) {
+                            motion.clear();
+                        }
                     }
                 }
+                // (Also the handheld's own pad: its set may have been an external's until now,
+                // with that controller's mapping and no motion, when it was the external that
+                // played as player one)
                 const bool no_motion = std::all_of(want.motions.begin(), want.motions.end(),
                                                    [](const std::string& m) { return m.empty(); });
                 if (no_motion && PadHasGyro(id)) {
@@ -6666,6 +6700,20 @@ void MainWindow::ApplyConsoleControllerMode() {
                 pause_done.erase(i); // (a new wait may pause again)
             }
         }
+        // Who holds each player now (0 nobody), and whether that is an external controller
+        std::array<u32, 10> holder{};
+        for (const auto& [id, slot] : pad_slots) {
+            if (slot >= 0 && slot < 10 && live.contains(id)) {
+                holder[static_cast<std::size_t>(slot)] = id;
+            }
+        }
+        const auto on_handheld = [&](u32 id) {
+            return id != 0 && builtin_valid && id == builtin_match_id;
+        };
+        const auto was_external = held_by_external;
+        for (std::size_t i = 0; i < holder.size(); ++i) {
+            held_by_external[i] = holder[i] != 0 && !on_handheld(holder[i]);
+        }
         const bool running =
             emulation_running && QtCommon::emu_thread && QtCommon::emu_thread->IsRunning();
         // (Pausing takes a moment: only once the game was seen paused does running again mean
@@ -6677,6 +6725,8 @@ void MainWindow::ApplyConsoleControllerMode() {
             disconnect_paused.clear(); // (resumed by hand)
             disconnect_continue_held = false;
             disconnect_pause_seen = false;
+            handover_paused = -1;
+            handover_pressed = false;
         }
         if (Settings::values.console_pause_disconnect.GetValue() && running &&
             !disconnect_pause_pending) {
@@ -6727,7 +6777,40 @@ void MainWindow::ApplyConsoleControllerMode() {
                     gone.insert(i);
                 }
             }
-            if (!gone.empty()) {
+            // A handover: the handheld's own controls took a player an external controller held
+            // until now (its controller left: the handheld plays when no external is
+            // connected). The game pauses until someone picks the handheld up or reconnects.
+            int handover = -1;
+            if (gone.empty() && disconnect_paused.empty()) {
+                for (std::size_t i = 0; i < holder.size() && handover < 0; ++i) {
+                    if (on_handheld(holder[i]) && was_external[i]) {
+                        handover = static_cast<int>(i);
+                    }
+                }
+            }
+            if (handover >= 0) {
+                disconnect_paused = {handover};
+                handover_paused = handover;
+                handover_pressed = PadInputHeld(holder[static_cast<std::size_t>(handover)]);
+                LOG_INFO(Frontend, "console-mode: paused, P{} handed over to the built-in controls",
+                         handover + 1);
+                controller_hints.push_back(
+                    {QString{}, handover, false, now_ms, false,
+                     tr("P%1 is on the built-in controls now: press a button on them, or "
+                        "reconnect a controller, to go on")
+                         .arg(handover + 1),
+                     true});
+                RenderControllerOverlay();
+                disconnect_pause_pending = true;
+                disconnect_pause_seen = false;
+                QTimer::singleShot(150, this, [this] {
+                    disconnect_pause_pending = false;
+                    if (!disconnect_paused.empty() && emulation_running && QtCommon::emu_thread &&
+                        QtCommon::emu_thread->IsRunning()) {
+                        OnPauseGame();
+                    }
+                });
+            } else if (!gone.empty()) {
                 disconnect_paused = gone;
                 pause_done.insert(gone.begin(), gone.end());
                 LOG_INFO(Frontend, "console-mode: paused, P{}'s controller disconnected",
@@ -6769,12 +6852,25 @@ void MainWindow::ApplyConsoleControllerMode() {
             }
         } else if (!disconnect_paused.empty() && !running && emulation_running &&
                    !disconnect_pause_pending) {
-            const bool all_back =
+            bool all_back =
                 std::all_of(disconnect_paused.begin(), disconnect_paused.end(), [&](int player) {
                     return std::any_of(pad_slots.begin(), pad_slots.end(), [&](const auto& e) {
                         return e.second == player && live.contains(e.first);
                     });
                 });
+            // A handover goes on when an external controller took the player back, or at a
+            // press on the handheld, once let go (so the game never sees it)
+            if (handover_paused >= 0) {
+                const u32 at = holder[static_cast<std::size_t>(handover_paused)];
+                all_back = at != 0 && !on_handheld(at);
+                if (on_handheld(at)) {
+                    if (PadInputHeld(at)) {
+                        handover_pressed = true;
+                    } else if (std::exchange(handover_pressed, false)) {
+                        all_back = true;
+                    }
+                }
+            }
             // (+ counts once let go, so the game never sees it on resuming)
             const bool plus = std::any_of(live.begin(), live.end(),
                                           [](const auto& e) { return PadStartHeld(e.first); });
@@ -6782,6 +6878,7 @@ void MainWindow::ApplyConsoleControllerMode() {
                 LOG_INFO(Frontend, "console-mode: resumed, the controllers are back");
                 disconnect_paused.clear();
                 disconnect_continue_held = false;
+                handover_paused = -1;
                 OnStartGame();
             } else if (plus) {
                 disconnect_continue_held = true;
@@ -6806,6 +6903,8 @@ void MainWindow::ApplyConsoleControllerMode() {
                                             tr("Going on without %1")
                                                 .arg(names.join(QStringLiteral(", ")))});
                 disconnect_paused.clear();
+                handover_paused = -1;
+                handover_pressed = false;
                 OnStartGame();
             }
         }

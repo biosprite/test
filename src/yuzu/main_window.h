@@ -635,6 +635,10 @@ private:
     /// player -> the set its controller carries, as of the last tick (the player's own when
     /// it has no controller)
     std::array<int, 10> slot_set{0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+    /// set -> the controller (instance) whose own default mapping the set holds: another
+    /// controller taking the set gets its own defaults instead (the handheld after an Xbox pad
+    /// played as player one). 0 when the set is the user's (remapped, or a profile) or empty.
+    std::array<u32, 10> set_default_of{};
     /// This session's binding sets, from the user's own (console_profile) with each seat's
     /// profile on top: everything Modern Console changes (profiles, remaps) stays here, so
     /// the user's own setup, which the manual modes use, is never touched
@@ -743,6 +747,13 @@ private:
     /// (0 none), and the players a pause was for (resumed when they all have one again)
     std::array<qint64, 10> waiting_since{};
     std::set<int> disconnect_paused;
+    /// A handover pause: the player (-1 none) whose external controller left mid-game and the
+    /// handheld's own controls took it over (the handheld may sit in a dock by the TV). It goes
+    /// on at a press on the handheld (once let go) or when an external controller takes the
+    /// player back. Also which players an external controller held at the last tick.
+    int handover_paused = -1;
+    bool handover_pressed = false;
+    std::array<bool, 10> held_by_external{};
     /// What BlueZ last said of a Bluetooth controller (by address): whether it is connected, and
     /// when it was asked and answered (asked without waiting, see AskBluezConnected)
     struct BluezConnection {
