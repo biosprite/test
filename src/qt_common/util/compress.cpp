@@ -197,15 +197,15 @@ QStringList extractDir(QuaZip& zip, const QString& dir, QtCommon::QtProgressCall
     }
 
     QStringList extracted;
-    if (!zip.goToFirstFile()) {
-        return QStringList();
-    }
 
     std::size_t progress = 0;
     callback(total, progress);
 
-    do {
-        QString name = zip.getCurrentFileName();
+    for (const QuaZipFileInfo64 &info : zip.getFileInfoList64()) {
+        if (!zip.setCurrentFile(info.name))
+            continue;
+
+        QString name = info.name;
         QString absFilePath = directory.absoluteFilePath(name);
         QString absCleanPath = QDir::cleanPath(absFilePath);
         if (!absCleanPath.startsWith(absCleanDir))
@@ -217,7 +217,7 @@ QStringList extractDir(QuaZip& zip, const QString& dir, QtCommon::QtProgressCall
             removeFile(extracted);
             return QStringList();
         }
-    } while (zip.goToNextFile());
+    }
 
     // Close zip
     zip.close();
