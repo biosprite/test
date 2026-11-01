@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <filesystem>
+#include <optional>
+
 #include <QDialog>
 #include "qt_common/abstract/progress.h"
 #include "common/net/net.h"
@@ -36,6 +39,6 @@ private:
      * @return True on success
      */
     bool downloadFile(
-        std::string& data, std::string_view url, std::optional<std::filesystem::path> path,
+        std::string& data, const std::string &url, std::optional<std::filesystem::path> path,
         QtCommon::Frontend::QtProgressDialog *dialog);
 };

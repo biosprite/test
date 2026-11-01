@@ -134,19 +134,12 @@ void UpdateDialog::Download() {
     const auto filename = m_asset.asset.name;
     const auto absFilename = tmpDir / filename;
 
+    // Progress dialog.
     auto progress =
         QtCommon::Frontend::newProgressDialog(tr("Downloading..."), tr("Cancel"), 0, 100);
     progress->show();
 
     QGuiApplication::processEvents();
-
-    // Progress dialog.
-    auto progress_callback = [&](size_t processed_size, size_t total_size) {
-        QGuiApplication::processEvents();
-        if (total_size > 0)
-            progress->setValue(int((processed_size * 100) / total_size));
-        return !progress->wasCanceled();
-    };
 
     std::string tmp_data;
     const auto download_res =
@@ -217,6 +210,13 @@ void UpdateDialog::Download() {
 
             return;
         }
+
+        auto progress_callback = [&](size_t processed_size, size_t total_size) {
+            QGuiApplication::processEvents();
+            if (total_size > 0)
+                progress->setValue(int((processed_size * 100) / total_size));
+            return !progress->wasCanceled();
+        };
 
         progress->setLabelText(tr("Extracting..."));
         progress->setValue(0);
@@ -299,16 +299,17 @@ void UpdateDialog::Download() {
 }
 
 bool UpdateDialog::downloadFile(
-    std::string& data, std::string_view url, std::optional<std::filesystem::path> path,
+    std::string& data, const std::string &url, std::optional<std::filesystem::path> path,
     QtCommon::Frontend::QtProgressDialog *progress) {
     std::function<bool(std::string_view, intptr_t)> on_data;
 
     std::ofstream file;
+    std::string filename;
 
     if (path) {
         LOG_INFO(Frontend, "Downloading {} to {}", url, path->string());
 
-        const auto filename = path->filename();
+        filename = path->filename().string();
         file = std::ofstream(path->string(), std::ios::out | std::ios::binary);
 
         // write file in chunks
@@ -333,12 +334,13 @@ bool UpdateDialog::downloadFile(
 
         on_data = [&data](std::string_view t_data, intptr_t) {
             data += t_data;
+            return true;
         };
     }
 
     auto callback = [&progress](size_t total, size_t now, size_t, size_t, intptr_t) {
         QGuiApplication::processEvents();
-        if (total_size > 0)
+        if (total > 0)
             progress->setValue(int((now * 100) / total));
         return !progress->wasCanceled();
     };
@@ -355,8 +357,10 @@ bool UpdateDialog::downloadFile(
     if (progress->wasCanceled()) {
         LOG_ERROR(Frontend, "URL {} download canceled by user", url);
 
-        std::error_code ec;
-        fs::remove_all(path);
+        if (path) {
+            std::error_code ec;
+            std::filesystem::remove_all(path.value());
+        }
 
         QtCommon::Frontend::Critical(
             tr("Download cancelled"),
@@ -380,16 +384,17 @@ bool UpdateDialog::downloadFile(
         return false;
     }
 
-    try {
-        file.flush();
-        file.close();
-    } catch (const std::exception& e) {
-        const auto err = std::format("Could not commit to file {}, OS returned error {}", filename, e.what());
-        LOG_WARNING(Frontend, err);
+    if (path) {
+        try {
+            file.flush();
+            file.close();
+        } catch (const std::exception& e) {
+            LOG_WARNING(Frontend, "Could not commit to file {}, OS returned error {}", filename, e.what());
 
-        QtCommon::Frontend::Critical(
-            tr("Failed to save file"),
-            tr("Could not commit to file %1.").arg(QString::fromStdString(filename)));
+            QtCommon::Frontend::Critical(
+                tr("Failed to save file"),
+                tr("Could not commit to file %1.").arg(QString::fromStdString(filename)));
+        }
     }
 
     return true;
