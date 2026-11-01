@@ -54,8 +54,7 @@
 
 namespace {
 
-/// A dark look: one of Eden's dark themes, or the system's own dark mode under the default theme
-/// (macOS), whose palette paints alternate-base light grey and base black
+/// A dark look: one of Eden's dark themes, or the system's dark mode under the default theme
 bool DarkUi() {
     return UISettings::IsDarkTheme() ||
            QApplication::palette().color(QPalette::Window).lightness() < 128;
@@ -149,10 +148,7 @@ QIcon PowerIcon() {
     return icon;
 }
 
-/// One player in the list: a click rumbles its controller, and a long press (or a drag) picks
-/// it up to drop on another player, which swaps the two
-/// The edit field of a player's name: Enter applies and Esc cancels without reaching the
-/// dialog (whose default button Enter would press)
+/// The edit field of a player's name: Enter and Esc don't reach the dialog
 class PlayerNameEdit : public QLineEdit {
 public:
     using QLineEdit::QLineEdit;
@@ -200,8 +196,7 @@ void AddOptionRow(QBoxLayout* to, QWidget* parent, const QString& title, const Q
     to->addLayout(line);
 }
 
-/// A controller's battery: a small cell filled to its charge (red when low, a bolt while it
-/// charges), as the overlay draws it
+/// A controller's battery, as the overlay draws it
 QPixmap BatteryIcon(int percent, bool charging) {
     QPixmap pixmap(QSize(20, 12) * 2);
     pixmap.setDevicePixelRatio(2);
@@ -231,8 +226,7 @@ QPixmap BatteryIcon(int percent, bool charging) {
     return pixmap;
 }
 
-/// The icons of a player's name: edit (a pencil), apply (a check) and remove (a bin), drawn so
-/// they look the same everywhere
+/// The name's icons (edit, apply, remove), drawn so they look the same everywhere
 QIcon NameIcon(int kind, const QColor& color) {
     QPixmap pixmap(QSize(14, 14) * 2);
     pixmap.setDevicePixelRatio(2);
@@ -261,6 +255,7 @@ QIcon NameIcon(int kind, const QColor& color) {
     return QIcon{pixmap};
 }
 
+/// One player in the list: a click rumbles its controller, a drag onto another player swaps them
 class PlayerRow : public QFrame {
 public:
     PlayerRow(int player_, QWidget* parent) : QFrame(parent), player{player_} {
@@ -385,8 +380,7 @@ QString ConfigurePlayerAssignment::Themed(QString style) {
         return style.replace(QStringLiteral("muted-text"), QStringLiteral("#7d838b"))
             .replace(QStringLiteral("popup-base"), QStringLiteral("palette(base)"));
     }
-    // An open drop-down list is a window of its own, with nothing behind it: it takes the
-    // theme's background, solid (a tint there would show as white)
+    // An open drop-down list is a window of its own: a solid background (a tint shows white)
     style.replace(
         QStringLiteral("popup-base"),
         !UISettings::IsDarkTheme()
@@ -394,8 +388,7 @@ QString ConfigurePlayerAssignment::Themed(QString style) {
         : QString::fromStdString(UISettings::values.theme).contains(QStringLiteral("midnight"))
             ? QStringLiteral("#19232D")
             : QStringLiteral("#31363B"));
-    // Cards show the theme's own background (its widgets all paint it), fields and buttons a
-    // light tint, and the accent is the dark theme's blue
+    // Cards show the theme's background, fields and buttons a light tint
     static const std::array<std::pair<const char*, const char*>, 8> dark{{
         {"palette(alternate-base)", "transparent"},
         {"palette(base)", "rgba(255, 255, 255, 14)"},
@@ -440,13 +433,11 @@ QString ConfigurePlayerAssignment::ModernComboStyle() {
 }
 
 void ConfigurePlayerAssignment::ModernizeCombos(QWidget* root) {
-    // A combo box's own list painter ignores the style sheet and paints the hovered row white:
-    // the standard painter follows it
+    // A combo box's own list painter ignores the style sheet: the standard one follows it
     for (auto* combo : root->findChildren<QComboBox*>()) {
         if (!combo->property("modern_list").toBool()) {
             combo->setItemDelegate(new QStyledItemDelegate(combo));
-            // The list sits in a frame of its own window, whose padding showed white under a
-            // dark theme: it takes the list's solid background
+            // The list's frame takes its solid background (its padding showed white)
             if (QWidget* frame = combo->view()->window(); frame && frame != combo->window()) {
                 frame->setStyleSheet(Themed(QStringLiteral(
                     "QFrame { background: popup-base; border: 1px solid palette(mid); }")));
@@ -502,8 +493,7 @@ QWidget* ConfigurePlayerAssignment::MakeSegmented(QWidget* parent, const QString
 }
 
 ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(parent) {
-    // The cards keep their natural height and the page scrolls when they do not fit (squeezed,
-    // a card clips its controls)
+    // The cards keep their height and the page scrolls when they don't fit
     auto* outer = new QVBoxLayout(this);
     outer->setContentsMargins(0, 0, 0, 0);
     auto* scroll = new QScrollArea(this);
@@ -518,8 +508,7 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
     auto* layout = new QVBoxLayout(content);
     content_layout = layout;
     layout->setSpacing(8);
-    // Each section is a rounded card with its title on the edge; drop-downs are rounded fields
-    // (kept tight: the Deck's screen is 800 pixels tall)
+    // Each section is a rounded card (kept tight: the Deck's screen is 800 pixels tall)
     setStyleSheet(
         Themed(QStringLiteral("QGroupBox { border: 1px solid palette(mid); border-radius: 10px; "
                               "margin-top: 10px; padding: 8px 8px 4px 8px; "
@@ -531,8 +520,7 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
                               "QLabel#note { color: muted-text; }")) +
         ModernComboStyle());
 
-    // The controller applet's mode, as a segmented control: Manual (players set by hand),
-    // Modern Console (automatic) and Real Hardware (the console's own applet)
+    // The handler, as a segmented control
     auto* mode_box = new QGroupBox(tr("Controller Assignment Handler"), this);
     auto* mode_layout = new QVBoxLayout(mode_box);
     handler_group = new QButtonGroup(this);
@@ -624,8 +612,7 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
     mode_layout->addWidget(mode_info);
     layout->addWidget(mode_box);
 
-    // Under Steam, for both Modern Console modes: read the controllers directly instead of
-    // through Steam Input
+    // Under Steam: read the controllers directly instead of through Steam Input
     auto* steam_box = new QGroupBox(tr("Steam Input"), this);
     steam_panel = steam_box;
     auto* steam_column = new QVBoxLayout(steam_box);
@@ -662,8 +649,8 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
         UpdateModeUi();
     });
 
-    // Experimental: the motion of Valve's controllers read from their own reports, so SDL never
-    // talks to them and Steam keeps them (Linux)
+    // Experimental (Linux): Valve controllers' motion read from their reports, so SDL never
+    // talks to them
     auto* reader_layout = new QHBoxLayout();
     reader_layout->setContentsMargins(0, 6, 0, 0);
     auto* reader_text = new QVBoxLayout();
@@ -688,7 +675,7 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
     steam_column->addLayout(reader_layout);
     steam_column->addWidget(steam_restart);
     original_reader = Settings::values.console_valve_reader.GetValue();
-    // (Both on, from before they excluded each other: Bypass wins, as in the engine)
+    // (Both on in an old config: Bypass wins, as in the engine)
     reader_switch->setChecked(original_reader && !original_bypass);
     connect(reader_switch, &QAbstractButton::toggled, this, [this](bool on) {
         Settings::values.console_valve_reader.SetValue(on);
@@ -705,8 +692,7 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
 #endif
     layout->addWidget(steam_box);
 
-    // Assign Handheld Controller: declare the handheld's own controller instead of guessing it.
-    // Shown for that mode only.
+    // Assign Handheld Controller: declare the handheld's own controller (that mode only)
     builtin_row = new QGroupBox(tr("Assign Handheld Controller"), this);
     auto* builtin_layout = new QVBoxLayout(builtin_row);
     auto* picker_row = new QHBoxLayout();
@@ -893,8 +879,7 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
             [](int v) { Settings::values.console_history_seconds.SetValue(v); });
     connect(gaps_toggle, &QAbstractButton::toggled, this,
             [](bool shown) { Settings::values.console_history_gaps.SetValue(shown); });
-    // Only what applies can be changed: the history's options while it shows, all of them
-    // while the overlay does
+    // Only what applies can be changed
     const auto update_history_options = [this, size_row, seconds_row] {
         const bool history_on = history_toggle->isChecked();
         history_options->setEnabled(overlay_toggle->isChecked());
@@ -959,8 +944,7 @@ ConfigurePlayerAssignment::ConfigurePlayerAssignment(QWidget* parent) : QWidget(
     layout->addWidget(about);
     layout->addStretch(1);
 
-    // The mode applies at once, so the players switch while the dialog is open; closing it
-    // without applying puts the previous mode back (see the destructor)
+    // The mode applies at once; closing without applying puts the previous one back
     original_mode = static_cast<int>(Settings::values.controller_applet_mode.GetValue());
     connect(handler_group, &QButtonGroup::idClicked, this,
             &ConfigurePlayerAssignment::OnModeChanged);
@@ -1104,8 +1088,8 @@ void ConfigurePlayerAssignment::RefreshBuiltin() {
         detected_name = state.handheld_name;
     }
 
-    // The entries name the connected controllers; under Steam their data is the Steam handle
-    // (every Steam virtual pad shares one GUID), otherwise the pad's identity
+    // The entries' data: the Steam handle under Steam (the virtual pads share one GUID), else
+    // the pad's identity
     QString signature = QString::number(builtin_pads) + QLatin1Char('|');
     for (const auto& [display, ident] : pads) {
         signature += QString::fromStdString(ident) + QLatin1Char('|');
@@ -1118,8 +1102,7 @@ void ConfigurePlayerAssignment::RefreshBuiltin() {
         builtin_picker->addItem(tr("Auto-detect"), QString{});
         for (std::size_t i = 0; i < pads.size(); ++i) {
             if (i == builtin_pads) {
-                // The standalone controllers, for a handheld whose controls pose as one: a
-                // heading that can't be picked
+                // A heading (not pickable) before the standalone controllers
                 builtin_picker->insertSeparator(builtin_picker->count());
                 builtin_picker->addItem(tr("Other controllers"));
                 if (auto* model = qobject_cast<QStandardItemModel*>(builtin_picker->model())) {
@@ -1147,8 +1130,7 @@ void ConfigurePlayerAssignment::RefreshBuiltin() {
     }
     builtin_identify->setText(tr("Identify"));
 
-    // What is stored for the way Eden was launched: the Steam handle under Steam, the raw
-    // pad's identity otherwise (each launch kind keeps its own)
+    // Stored per launch kind: the Steam handle under Steam, else the pad's identity
     const bool steam = Common::SteamPadsInUse();
     const QString identity =
         QString::fromStdString(Settings::values.builtin_pad_identity.GetValue());
@@ -1236,8 +1218,7 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
     const auto selected = static_cast<Settings::AppletMode>(SelectedMode());
     const bool in_effect = selected == Settings::values.controller_applet_mode.GetValue();
 
-    // The engine decides the flashes (the overlay shows the same): green when a controller
-    // takes a player, red when one leaves; a leaving row stays red until it is dropped
+    // The engine decides the flashes, as in the overlay
     constexpr qint64 flash_ms = 1500;
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
     int last_player = -1;
@@ -1303,9 +1284,8 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
             grip->setToolTip(tr("Drag onto another player to swap"));
             grip->setObjectName(QStringLiteral("note"));
             line->addWidget(grip);
-            // The player's badge, in the overlay's colour for that player, with room on its
-            // corner for a mark: a guess on a reconnect (?), else a dot in the colour of the
-            // player the controller started as
+            // The player's badge, marked with ? for a reconnect's guess, else a dot in the
+            // colour of the player the controller started as
             auto* badge_box = new QWidget(row);
             badge_box->setFixedSize(40, 24);
             // (Only the badge and its mark show: the dark themes paint a plain widget)
@@ -1340,8 +1320,7 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
                 }
             }
             line->addWidget(badge_box);
-            // The name, with a pencil to name the player's controller ("John" shows as
-            // "John (Xbox)"); editing shows the field, apply and remove
+            // The name, with a pencil to name the controller ("John" shows as "John (Xbox)")
             const QString given = QString::fromStdString(entry.custom_name);
             auto* name_label = new QLabel(QString::fromStdString(entry.name), row);
             auto* name_edit = new PlayerNameEdit(given, row);
@@ -1367,8 +1346,7 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
             auto* name_apply = name_button(1, tr("Apply the name"));
             auto* name_remove = name_button(2, tr("Remove the name"));
             name_apply->hide();
-            // (The bin also shows beside the pencil while the controller has a name: one click
-            // puts its own name back)
+            // (The bin removes a given name)
             name_remove->setVisible(!given.isEmpty());
             name_edit_button->setEnabled(!entry.leaving);
             name_remove->setEnabled(!entry.leaving);
@@ -1435,8 +1413,7 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
             line->addLayout(name_line, 1);
             const bool live = !entry.leaving;
 
-            // The profile the player's controller carries; picking one puts it on it, and
-            // "No profile" (or the ✕ inside) takes it off: the mappings from before come back
+            // The controller's profile; "No profile" (or the ✕) takes it off
             auto* profile = new QComboBox(row);
             auto* clear = AddClearButton(profile);
             profile->addItem(tr("No profile"));
@@ -1493,8 +1470,7 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
                     [this, player] { RequestSwap(player, player + 1); });
             line->addWidget(down);
 
-            // Swap and Config stand out: outlined in the highlight colour, filled on hover (and
-            // Swap filled while it waits for the second player)
+            // Swap and Config outlined in the highlight colour (Swap filled while it waits)
             const QString outlined = OutlinedButtonStyle();
             const QString filled = Themed(QStringLiteral(
                 "QToolButton { border: 1px solid palette(highlight); border-radius: 6px; "
@@ -1527,9 +1503,8 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
             });
             line->addWidget(settings);
 
-            // Turn Off, for a Bluetooth controller: red, apart from the rest. Eden disconnects
-            // it, which turns most controllers off; turned on again, it joins as a new player.
-            // (Kept as room on the other rows while one has it, so the buttons stay in line.)
+            // Turn Off, for a Bluetooth controller: Eden disconnects it, which turns most
+            // controllers off. (Room kept on the other rows so the buttons line up.)
             if (any_turn_off) {
                 line->addSpacing(6);
                 auto* turn_off = new QToolButton(row);
@@ -1584,9 +1559,8 @@ void ConfigurePlayerAssignment::RefreshPlayers() {
         }
     }
 
-    // Red while leaving; blue while its controller has an input held or was just clicked to
-    // rumble (pressing a button shows which controller is which player); green when new
-    // Rows look like cards that can be picked up; a fill marks what is happening to them
+    // Rows are cards; a fill marks what happens to them: red leaving, blue input held or
+    // rumbling, green new
     const QString card = Themed(QStringLiteral("QFrame#playerRow { border: 1px solid "
                                                "palette(mid); border-radius: 8px; "
                                                "background: palette(base); }"));
@@ -1651,8 +1625,7 @@ void ConfigurePlayerAssignment::OnBuiltinPicked(int index) {
         Settings::values.builtin_pad_manual.SetValue(false);
         return;
     }
-    // Under Steam the entries are Steam handles: they set the Steam launches' built-in pad and
-    // leave the direct launches' identity alone (each way of launching keeps its own)
+    // Under Steam the entries are Steam handles, set for Steam launches only
     const QString prefix = QStringLiteral("steamhandle:");
     if (ident.startsWith(prefix)) {
         Settings::values.builtin_pad_steam_handle.SetValue(ident.mid(prefix.size()).toStdString());
