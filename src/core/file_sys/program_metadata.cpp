@@ -29,7 +29,17 @@ Loader::ResultStatus ProgramMetadata::Load(VirtualFile file) {
         return Loader::ResultStatus::ErrorBadNPDMHeader;
     }
 
-    if (sizeof(AcidHeader) != file->ReadObject(&acid_header, npdm_header.acid_offset)) {
+    const auto read_acid_at = [&](std::size_t sig_size) {
+        return sizeof(AcidHeader) ==
+                   file->ReadObject(&acid_header, npdm_header.acid_offset + sig_size) &&
+               acid_header.magic == AcidHeader::Magic;
+    };
+
+    if (read_acid_at(AcidHeader::SignatureSizeNX)) {
+        target_platform = TargetPlatform::NX;
+    } else if (read_acid_at(AcidHeader::SignatureSizeOunce)) {
+        target_platform = TargetPlatform::Ounce;
+    } else {
         return Loader::ResultStatus::ErrorBadACIDHeader;
     }
 
@@ -128,6 +138,7 @@ void ProgramMetadata::LoadManual(bool is_64_bit, ProgramAddressSpaceType address
                                  u32 main_thread_stack_size, u64 title_id,
                                  u64 filesystem_permissions, u32 system_resource_size,
                                  KernelCapabilityDescriptors capabilities) {
+    target_platform = TargetPlatform::NX;
     npdm_header.has_64_bit_instructions.Assign(is_64_bit);
     npdm_header.address_space_type.Assign(address_space);
     npdm_header.main_thread_priority = static_cast<u8>(main_thread_prio);
@@ -179,7 +190,22 @@ const ProgramMetadata::KernelCapabilityDescriptors& ProgramMetadata::GetKernelCa
     return aci_kernel_capabilities;
 }
 
+TargetPlatform ProgramMetadata::GetTargetPlatform() const {
+    return target_platform;
+}
+
 void ProgramMetadata::Print() const {
+    const char* platform = "Unknown";
+    switch (target_platform) {
+    case TargetPlatform::NX:
+        platform = "Nintendo Switch (NX)";
+        break;
+    case TargetPlatform::Ounce:
+        platform = "Nintendo Switch 2 (Ounce)";
+        break;
+    }
+
+    LOG_DEBUG(Service_FS, "Target platform:        {}", platform);
     LOG_DEBUG(Service_FS, "Magic:                  {:.4}", npdm_header.magic.data());
     LOG_DEBUG(Service_FS, "Main thread priority:   {:#02x}", npdm_header.main_thread_priority);
     LOG_DEBUG(Service_FS, "Main thread core:       {}", npdm_header.main_thread_cpu);
