@@ -196,6 +196,7 @@ void HIDCore::DisableAllControllerConfiguration() {
 }
 
 void HIDCore::ReloadInputDevices() {
+    std::scoped_lock lock{reload_mutex};
     player_1->ReloadFromSettings();
     player_2->ReloadFromSettings();
     player_3->ReloadFromSettings();

@@ -566,6 +566,8 @@ private:
 
     /// The console modes' engine: assigns the connected controllers to players, on a timer
     QTimer console_mode_timer;
+    /// Eden is closing: the engine stops (it would reload the inputs closeEvent unloaded)
+    bool closing = false;
     void ApplyConsoleControllerMode();
     /// connection instance -> player slot; kept after a disconnect so the pad reclaims its player
     std::map<u32, int> pad_slots;

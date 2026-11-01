@@ -3476,8 +3476,12 @@ void MainWindow::RenderControllerOverlay() {
         for (const auto& hint : controller_hints) {
             const QString text = text_of(hint);
             const int w = 14 + hint_fm.horizontalAdvance(text) + 10 + badge_w + 6;
-            const qint64 left = hint_ms - (now_ms - hint.at);
-            const int alpha = left < 500 ? static_cast<int>(255 * left / 500) : 255;
+            // (A pause's notice doesn't fade while the game is paused for it)
+            const qint64 left = hint.pause_notice && !disconnect_paused.empty()
+                                    ? hint_ms
+                                    : hint_ms - (now_ms - hint.at);
+            const int alpha = left < 500 ? static_cast<int>(255 * (std::max)(left, qint64{0}) / 500)
+                                         : 255;
             painter.setPen(Qt::NoPen);
             painter.setBrush(hint.joined ? QColor(18, 18, 22, 215 * alpha / 255)
                                          : QColor(96, 22, 28, 220 * alpha / 255));
@@ -3970,7 +3974,9 @@ void MainWindow::RenderControllerOverlay() {
             for (std::size_t g = 0; g < inputs.size(); ++g) {
                 const auto& input = inputs[g];
                 const double scale = input.scale;
-                const int alpha = static_cast<int>((255 - static_cast<int>(g) * 12) * scale);
+                // (Older inputs fade a step each; past twenty they're transparent)
+                const int alpha =
+                    (std::clamp)(static_cast<int>((255 - static_cast<int>(g) * 12) * scale), 0, 255);
                 const double h = chip_h * scale;
                 const bool together = input.count > 1;
                 if (input.gap_w > 0) {
@@ -4711,6 +4717,11 @@ bool MainWindow::PollButtonHistory() {
 }
 
 void MainWindow::ApplyConsoleControllerMode() {
+    // (Closing: the controllers' inputs are unloaded; a reload now would outlive the input
+    // engines and crash at exit)
+    if (closing) {
+        return;
+    }
     // A tick longer than 250ms means a controller or the system held Eden up: always logged
     struct SlowCheckWarning {
         std::chrono::steady_clock::time_point start = std::chrono::steady_clock::now();
@@ -6403,6 +6414,20 @@ void MainWindow::ApplyConsoleControllerMode() {
             handover_paused = -1;
             handover_pressed = false;
         }
+        // The overlay is drawn into frames: the notice first, the pause a moment later
+        const auto pause_with_notice = [&](int player, const QString& notice) {
+            controller_hints.push_back({QString{}, player, false, now_ms, false, notice, true});
+            RenderControllerOverlay();
+            disconnect_pause_pending = true;
+            disconnect_pause_seen = false;
+            QTimer::singleShot(150, this, [this] {
+                disconnect_pause_pending = false;
+                if (!disconnect_paused.empty() && emulation_running && QtCommon::emu_thread &&
+                    QtCommon::emu_thread->IsRunning()) {
+                    OnPauseGame();
+                }
+            });
+        };
         if (Settings::values.console_pause_disconnect.GetValue() && running &&
             !disconnect_pause_pending) {
             // A disconnect that is surely real (Turn Off, or BlueZ says disconnected) pauses at
@@ -6466,20 +6491,6 @@ void MainWindow::ApplyConsoleControllerMode() {
                     }
                 }
             }
-            // The overlay is drawn into frames: the notice first, the pause a moment later
-            const auto pause_with_notice = [&](int player, const QString& notice) {
-                controller_hints.push_back({QString{}, player, false, now_ms, false, notice, true});
-                RenderControllerOverlay();
-                disconnect_pause_pending = true;
-                disconnect_pause_seen = false;
-                QTimer::singleShot(150, this, [this] {
-                    disconnect_pause_pending = false;
-                    if (!disconnect_paused.empty() && emulation_running && QtCommon::emu_thread &&
-                        QtCommon::emu_thread->IsRunning()) {
-                        OnPauseGame();
-                    }
-                });
-            };
             if (handover >= 0) {
                 disconnect_paused = {handover};
                 handover_paused = handover;
@@ -6519,6 +6530,32 @@ void MainWindow::ApplyConsoleControllerMode() {
             }
         } else if (!disconnect_paused.empty() && !running && emulation_running &&
                    !disconnect_pause_pending) {
+            // Paused for a disconnect when the last external controller left too: the handheld's
+            // controls took a player, and the pause becomes a handover (not a resume)
+            if (handover_paused < 0 && handheld_took_over &&
+                std::none_of(held_by_external.begin(), held_by_external.end(),
+                             [](bool b) { return b; })) {
+                for (std::size_t i = 0; i < holder.size(); ++i) {
+                    if (on_handheld(holder[i])) {
+                        handover_paused = static_cast<int>(i);
+                        handover_pressed = PadInputHeld(holder[i]);
+                        disconnect_paused = {handover_paused};
+                        LOG_INFO(Frontend,
+                                 "console-mode: pause handed over to the built-in controls (P{})",
+                                 i + 1);
+                        // (The disconnect's notice gives way; running a moment, so the new
+                        // one is drawn into a frame)
+                        std::erase_if(controller_hints,
+                                      [](const auto& hint) { return hint.pause_notice; });
+                        OnStartGame();
+                        pause_with_notice(handover_paused,
+                                          tr("P%1 is on the built-in controls now: press a button "
+                                             "on them, or reconnect a controller, to go on")
+                                              .arg(handover_paused + 1));
+                        break;
+                    }
+                }
+            }
             bool all_back =
                 std::all_of(disconnect_paused.begin(), disconnect_paused.end(), [&](int player) {
                     return std::any_of(pad_slots.begin(), pad_slots.end(), [&](const auto& e) {
@@ -10052,6 +10089,8 @@ void MainWindow::closeEvent(QCloseEvent* event) {
         LOG_INFO(Frontend, "console-mode: closing, mode {}, players:{}",
                  AppletModeName(Settings::values.controller_applet_mode.GetValue()), players_now);
     }
+    closing = true;
+    console_mode_timer.stop();
 
     UpdateUISettings();
     game_list->SaveInterfaceLayout();

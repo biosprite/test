@@ -7,6 +7,7 @@
 #pragma once
 
 #include <memory>
+#include <mutex>
 
 #include "common/common_funcs.h"
 #include "hid_core/hid_types.h"
@@ -76,6 +77,9 @@ public:
     /// Number of emulated controllers
     static constexpr std::size_t available_controllers{10};
 
+    /// Reloads come from the HID service (starting a game) and the frontend (settings, the
+    /// console modes): one at a time, or two threads rebuild the same controllers
+    std::mutex reload_mutex;
     std::unique_ptr<EmulatedController> player_1;
     std::unique_ptr<EmulatedController> player_2;
     std::unique_ptr<EmulatedController> player_3;
