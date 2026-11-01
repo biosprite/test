@@ -53,6 +53,14 @@
 #include "yuzu/configuration/input_profiles.h"
 
 namespace {
+
+/// A dark look: one of Eden's dark themes, or the system's own dark mode under the default theme
+/// (macOS), whose palette paints alternate-base light grey and base black
+bool DarkUi() {
+    return UISettings::IsDarkTheme() ||
+           QApplication::palette().color(QPalette::Window).lightness() < 128;
+}
+
 bool IsAutomatic(Settings::AppletMode mode) {
     return mode == Settings::AppletMode::ConsoleMode ||
            mode == Settings::AppletMode::HandheldConsoleMode;
@@ -85,8 +93,8 @@ protected:
         painter.setPen(Qt::NoPen);
         const QRectF track = QRectF(rect()).adjusted(1, 1, -1, -1);
         QColor fill = isChecked() ? ConfigurePlayerAssignment::Accent(this)
-                                  : (UISettings::IsDarkTheme() ? QColor(255, 255, 255, 70)
-                                                               : palette().mid().color());
+                                  : (DarkUi() ? QColor(255, 255, 255, 70)
+                                              : palette().mid().color());
         if (!isEnabled()) {
             fill.setAlpha(110);
         }
@@ -373,7 +381,7 @@ QToolButton* ConfigurePlayerAssignment::AddClearButton(QComboBox* combo) {
 }
 
 QString ConfigurePlayerAssignment::Themed(QString style) {
-    if (!UISettings::IsDarkTheme()) {
+    if (!DarkUi()) {
         return style.replace(QStringLiteral("muted-text"), QStringLiteral("#7d838b"))
             .replace(QStringLiteral("popup-base"), QStringLiteral("palette(base)"));
     }
@@ -381,7 +389,9 @@ QString ConfigurePlayerAssignment::Themed(QString style) {
     // theme's background, solid (a tint there would show as white)
     style.replace(
         QStringLiteral("popup-base"),
-        QString::fromStdString(UISettings::values.theme).contains(QStringLiteral("midnight"))
+        !UISettings::IsDarkTheme()
+            ? QApplication::palette().color(QPalette::Window).name()
+        : QString::fromStdString(UISettings::values.theme).contains(QStringLiteral("midnight"))
             ? QStringLiteral("#19232D")
             : QStringLiteral("#31363B"));
     // Cards show the theme's own background (its widgets all paint it), fields and buttons a
@@ -403,7 +413,7 @@ QString ConfigurePlayerAssignment::Themed(QString style) {
 }
 
 QColor ConfigurePlayerAssignment::Accent(const QWidget* widget) {
-    return UISettings::IsDarkTheme() ? QColor(0x3d, 0xae, 0xe9)
+    return DarkUi() ? QColor(0x3d, 0xae, 0xe9)
                                      : widget->palette().highlight().color();
 }
 
