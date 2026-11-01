@@ -14,14 +14,24 @@
 #include "core/file_sys/vfs/vfs_vector.h"
 #include "core/hle/kernel/k_process.h"
 #include "core/loader/nsp.h"
+#include "tests/core/file_sys/metadata_test_file.h"
 
 namespace {
 
+using FileSys::Tests::MakeNpdm;
+using FileSys::Tests::Put32;
+using FileSys::Tests::Put64;
+
 class TestNand {
 public:
-    TestNand() : previous(Common::FS::GetEdenPath(Common::FS::EdenPath::NANDDir)) {
+    YUZU_NON_COPYABLE(TestNand);
+    YUZU_NON_MOVEABLE(TestNand);
+
+    TestNand()
+        : previous(Common::FS::GetEdenPath(Common::FS::EdenPath::NANDDir)),
+          temporary_parent(std::filesystem::canonical(std::filesystem::temp_directory_path())) {
         const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        root = std::filesystem::temp_directory_path() / ("eden-loader-test-" + std::to_string(stamp));
+        root = temporary_parent / ("eden-loader-test-" + std::to_string(stamp));
         REQUIRE(std::filesystem::create_directory(root));
         Common::FS::SetEdenPath(Common::FS::EdenPath::NANDDir, root);
     }
@@ -29,57 +39,21 @@ public:
     ~TestNand() {
         Common::FS::SetEdenPath(Common::FS::EdenPath::NANDDir, previous);
         std::error_code error;
-        if (std::filesystem::weakly_canonical(root).parent_path() ==
-            std::filesystem::weakly_canonical(std::filesystem::temp_directory_path())) {
+        const auto resolved_root = std::filesystem::weakly_canonical(root, error);
+        if (!error && resolved_root.parent_path() == temporary_parent) {
             std::filesystem::remove_all(root, error);
         }
     }
 
 private:
-    std::filesystem::path previous;
+    const std::filesystem::path previous;
+    const std::filesystem::path temporary_parent;
     std::filesystem::path root;
 };
 
-void Put32(std::vector<u8>& bytes, std::size_t offset, u32 value) {
-    const u32_le little = value;
-    std::memcpy(bytes.data() + offset, &little, sizeof(little));
-}
-
-void Put64(std::vector<u8>& bytes, std::size_t offset, u64 value) {
-    const u64_le little = value;
-    std::memcpy(bytes.data() + offset, &little, sizeof(little));
-}
-
-std::vector<u8> Npdm(bool ounce) {
-    const u32 body = ounce ? 0x300U : 0x200U;
-    const u32 aci = ounce ? 0x400U : 0x300U;
-    std::vector<u8> bytes(aci + 0x60);
-    std::memcpy(bytes.data(), "META", 4);
-    bytes[0xC] = 0x27;
-    bytes[0xE] = 0x2C;
-    Put32(bytes, 0x70, aci);
-    Put32(bytes, 0x74, 0x60);
-    Put32(bytes, 0x78, 0x80);
-    Put32(bytes, 0x7C, body + 0x74);
-    std::memcpy(bytes.data() + 0x80 + body, "ACID", 4);
-    Put32(bytes, 0x80 + body + 0x20, body + 0x40);
-    Put32(bytes, 0x80 + body + 0x24, 0x2C);
-    Put32(bytes, 0x80 + body + 0x30, body + 0x70);
-    Put32(bytes, 0x80 + body + 0x34, 4);
-    bytes[0x80 + body + 0x40] = 1;
-    std::memcpy(bytes.data() + aci, "ACI0", 4);
-    Put64(bytes, aci + 0x10, 0x0400000000010000ULL);
-    Put32(bytes, aci + 0x20, 0x40);
-    Put32(bytes, aci + 0x24, 0x1C);
-    Put32(bytes, aci + 0x30, 0x5C);
-    Put32(bytes, aci + 0x34, 4);
-    bytes[aci + 0x40] = 1;
-    return bytes;
-}
-
 FileSys::VirtualFile Package(bool ounce, bool with_romfs) {
     std::vector<std::pair<std::string, std::vector<u8>>> entries{
-        {"main", {}}, {"main.npdm", Npdm(ounce)}};
+        {"main", {}}, {"main.npdm", MakeNpdm(ounce)}};
     if (with_romfs) {
         entries.emplace_back("game.romfs", std::vector<u8>{0x50, 0x12, 0x34});
     }
