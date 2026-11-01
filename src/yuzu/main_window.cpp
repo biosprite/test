@@ -392,8 +392,8 @@ inline static bool isDarkMode() {
 
 namespace {
 
-/// Asks the engine to put the players in this order: place k (the k-th lowest player of the
-/// ones listed) takes the controller player order[k] has now, as one swap at a time
+/// Asks the engine to put the players in this order: place k takes the controller player
+/// order[k] has now, one swap at a time
 void RequestPlayerOrder(const std::vector<int>& order) {
     std::vector<int> places = order;
     std::sort(places.begin(), places.end());
@@ -420,15 +420,15 @@ void RequestPlayerOrder(const std::vector<int>& order) {
     }
 }
 
-/// The players as chips after the last menu (the automatic modes): a click rumbles a player's
-/// controller and opens its settings tab; held, a chip drags left or right to change the order
+/// The players as chips after the last menu: a click rumbles the controller and opens its tab;
+/// a chip drags left or right to change the order
 class PlayerChips : public QWidget {
 public:
     PlayerChips(QMenuBar* bar_, std::function<void(int)> open_settings_)
         : QWidget(bar_), bar{bar_}, open_settings{std::move(open_settings_)} {
         setAttribute(Qt::WA_NoSystemBackground);
-        // (A dark theme gives a plain widget a solid background.) By name: the chips' tooltip,
-        // a child, would take a bare rule too and show as a black box under gamescope
+        // (A dark theme gives a plain widget a solid background.) By name, or the chips'
+        // tooltip takes the rule too and shows as a black box under gamescope
         setObjectName(QStringLiteral("playerChips"));
         setStyleSheet(QStringLiteral("#playerChips { background: transparent; }"));
         setCursor(Qt::PointingHandCursor);
@@ -457,8 +457,7 @@ protected:
         const auto chip = [&](const Common::ControllerConsoleState::PlayerRow& row, QRectF rect,
                               int k) {
             const QColor color = ConfigurePlayerAssignment::PlayerColor(row.player);
-            // Filled while its controller has an input held, else an outline; blinking green
-            // a moment when another controller takes the player (a swap)
+            // Filled while an input is held, else outlined; blinking green after a swap
             const qint64 since = QDateTime::currentMSecsSinceEpoch() - row.flash_since;
             const bool blink = row.flash == 1 && since < 1500 && (since / 125) % 2 == 0;
             const bool lit = row.active || blink;
@@ -471,8 +470,7 @@ protected:
             }
             painter.drawRoundedRect(rect, rect.height() / 2, rect.height() / 2);
             const QColor ink = lit ? QColor(Qt::white) : color;
-            // The controller's battery's percent, then its icon, at the right end (inside the
-            // arrow)
+            // The battery's percent, then its icon, at the right end
             QRectF label = rect;
             if (row.battery >= 0 && batteries) {
                 const QRectF cell(rect.right() - (several ? 16 : 6) - battery_w,
@@ -658,8 +656,7 @@ private:
     static constexpr int percent_w = 28;
     static constexpr int battery_room = battery_w + percent_w + 4;
 
-    /// A chip's width among these players: wider with arrows and the grip (several players),
-    /// and with a battery (unless the chips are too many for the menu bar with them)
+    /// A chip's width: wider with arrows and the grip (several players), and with a battery
     static int ChipWidth(const std::vector<Common::ControllerConsoleState::PlayerRow>& among,
                          std::size_t k, bool with_batteries) {
         return (among.size() > 1 ? chip_w_full : chip_w) +
@@ -720,8 +717,7 @@ private:
                 }
             }
         }
-        // (Up to eight players: their batteries go when the chips would run past the menu bar,
-        // and stay in the tooltips)
+        // (Batteries go when the chips would run past the menu bar; they stay in the tooltips)
         const auto chips_width = [&](bool with_batteries) {
             int w = 8;
             for (std::size_t k = 0; k < now.size(); ++k) {
@@ -743,8 +739,7 @@ private:
         if (isVisible() != shown) {
             setVisible(shown);
         }
-        // Repainted when a player, its input or its controller changes, and while one blinks
-        // (not while one is being dragged)
+        // Repainted when a player changes and while one blinks (not while dragging)
         const auto same = [](const auto& a, const auto& b) {
             return a.player == b.player && a.active == b.active && a.name == b.name &&
                    a.flash == b.flash && a.flash_since == b.flash_since &&
@@ -1906,8 +1901,7 @@ void MainWindow::ConnectWidgetEvents() {
     connect(&console_mode_timer, &QTimer::timeout, this, &MainWindow::ApplyConsoleControllerMode);
     connect(&console_activity_timer, &QTimer::timeout, this, &MainWindow::PollControllerActivity);
     console_activity_timer.start(std::chrono::milliseconds{40});
-    // 250ms: effectively instant to the user, negligible cost (the input reload only
-    // runs when the membership changes).
+    // 250ms: instant to the user, negligible cost (the input reload only runs on changes)
     console_mode_timer.start(std::chrono::milliseconds{250});
 
     connect(&status_bar_update_timer, &QTimer::timeout, this, &MainWindow::UpdateStatusBar);
@@ -1978,10 +1972,8 @@ struct JoystickApiLock {
     }
 };
 
-/// A pad's stable identity: its hardware serial when it reports one (survives battery
-/// swaps and reconnects), otherwise its model GUID. Two pads can legitimately share the
-/// fallback identity - that is fine, because slots are keyed by connection instance and
-/// this only matches returning pads to their own reservations.
+/// A pad's stable identity: its hardware serial when it reports one, else its model GUID (which
+/// two pads can share: slots are keyed by connection, this only matches returning pads)
 std::string PadIdentity(SDL_JoystickID id) {
     const JoystickApiLock lock;
     SDL_Joystick* js = SDL_OpenJoystick(id);
@@ -2000,10 +1992,8 @@ std::string PadIdentity(SDL_JoystickID id) {
     char buf[33]{};
     for (int i = 0; i < 16; ++i) {
         unsigned byte = guid.data[i];
-        // Bytes 2-3 are a CRC of the controller NAME: it rewrites itself when the name
-        // rotates ("SteamDeck" <-> "Xbox" on the same pad), which is what made identities
-        // appear to migrate between physical pads. InputCommon zeroes these bytes too
-        // (SDLDriver::GetGUID): do the same, or identity can never be stable.
+        // Bytes 2-3 are a CRC of the name, which Steam changes on the same pad: zeroed, as
+        // SDLDriver::GetGUID does
         if (i == 2 || i == 3) {
             byte = 0;
         }
@@ -2012,10 +2002,8 @@ std::string PadIdentity(SDL_JoystickID id) {
     return std::string{"guid:"} + buf;
 }
 
-/// A pad's display name (Xbox Controller, Steam Virtual Gamepad, ...).
 /// What Steam says is in one of its virtual pads, from the file it writes for the game. SDL
-/// reads the same file, but at most every 3 seconds: a controller Steam moved to another pad
-/// (on its first use) showed as the pad's old one that long, with its input already there.
+/// reads it at most every 3 seconds, so a controller Steam just moved showed as the old one.
 struct SteamSlot {
     Uint64 handle = 0;
     Uint16 vendor = 0;
@@ -2026,9 +2014,9 @@ struct SteamSlot {
 
 std::optional<SteamSlot> SteamSlotOf(SDL_JoystickID id);
 
+/// A pad's display name
 QString PadName(SDL_JoystickID id) {
-    // (Steam names the Deck's own controls with a translation key,
-    // "#SettingsController_SteamController": not a name to show)
+    // (Steam names the Deck's controls with a translation key: not a name to show)
     const auto slot = SteamSlotOf(id);
     if (slot && !slot->name.isEmpty() && !slot->name.startsWith(QLatin1Char('#'))) {
         return slot->name;
@@ -2049,17 +2037,13 @@ QString PadName(SDL_JoystickID id) {
     return out;
 }
 
-/// True for Steam Input's virtual pads. Their reported identity (GUID/serial) is not
-/// stable when pads cycle - Steam re-binds its virtual devices - so only Steam's own
-/// player index is trustworthy for them. Raw pads (real names) keep the identity
-/// machinery, and nothing changes when the emu is not launched through Steam.
+/// True for Steam Input's virtual pads, whose GUID and serial aren't stable (Steam re-binds them)
 bool IsSteamVirtualPad(SDL_JoystickID id) {
     if (!Common::RunningUnderSteam()) {
         return false;
     }
-    // Steam Input rewrites every virtual pad's GUID to carry Valve's vendor (0x28DE,
-    // little-endian in bytes 4-5) whatever the real hardware is. The pad NAME is not
-    // usable here: the same instance is seen as "SteamDeck" and "Xbox" in one session.
+    // Every virtual pad's GUID carries Valve's vendor (0x28DE, bytes 4-5); the name isn't
+    // usable (one pad shows as "SteamDeck" and "Xbox" in a session)
     const JoystickApiLock lock;
     SDL_Joystick* js = SDL_OpenJoystick(id);
     if (!js) {
@@ -2067,14 +2051,12 @@ bool IsSteamVirtualPad(SDL_JoystickID id) {
     }
     const SDL_GUID guid = SDL_GetJoystickGUID(js);
     SDL_CloseJoystick(js);
-    // Valve makes real controllers too (the deck's own, unhidden for its motion): the virtual
-    // gamepad product (0x11FF, bytes 8-9) is what marks Steam's virtual pads
+    // Valve makes real controllers too: the virtual gamepad product (0x11FF, bytes 8-9) marks them
     return guid.data[4] == 0xDE && guid.data[5] == 0x28 && guid.data[8] == 0xFF &&
            guid.data[9] == 0x11;
 }
 
-/// The OS device node of a pad (e.g. /dev/input/event5): sometimes the one identity a
-/// virtualization layer keeps stable. Empty where unsupported.
+/// The OS device node of a pad (e.g. /dev/input/event5); empty where unsupported
 QString PadPath(SDL_JoystickID id) {
     const JoystickApiLock lock;
     SDL_Joystick* js = SDL_OpenJoystick(id);
@@ -2087,8 +2069,7 @@ QString PadPath(SDL_JoystickID id) {
     return out;
 }
 
-/// A pad's slot as Steam says now (nothing for a pad that isn't one of Steam's, or without
-/// Steam's file); read again whenever Steam writes the file
+/// A pad's slot as Steam says now (nothing outside Steam's pads); reread when Steam writes it
 std::optional<SteamSlot> SteamSlotOf(SDL_JoystickID id) {
 #ifdef __linux__
     static const QByteArray file = qgetenv("SteamVirtualGamepadInfo");
@@ -2220,8 +2201,7 @@ std::optional<HidEntry> ReadHidEntry(const QString& dir) {
     return has_id ? std::optional{entry} : std::nullopt;
 }
 
-/// A controller as the kernel has it: its address (or HID entry name), whether it is on
-/// Bluetooth, and its input nodes (for which buttons it has held)
+/// A controller as the kernel has it: address (or HID entry), Bluetooth or not, input nodes
 struct RealController {
     std::string key;
     std::string address;
@@ -2231,8 +2211,7 @@ struct RealController {
 
 constexpr unsigned BusBluetooth = 0x5;
 
-/// The controllers of a model; one controller can have several HID entries, which share its
-/// address
+/// The controllers of a model (one controller's several HID entries share its address)
 std::vector<RealController> ControllersOfModel(unsigned vendor, unsigned product) {
     std::map<std::string, RealController> found;
     const QDir devices{QStringLiteral("/sys/bus/hid/devices")};
@@ -2263,10 +2242,8 @@ std::vector<RealController> ControllersOfModel(unsigned vendor, unsigned product
 }
 
 /// Whether a pad's controller is on Bluetooth, and its address: from the HID device behind the
-/// pad's node, else (under Steam, whose virtual pads hide the real one) the controller of its
-/// model when there is just one. With several of the model and one on Bluetooth it is unsure,
-/// until a button press tells them apart (a wired DualSense and a Bluetooth one share a model:
-/// never the wrong one off).
+/// pad, else (under Steam) the only controller of its model. Unsure with several of the model
+/// until a button press tells them apart, so Turn Off never hits the wrong one.
 struct PadBluetooth {
     std::string address;
     bool unsure = false;
@@ -2296,19 +2273,16 @@ PadBluetooth FindPadBluetooth(SDL_JoystickID id) {
     return {{}, any_bluetooth};
 }
 
-/// How long a press read from a controller's input node counts: a check comes every 100ms
-/// while a controller waits to be told apart, and its pad's own activity counts for 200ms
+/// How long a press read from a controller's input node counts (checks come every 100ms)
 constexpr s64 RealPressWindowUs = 300'000;
 
-/// True while a controller has a button held, or had something pressed in the last 300ms (a
-/// quick tap falls between two checks), read from its input nodes (kept open). Something is a
-/// button, the d-pad, or a stick or trigger pushed past half (as the pads' own activity counts)
+/// True while a controller has an input held, or had one in the last 300ms (a quick tap falls
+/// between checks), read from its input nodes
 bool RealButtonHeld(const RealController& controller) {
     static std::map<QString, int> open_nodes;
     // (Each node's axes, read when it is opened: their ranges, and where they rest then)
     static std::map<std::pair<QString, u16>, input_absinfo> ranges;
-    // (When each node's last press happened, by the kernel's own stamp on it: a press read late
-    // is still as old as it is)
+    // (Each node's last press, by the kernel's timestamp)
     static std::map<QString, s64> pressed_at_us;
     timespec real{};
     clock_gettime(CLOCK_REALTIME, &real);
@@ -2318,8 +2292,7 @@ bool RealButtonHeld(const RealController& controller) {
         if (it == open_nodes.end()) {
             const int fd =
                 ::open(event.toLocal8Bit().constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
-            // (Not kept when it can't be opened, such as for a moment as it connects: tried again
-            // next time, or the controller could never be told apart by a press)
+            // (A node that can't be opened yet, as it connects, is tried again next time)
             if (fd < 0) {
                 continue;
             }
@@ -2343,8 +2316,7 @@ bool RealButtonHeld(const RealController& controller) {
                 bool pressed = e.type == EV_KEY && e.value == 1;
                 if (const auto range = ranges.find({event, e.code});
                     e.type == EV_ABS && range != ranges.end()) {
-                    // A quarter of its range away from where it rests: a stick half way out,
-                    // a trigger a quarter pulled, the d-pad (only its ends)
+                    // A quarter of its range away from rest
                     const auto& info = range->second;
                     const double moved = std::abs(static_cast<double>(e.value - info.value)) /
                                          static_cast<double>(info.maximum - info.minimum);
@@ -2374,9 +2346,8 @@ bool RealButtonHeld(const RealController& controller) {
     return false;
 }
 
-/// Asks BlueZ whether a Bluetooth controller is connected, without waiting: the answer comes to
-/// `answer` (on the GUI thread, while `context` lives) when BlueZ gives it, and never when it
-/// can't say
+/// Asks BlueZ whether a controller is connected, without waiting: `answer` gets it on the GUI
+/// thread (while `context` lives), or never
 void AskBluezConnected(const std::string& address, QObject* context,
                        std::function<void(bool)> answer) {
     QDBusConnection bus = QDBusConnection::systemBus();
@@ -2482,8 +2453,7 @@ int PadPlayerIndex(SDL_JoystickID id) {
     return index;
 }
 
-/// True when SDL reports a gyro on the pad. Under Steam Input this tells whether the virtual
-/// pad passes motion through at all (the deck's own motion may only come from a DSU server).
+/// True when SDL reports a gyro on the pad
 bool PadHasGyro(SDL_JoystickID id) {
     const JoystickApiLock lock;
     SDL_Gamepad* pad = SDL_OpenGamepad(id);
@@ -2495,8 +2465,7 @@ bool PadHasGyro(SDL_JoystickID id) {
     return gyro;
 }
 
-/// True while a pad's accelerometer reads nothing at all: with its motion sensors on, gravity
-/// always registers
+/// True while a pad's accelerometer reads nothing (gravity always registers when on)
 bool PadMotionSilent(SDL_JoystickID id) {
     const JoystickApiLock lock;
     SDL_Gamepad* pad = SDL_OpenGamepad(id);
@@ -2509,10 +2478,9 @@ bool PadMotionSilent(SDL_JoystickID id) {
     return read && accel[0] == 0.0f && accel[1] == 0.0f && accel[2] == 0.0f;
 }
 
-/// Asks the Steam Deck's own controller to report its motion sensors: Steam Input keeps them off
-/// unless its layout uses the gyro. Only that setting (IMU mode 0x30 = raw accel and gyro, 0x18)
-/// in the settings feature report (0x87), as SDL sends it; on a thread of its own, so a slow
-/// controller never stalls Eden.
+/// Asks the Steam Deck's controller to turn its motion sensors on (Steam keeps them off unless
+/// its layout uses the gyro): IMU mode 0x30 = 0x18 in feature report 0x87, as SDL sends it, on
+/// a thread of its own
 void EnableDeckMotion(const QString& path) {
 #ifdef __linux__
     static std::atomic<bool> busy{false};
@@ -2637,9 +2605,8 @@ QString ShortControllerName(SDL_JoystickID id, const QString& full) {
     }
 }
 
-/// A stick binding turned with a single Joy-Con held sideways: what the Joy-Con's own stick would
-/// report for the same push (the right one is turned a quarter clockwise, the left one the other
-/// way). Only SDL bindings turn; others are kept as they are.
+/// A stick binding turned for a single Joy-Con held sideways (the right one a quarter clockwise,
+/// the left one the other way); only SDL bindings turn
 std::string TurnStickSideways(const std::string& raw, bool right) {
     Common::ParamPackage param{raw};
     if (param.Get("engine", "") != "sdl" || !param.Has("axis_x") || !param.Has("axis_y")) {
@@ -2660,9 +2627,8 @@ std::string TurnStickSideways(const std::string& raw, bool right) {
     return param.Serialize();
 }
 
-/// A player's bindings for a single Joy-Con held sideways: the buttons where they sit on the
-/// player's controller (bottom, right, left, top, by the Switch layout of the bindings) go to the
-/// Joy-Con's buttons in those places, the shoulders to SL / SR, the left stick to its stick
+/// A player's bindings for a single Joy-Con held sideways: face buttons by position, the
+/// shoulders to SL / SR, the left stick to its stick
 void BindSidewaysJoyCon(Settings::PlayerInput& set, bool right) {
     using namespace Settings::NativeButton;
     const auto pad = set.buttons;
@@ -2680,8 +2646,7 @@ void BindSidewaysJoyCon(Settings::PlayerInput& set, bool right) {
         set.analogs[Settings::NativeAnalog::RStick] =
             TurnStickSideways(set.analogs[Settings::NativeAnalog::LStick], true);
     } else {
-        // Turned a quarter the other way: left below, down to the right, up to the left, right
-        // on top
+        // Turned a quarter the other way
         out[DLeft] = bottom;
         out[DDown] = east;
         out[DUp] = west;
@@ -2693,8 +2658,7 @@ void BindSidewaysJoyCon(Settings::PlayerInput& set, bool right) {
     }
 }
 
-/// A battery as Linux lists it (/sys/class/power_supply): its charge (the level's words when it
-/// gives no percent) and whether it charges
+/// A battery as Linux lists it (/sys/class/power_supply): charge and whether it charges
 #ifdef __linux__
 std::optional<std::pair<int, bool>> ReadPowerSupply(const QString& dir) {
     const auto read = [&](const char* name) {
@@ -2723,8 +2687,7 @@ std::optional<std::pair<int, bool>> ReadPowerSupply(const QString& dir) {
                      status == QStringLiteral("Charging") || status == QStringLiteral("Full")};
 }
 
-/// A Bluetooth controller's battery, by its address: Linux names it after the address
-/// (hid-<address>-battery), or its device carries the address
+/// A Bluetooth controller's battery, by its address (hid-<address>-battery)
 std::optional<std::pair<int, bool>> BluetoothBattery(const std::string& address) {
     const QDir supplies{QStringLiteral("/sys/class/power_supply")};
     const QString wanted = QString::fromStdString(address).toLower();
@@ -2744,9 +2707,8 @@ std::optional<std::pair<int, bool>> BluetoothBattery(const std::string& address)
     return std::nullopt;
 }
 
-/// Asks BlueZ for a Bluetooth LE controller's battery (its battery service: Xbox Series
-/// controllers report it this way, with no power supply in Linux), without waiting: the percent
-/// comes to `answer` (on the GUI thread, while `context` lives) when BlueZ has one
+/// Asks BlueZ for a Bluetooth LE controller's battery (Xbox Series controllers have no power
+/// supply in Linux), without waiting: `answer` gets it on the GUI thread
 void AskBluezBattery(const std::string& address, QObject* context,
                      std::function<void(int)> answer) {
     QDBusConnection bus = QDBusConnection::systemBus();
@@ -2814,8 +2776,7 @@ std::tuple<int, bool, bool> SdlBattery(SDL_JoystickID id) {
     }
 }
 
-/// True for Nintendo's own controllers (and their look-alikes): their buttons already sit where
-/// the Switch's are, by label and by position
+/// True for Nintendo's controllers and look-alikes: their buttons already match the Switch's
 bool IsNintendoPad(SDL_JoystickID id) {
     switch (PadType(id)) {
     case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
@@ -2829,9 +2790,8 @@ bool IsNintendoPad(SDL_JoystickID id) {
     }
 }
 
-/// The players controllers take in the console modes: a Switch's eight. The settings' players
-/// go on past them (the handheld's own, and one more), which no controller may take: a ninth
-/// controller waits until one of the eight is free.
+/// The players controllers take in the console modes: a Switch's eight (a ninth controller
+/// waits). The settings' players past them are the handheld's own and one more.
 constexpr int ConsolePlayers = 8;
 
 /// Makers of standalone controllers: never a handheld's built-in controls, even when alone
@@ -2855,15 +2815,13 @@ bool IsControllerMaker(Uint16 vendor) {
     }
 }
 
-/// Makers of handhelds with built-in controls: Valve, Lenovo, ASUS, MSI. A pad from one of
-/// them is taken as the handheld's own on a direct launch.
+/// Makers of handhelds with built-in controls: a pad from one is the handheld's own on a
+/// direct launch
 bool IsHandheldMaker(Uint16 vendor) {
     return vendor == 0x28DE || vendor == 0x17EF || vendor == 0x0B05 || vendor == 0x0DB0;
 }
 
-/// Whether a pad can be a handheld's own controls. Valve also makes standalone controllers
-/// (the Steam Controllers report no gamepad type under Steam either): only the Deck's counts.
-/// Under Steam the virtual pad reports the real controller's ids.
+/// Whether a pad can be a handheld's own controls (of Valve's, only the Deck's)
 bool CouldBeHandheld(Uint16 vendor, Uint16 product) {
     if (vendor == 0x28DE) {
         return product == 0x1205;
