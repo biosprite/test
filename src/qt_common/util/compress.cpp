@@ -213,11 +213,18 @@ QStringList extractDir(QuaZip& zip, const QString& dir, QtCommon::QtProgressCall
 
         if (extractFile(&zip, QLatin1String(""), absFilePath, total, progress, callback)) {
             extracted.append(absFilePath);
+        } else {
+            removeFile(extracted);
+            return QStringList();
         }
     } while (zip.goToNextFile());
 
     // Close zip
     zip.close();
+    if (zip.getZipError() != 0) {
+        removeFile(extracted);
+        return QStringList();
+    }
 
     return extracted;
 }
