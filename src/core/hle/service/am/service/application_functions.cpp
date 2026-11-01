@@ -118,7 +118,7 @@ IApplicationFunctions::IApplicationFunctions(Core::System& system_, std::shared_
         {220, nullptr, "Unknown220"}, // [20.0.0+]
         {300, nullptr, "CreateMovieWriter"}, // [19.0.0+]
         {310, nullptr, "Unknown310"}, // [20.0.0+]
-        {320, nullptr, "Unknown320"}, // [20.0.0+]
+        {320, D<&IApplicationFunctions::Unknown320>, "Unknown320"}, // [20.0.0+]
         {330, D<&IApplicationFunctions::Unknown330>, "Unknown330"}, // [20.0.0+]
         {500, nullptr, "StartContinuousRecordingFlushForDebug"},
         {1000, nullptr, "CreateMovieMaker"},
@@ -541,6 +541,11 @@ Result IApplicationFunctions::GetUnknownEvent210(
     OutCopyHandle<Kernel::KReadableEvent> out_event) {
     LOG_DEBUG(Service_AM, "called");
     *out_event = m_applet->unknown_event.GetHandle();
+    R_SUCCEED();
+}
+
+Result IApplicationFunctions::Unknown320() {
+    LOG_WARNING(Service_AM, "(STUBBED) called");
     R_SUCCEED();
 }
 

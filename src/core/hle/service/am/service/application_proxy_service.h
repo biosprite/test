@@ -25,6 +25,9 @@ public:
 private:
     Result OpenApplicationProxy(Out<SharedPointer<IApplicationProxy>> out_application_proxy,
                                 ClientProcessId pid, InCopyHandle<Kernel::KProcess> process_handle);
+    Result OpenApplicationProxy2(Out<SharedPointer<IApplicationProxy>> out_application_proxy,
+                                 u32 unknown, ClientProcessId pid,
+                                 InCopyHandle<Kernel::KProcess> process_handle);
 
 private:
     std::shared_ptr<Applet> GetAppletFromProcessId(ProcessId pid);
