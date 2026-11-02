@@ -227,6 +227,7 @@ void SetAppDirectory(const std::string& app_directory);
  * @param eden_path EdenPath enum
  *
  * @returns The filesystem path associated with the EdenPath enum.
+ *          SetEdenPath overwrites what it refers to: copy the path to keep it.
  */
 [[nodiscard]] const std::filesystem::path& GetEdenPath(EdenPath eden_path);
 
@@ -260,6 +261,8 @@ void SetAppDirectory(const std::string& app_directory);
 /**
  * Sets a new filesystem path associated with the EdenPath enum.
  * If the filesystem object at new_path is not a directory, this function will not do anything.
+ *
+ * Not synchronized with GetEdenPath, so never call it while a game is running.
  *
  * @param eden_path EdenPath enum
  * @param new_path New filesystem path
