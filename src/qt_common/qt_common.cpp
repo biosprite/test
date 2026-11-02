@@ -335,6 +335,7 @@ QPixmap CreateCirclePixmapFromColor(const QColor& color) {
 static void OverrideWindowsFont() {
     // Qt chooses these fonts on Windows and they have fairly ugly alphanumeric/cyrillic characters
     // Asking to use "MS Shell Dlg 2" gives better other chars while leaving the Chinese Characters.
+    // https://github.com/qt/qtbase/blob/v6.12.0/src/gui/text/windows/qwindowsfontdatabasebase.cpp#L970-L1020
     const QString startup_font = QGuiApplication::font().family();
     const QStringList ugly_fonts = {QStringLiteral("SimSun"), QStringLiteral("PMingLiU")};
     if (ugly_fonts.contains(startup_font)) {
