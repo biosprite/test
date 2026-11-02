@@ -45,7 +45,13 @@ void Translate(IR::Block& block, LocationDescriptor descriptor, A64::UserConfig 
 }
 
 bool TranslateSingleInstruction(IR::Block& block, LocationDescriptor descriptor, u32 instruction) {
-    TranslatorVisitor visitor{block, descriptor, {}};
+    // The visitor keeps a reference to its config, so it cannot be a temporary.
+    static const A64::UserConfig conf = [] {
+        A64::UserConfig c;
+        c.hook_hint_instructions = true;
+        return c;
+    }();
+    TranslatorVisitor visitor{block, descriptor, conf};
 
     bool should_continue = false;
     if (auto const decoder = Decode<TranslatorVisitor, bool>(visitor, instruction))

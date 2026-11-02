@@ -39,4 +39,7 @@ void Translate(IR::Block& block, LocationDescriptor descriptor, const A32::UserC
  */
 bool TranslateSingleInstruction(IR::Block& block, LocationDescriptor descriptor, u32 instruction);
 
+/// The config TranslateSingleInstruction translates with: the defaults, except that hints raise.
+const A32::UserConfig& SingleInstructionConfig();
+
 }  // namespace Dynarmic::A32

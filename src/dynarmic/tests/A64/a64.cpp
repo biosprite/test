@@ -6,14 +6,21 @@
  * SPDX-License-Identifier: 0BSD
  */
 
+#include <algorithm>
+
 #include <catch2/catch_test_macros.hpp>
 #include <oaknut/oaknut.hpp>
 
 #include "dynarmic/tests/A64/testenv.h"
 #include "dynarmic/tests/native/testenv.h"
+#include "dynarmic/common/fp/fpcr.h"
 #include "dynarmic/common/fp/fpsr.h"
+#include "dynarmic/frontend/A64/a64_location_descriptor.h"
+#include "dynarmic/frontend/A64/translate/a64_translate.h"
 #include "dynarmic/interface/exclusive_monitor.h"
 #include "dynarmic/interface/optimization_flags.h"
+#include "dynarmic/ir/basic_block.h"
+#include "dynarmic/ir/opcodes.h"
 
 using namespace Dynarmic;
 using namespace oaknut::util;
@@ -2817,4 +2824,13 @@ TEST_CASE("A64: FCVTZS and FCVTZU (vector) with 64 fraction bits", "[a64]") {
     REQUIRE(jit.GetVector(2) == Vector{0xc000000000000000, 0x0000000000000002});
     REQUIRE(jit.GetVector(4) == Vector{0x7fffffffffffffff, 0x8000000000000000});
     REQUIRE(jit.GetVector(6) == Vector{0xffffffffffffffff, 0});
+}
+
+TEST_CASE("A64: single instruction translation raises on hints", "[a64]") {
+    const A64::LocationDescriptor location{0, FP::FPCR{}};
+    IR::Block block{location};
+    A64::TranslateSingleInstruction(block, location, 0xd503203f);  // YIELD
+    REQUIRE(std::any_of(block.instructions.begin(), block.instructions.end(), [](const auto& inst) {
+        return inst.GetOpcode() == IR::Opcode::A64ExceptionRaised;
+    }));
 }

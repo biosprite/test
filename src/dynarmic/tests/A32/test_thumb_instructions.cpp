@@ -6,12 +6,18 @@
  * SPDX-License-Identifier: 0BSD
  */
 
+#include <algorithm>
+
 #include <catch2/catch_test_macros.hpp>
 #include "common/common_types.h"
 
 #include "dynarmic/tests/A32/testenv.h"
 #include "dynarmic/tests/native/testenv.h"
+#include "dynarmic/frontend/A32/a32_location_descriptor.h"
+#include "dynarmic/frontend/A32/translate/a32_translate.h"
 #include "dynarmic/interface/A32/a32.h"
+#include "dynarmic/ir/basic_block.h"
+#include "dynarmic/ir/opcodes.h"
 
 static Dynarmic::A32::UserConfig GetUserConfig(ThumbTestEnv* testenv) {
     Dynarmic::A32::UserConfig user_config;
@@ -255,4 +261,17 @@ TEST_CASE("thumb: Opt Failure: Get/Set Elimination for Flags 2", "[thumb]") {
                                           0x3b9ffb23, 0x0a92ef93, 0x38dee619, 0xc0e95e81, 0x6a448690, 0xc2d4d6b9, 0xe93600b9, 0x0000000a};
     REQUIRE(jit.Regs() == expected);
     REQUIRE(jit.Cpsr() == 0x200001f0);
+}
+
+TEST_CASE("thumb: single instruction translation raises on hints", "[thumb]") {
+    const auto raises = [](bool thumb, u32 instruction) {
+        const auto location = Dynarmic::A32::LocationDescriptor{0, {}, {}}.SetTFlag(thumb);
+        Dynarmic::IR::Block block{location};
+        Dynarmic::A32::TranslateSingleInstruction(block, location, instruction);
+        return std::any_of(block.instructions.begin(), block.instructions.end(), [](const auto& inst) {
+            return inst.GetOpcode() == Dynarmic::IR::Opcode::A32ExceptionRaised;
+        });
+    };
+    REQUIRE(raises(true, 0x8002f3af));   // WFE.W, its first halfword in the low half
+    REQUIRE(raises(false, 0xe320f002));  // WFE
 }

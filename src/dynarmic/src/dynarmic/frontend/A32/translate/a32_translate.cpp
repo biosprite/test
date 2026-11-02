@@ -24,6 +24,15 @@ void Translate(IR::Block& block, LocationDescriptor descriptor, const A32::UserC
 bool TranslateSingleArmInstruction(IR::Block& block, LocationDescriptor descriptor, u32 instruction);
 bool TranslateSingleThumbInstruction(IR::Block& block, LocationDescriptor descriptor, u32 instruction);
 
+const A32::UserConfig& SingleInstructionConfig() {
+    static const A32::UserConfig conf = [] {
+        A32::UserConfig c;
+        c.hook_hint_instructions = true;
+        return c;
+    }();
+    return conf;
+}
+
 bool TranslateSingleInstruction(IR::Block& block, LocationDescriptor descriptor, u32 instruction) {
     return (descriptor.TFlag() ? TranslateSingleThumbInstruction : TranslateSingleArmInstruction)(block, descriptor, instruction);
 }
