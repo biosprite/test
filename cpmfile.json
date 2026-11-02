@@ -380,6 +380,7 @@
             "ZSTD_BUILD_PROGRAMS OFF"
         ],
         "repo": "facebook/zstd",
+        "source_subdir": "build/cmake",
         "version": "33618c8"
     }
 }
