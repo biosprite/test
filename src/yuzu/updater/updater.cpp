@@ -18,7 +18,9 @@
 
 static bool waitForPid(uint64_t pid) {
     HANDLE h = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(pid));
-    if (!h) return false;
+    if (!h) {
+        return GetLastError() == ERROR_INVALID_PARAMETER;
+    }
 
     // wait 1m for the process to exit
     DWORD result = WaitForSingleObject(h, 60'000);

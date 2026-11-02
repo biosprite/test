@@ -105,7 +105,7 @@ UpdateDialog::~UpdateDialog() {
     delete ui;
 }
 
-// TODO: migrate progress callback download to Common::Net
+// TODO: migrate progress callback download to Common::Net?
 // TODO: migrate to QtCommon
 void UpdateDialog::Download() {
     namespace fs = std::filesystem;
@@ -140,6 +140,10 @@ void UpdateDialog::Download() {
 
     QGuiApplication::processEvents();
 
+    // NOTE: This loads the entire file content into memory
+    // Since this is always <80MB this is actually fine for now, but is a target for future
+    // optimization (e.g. incr. read from disk) if assets are ever >200MB.
+    // Not that it matters because to be able to run games you need >1GB lol.
     std::string tmp_data;
     const auto download_res =
         downloadFile(tmp_data, m_asset.asset.browser_download_url, absFilename, progress.get());
@@ -159,6 +163,8 @@ void UpdateDialog::Download() {
         auto actual = std::format("sha256:{}", sha256_hash(ctx, tmp_data));
         auto expected = m_asset.asset.digest.value();
 
+        EVP_MD_CTX_free(ctx);
+
         // TODO: auto-retry
         if (actual != expected) {
             LOG_ERROR(Frontend, "Hash mismatch, expected {}, got {}", expected, actual);
@@ -167,6 +173,8 @@ void UpdateDialog::Download() {
                 tr("File has invalid hash.\nGot:%1\nExpected: %2\nPlease re-launch Eden and try "
                    "again.")
                     .arg(QString::fromStdString(expected), QString::fromStdString(actual)));
+
+            return;
         }
     }
 

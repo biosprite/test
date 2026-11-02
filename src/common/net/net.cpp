@@ -62,7 +62,8 @@ std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
 
 #ifdef _WIN32
     // system.txt is (will be) installed in the same directory as the installed executable
-    const auto is_system = std::filesystem::exists(std::filesystem::current_path() / "system.txt");
+    const fs::path cwd = QCoreApplication::applicationDirPath().toStdString();
+    const auto is_system = std::filesystem::exists(cwd / "system.txt");
     std::string ext;
     if (is_system) {
         ext = "exe";
