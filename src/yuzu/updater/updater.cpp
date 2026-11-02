@@ -19,6 +19,8 @@
 static bool waitForPid(uint64_t pid) {
     HANDLE h = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(pid));
     if (!h) {
+        // the eden process already exited, or the pid is invalid in some way.
+        // Either way just go forth and pray it's actually been closed.
         return GetLastError() == ERROR_INVALID_PARAMETER;
     }
 
