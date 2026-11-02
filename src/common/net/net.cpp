@@ -21,6 +21,7 @@
 
 #ifdef _WIN32
 #include <filesystem>
+#include "common/fs/path_util.h"
 #endif
 
 import jacinth;
@@ -62,7 +63,7 @@ std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
 
 #ifdef _WIN32
     // system.txt is (will be) installed in the same directory as the installed executable
-    const std::filesystem::path cwd = QCoreApplication::applicationDirPath().toStdString();
+    const std::filesystem::path cwd = Common::FS::GetExeDirectory();
     const auto is_system = std::filesystem::exists(cwd / "system.txt");
     std::string ext;
     if (is_system) {
