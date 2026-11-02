@@ -332,9 +332,8 @@ QPixmap CreateCirclePixmapFromColor(const QColor& color) {
 }
 
 #ifdef _WIN32
-// TODO(crueter): Does this affect Qt 6 at all?
 static void OverrideWindowsFont() {
-    // Qt5 chooses these fonts on Windows and they have fairly ugly alphanumeric/cyrillic characters
+    // Qt chooses these fonts on Windows and they have fairly ugly alphanumeric/cyrillic characters
     // Asking to use "MS Shell Dlg 2" gives better other chars while leaving the Chinese Characters.
     const QString startup_font = QGuiApplication::font().family();
     const QStringList ugly_fonts = {QStringLiteral("SimSun"), QStringLiteral("PMingLiU")};
