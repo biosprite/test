@@ -42,8 +42,13 @@ QtSoftwareKeyboardDialog::QtSoftwareKeyboardDialog(
       is_inline{is_inline_}, initialize_parameters{std::move(initialize_parameters_)} {
     ui->setupUi(this);
 
+    // Under gamescope only one normal window shows at a time: a window bypassing the window
+    // manager is drawn over the game instead of in its place
+    const bool gamescope = qEnvironmentVariableIsSet("GAMESCOPE_WAYLAND_DISPLAY") ||
+                           qgetenv("XDG_CURRENT_DESKTOP") == "gamescope";
     setWindowFlags(Qt::Dialog | Qt::FramelessWindowHint | Qt::WindowTitleHint |
-                   Qt::WindowSystemMenuHint | Qt::CustomizeWindowHint);
+                   Qt::WindowSystemMenuHint | Qt::CustomizeWindowHint |
+                   (gamescope ? Qt::X11BypassWindowManagerHint : Qt::WindowFlags{}));
     setWindowModality(Qt::WindowModal);
     setAttribute(Qt::WA_DeleteOnClose);
     setAttribute(Qt::WA_TranslucentBackground);
