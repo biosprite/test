@@ -41,6 +41,7 @@
 
 #ifdef HAS_RESHADE
 #include "yuzu/configuration/configure_post_processing.h"
+#include "yuzu/util/gamescope.h"
 #endif
 
 ConfigureGraphics::ConfigureGraphics(
@@ -176,8 +177,7 @@ void ConfigureGraphics::PopulateVSyncModeSelection(bool use_setting) {
 
     // In Steam's Game Mode, gamescope offers only some present modes: the others are listed
     // greyed out, saying how to get them, rather than missing without a word
-    const bool gamescope = qEnvironmentVariableIsSet("GAMESCOPE_WAYLAND_DISPLAY") ||
-                           qgetenv("XDG_CURRENT_DESKTOP") == "gamescope";
+    const bool gamescope = Gamescope::IsRunningUnder();
     if (gamescope && backend == Settings::RendererBackend::Vulkan) {
         auto* model = qobject_cast<QStandardItemModel*>(vsync_mode_combobox->model());
         for (const auto missing : {VK_PRESENT_MODE_IMMEDIATE_KHR, VK_PRESENT_MODE_FIFO_RELAXED_KHR,

@@ -210,6 +210,8 @@ add_executable(yuzu
     util/controller_navigation.h
     util/limitable_input_dialog.cpp
     util/limitable_input_dialog.h
+    util/gamescope.cpp
+    util/gamescope.h
     util/overlay_dialog.cpp
     util/overlay_dialog.h
     util/overlay_dialog.ui
