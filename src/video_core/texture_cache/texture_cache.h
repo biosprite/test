@@ -325,7 +325,16 @@ ImageViewId TextureCache<P>::ResolveFeedbackLoop(ImageViewId view_id) {
             continue;
         }
         const ImageViewId target_id = render_targets.color_buffer_ids[index];
-        if (!target_id || !overlaps(slot_image_views[target_id].range, view.range)) {
+        if (!target_id) {
+            continue;
+        }
+        // Only a view of exactly the written level and layer: a draw writing one layer of an
+        // array or one level of a mip chain while sampling the whole of it reads the other layers
+        // or levels (cubemap and blur passes, downsampling), and a copy of the whole image there
+        // costs a lot for nothing
+        const SubresourceRange& written = slot_image_views[target_id].range;
+        if (view.range.extent.levels != 1 || view.range.extent.layers != 1 ||
+            !overlaps(written, view.range)) {
             continue;
         }
         const auto& mask = regs.color_mask[regs.color_mask_common ? 0 : index];
