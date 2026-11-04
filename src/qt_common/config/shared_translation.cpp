@@ -270,6 +270,10 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
               "unlocked."));
     INSERT(Settings, barrier_feedback_loops, tr("Barrier feedback loops"),
            tr("Improves rendering of transparency effects in specific games."));
+    INSERT(Settings, color_target_snapshots, tr("Snapshot color targets for sampling"),
+           tr("A draw that reads an image it also draws to reads a copy taken before the draw, "
+              "as on the Switch. Fixes the lines over Xenoblade Chronicles 2's cloud sea. Costs "
+              "a copy per such draw: turn it on per game."));
     INSERT(Settings, enable_buffer_history, tr("Enable buffer history"),
            tr("Enables access to previous buffer states.\nThis option may improve rendering "
               "quality and performance consistency in some games."));

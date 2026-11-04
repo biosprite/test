@@ -606,6 +606,11 @@ struct Values {
     SwitchableSetting<bool> barrier_feedback_loops{linkage, true, "barrier_feedback_loops",
                                                    Category::RendererAdvanced};
 
+    // A draw sampling a color target it also writes reads a copy taken before the draw
+    // (Xenoblade Chronicles 2's cloud sea). Off by default: it costs a copy per such draw.
+    SwitchableSetting<bool> color_target_snapshots{linkage, false, "color_target_snapshots",
+                                                   Category::RendererAdvanced};
+
     SwitchableSetting<bool> enable_buffer_history{linkage,
                                                   false,
                                                   "enable_buffer_history",
