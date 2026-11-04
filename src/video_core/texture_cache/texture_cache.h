@@ -302,11 +302,12 @@ void TextureCache<P>::CheckFeedbackLoop(std::span<const ImageViewInOut> views) {
 }
 
 template <class P>
-bool TextureCache<P>::IsScreenSpacePass() const {
-    // One full-screen quad or triangle with culling off: the filter and composite passes that
-    // read the pixels around their own (Xenoblade Chronicles 2's cloud sea). Meshes drawn into a
-    // target they read (Breath of the Wild's G-buffer layers) read their own pixel and are left
-    // alone: copying for them cost ~2 GB/s and fixed nothing visible.
+bool TextureCache<P>::CanOverlapItself() const {
+    // The hazard needs two fragments of one draw on one pixel: the second reads what the first
+    // just wrote (on AMD; the guest GPU reads what was there before the draw). Xenoblade
+    // Chronicles 2 draws its cloud box with culling off, so its front and back faces cover each
+    // pixel. A single primitive can't overlap itself, and a culled closed mesh doesn't (Breath of
+    // the Wild's G-buffer layers, where copying cost ~2 GB/s and fixed nothing visible).
     using Topology = Tegra::Engines::Maxwell3D::Regs::PrimitiveTopology;
     const auto& regs = maxwell3d->regs;
     const auto& draw = maxwell3d->draw_manager.draw_state;
@@ -316,19 +317,26 @@ bool TextureCache<P>::IsScreenSpacePass() const {
     const u32 count = draw.draw_indexed ? draw.index_buffer.count : draw.vertex_buffer.count;
     switch (draw.topology) {
     case Topology::Triangles:
-        return count == 3;
+        return count > 3;
+    case Topology::Quads:
     case Topology::TriangleStrip:
     case Topology::TriangleFan:
-    case Topology::Quads:
-        return count == 3 || count == 4;
+        return count > 4;
+    case Topology::QuadStrip:
+    case Topology::Polygon:
+    case Topology::TrianglesAdjacency:
+    case Topology::TriangleStripAdjacency:
+    case Topology::Patches:
+        return true;
     default:
+        // Points and lines
         return false;
     }
 }
 
 template <class P>
 ImageViewId TextureCache<P>::ResolveFeedbackLoop(ImageViewId view_id) {
-    if (!view_id || rt_active_mask == 0 || !IsScreenSpacePass()) {
+    if (!view_id || rt_active_mask == 0 || !CanOverlapItself()) {
         return view_id;
     }
     const ImageViewBase& view = slot_image_views[view_id];

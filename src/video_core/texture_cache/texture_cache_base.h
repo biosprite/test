@@ -399,8 +399,8 @@ private:
     /// Destroys the snapshot image of an image, if any
     void DeleteFeedbackSnapshot(ImageId image_id);
 
-    /// The current draw is a full-screen pass (one quad or triangle, culling off)
-    [[nodiscard]] bool IsScreenSpacePass() const;
+    /// Two fragments of the current draw can land on one pixel (culling off, several primitives)
+    [[nodiscard]] bool CanOverlapItself() const;
 
     /// Logs each distinct kind of draw that takes a snapshot, once (probe)
     void LogFeedbackSnapshotCase(ImageViewId view_id, size_t rt_index);
