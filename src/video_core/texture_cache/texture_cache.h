@@ -364,11 +364,27 @@ ImageViewId TextureCache<P>::SnapshotImageView(ImageViewId view_id) {
     }
     const ImageViewInfo view_info{
         image.image_view_infos[std::distance(image.image_view_ids.begin(), view_it)]};
+    // How much the snapshots cost, to judge the toggle per game
+    const auto now = std::chrono::steady_clock::now();
+    if (now - feedback_log_time >= std::chrono::seconds{1}) {
+        if (feedback_copies + feedback_reuses > 0) {
+            LOG_INFO(HW_GPU, "Color target snapshots: {} copies ({} MiB), {} reused in {:.1f}s",
+                     feedback_copies, feedback_copied_bytes >> 20, feedback_reuses,
+                     std::chrono::duration<double>(now - feedback_log_time).count());
+        }
+        feedback_copies = 0;
+        feedback_reuses = 0;
+        feedback_copied_bytes = 0;
+        feedback_log_time = now;
+    }
     // Without a barrier the guest may read older contents: keep the copy until the next one
     if (it->second.epoch == feedback_epoch) {
+        ++feedback_reuses;
         return FindOrEmplaceImageView(snapshot_id, view_info);
     }
     it->second.epoch = feedback_epoch;
+    ++feedback_copies;
+    feedback_copied_bytes += image.guest_size_bytes;
     const SubresourceRange& range = view_info.range;
     boost::container::small_vector<ImageCopy, 16> copies;
     for (s32 level = range.base.level; level < range.base.level + range.extent.levels; ++level) {

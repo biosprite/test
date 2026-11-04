@@ -463,6 +463,11 @@ private:
     std::unordered_map<ImageId, FeedbackSnapshot> feedback_snapshots;
     /// Incremented by guest barriers, see BarrierFeedbackSnapshots
     u64 feedback_epoch = 1;
+    /// Snapshot copies and reuses since the last log line (once a second while there are any)
+    u32 feedback_copies = 0;
+    u32 feedback_reuses = 0;
+    u64 feedback_copied_bytes = 0;
+    std::chrono::steady_clock::time_point feedback_log_time{};
     bool last_feedback_loop_result = false;
     FramebufferId last_framebuffer_id{};
     u64 last_framebuffer_serial = 0;
