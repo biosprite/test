@@ -271,6 +271,41 @@ PixelFormat PixelFormatFromTextureInfo(TextureFormat format, ComponentType red, 
     case Hash(TextureFormat::ASTC_2D_6X5, UNORM, SRGB):
         return PixelFormat::ASTC_2D_6X5_SRGB;
     }
+    // These formats have a single host representation whatever component types the texture
+    // header carries, prefer it to the generic A8B8G8R8_UNORM fallback below
+    const auto fallback = [&](PixelFormat pixel_format) {
+        LOG_WARNING(HW_GPU,
+                    "Unmapped texture format={} srgb={} components={{{} {} {} {}}}, using pixel "
+                    "format {}",
+                    static_cast<int>(format), is_srgb, static_cast<int>(red),
+                    static_cast<int>(green), static_cast<int>(blue), static_cast<int>(alpha),
+                    static_cast<int>(pixel_format));
+        return pixel_format;
+    };
+    switch (format) {
+    case TextureFormat::Z32:
+        return fallback(PixelFormat::D32_FLOAT);
+    case TextureFormat::Z16:
+        return fallback(PixelFormat::D16_UNORM);
+    case TextureFormat::X8Z24:
+        return fallback(PixelFormat::X8_D24_UNORM);
+    case TextureFormat::Z24S8:
+    case TextureFormat::G24R8:
+        return fallback(PixelFormat::S8_UINT_D24_UNORM);
+    case TextureFormat::S8Z24:
+        return fallback(PixelFormat::D24_UNORM_S8_UINT);
+    case TextureFormat::Z32_X24S8:
+    case TextureFormat::R32B24G8:
+        return fallback(PixelFormat::D32_FLOAT_S8_UINT);
+    case TextureFormat::BC6H_S16:
+        return fallback(PixelFormat::BC6H_SFLOAT);
+    case TextureFormat::BC6H_U16:
+        return fallback(PixelFormat::BC6H_UFLOAT);
+    case TextureFormat::E5B9G9R9:
+        return fallback(PixelFormat::E5B9G9R9_FLOAT);
+    default:
+        break;
+    }
     UNIMPLEMENTED_MSG("texture format={} srgb={} components={{{} {} {} {}}}",
                       static_cast<int>(format), is_srgb, static_cast<int>(red),
                       static_cast<int>(green), static_cast<int>(blue), static_cast<int>(alpha));

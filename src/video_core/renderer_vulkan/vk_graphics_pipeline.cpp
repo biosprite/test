@@ -377,7 +377,26 @@ bool GraphicsPipeline::ConfigureImpl(bool is_indexed) {
             }
         }
         const auto& cbufs{maxwell3d->state.shader_stages[stage].const_buffers};
+        // Word the shader ORs into a texture handle: an immediate, a constant buffer word or a
+        // word in a storage buffer. Only constant buffer tables are indexed in lockstep with the
+        // handle.
+        const auto read_secondary{[&](const auto& desc, u32 index_offset) -> u32 {
+            if (desc.secondary_cbuf_index == Shader::IMMEDIATE_HANDLE_CBUF_INDEX) {
+                return desc.secondary_cbuf_offset;
+            }
+            ASSERT(cbufs[desc.secondary_cbuf_index].enabled);
+            const GPUVAddr base_addr{cbufs[desc.secondary_cbuf_index].address +
+                                     desc.secondary_cbuf_offset};
+            if (desc.secondary_is_storage) {
+                return Tegra::ReadStorageTextureHandle(*gpu_memory, base_addr,
+                                                       desc.secondary_storage_offset);
+            }
+            return gpu_memory->Read<u32>(base_addr + index_offset);
+        }};
         const auto read_handle{[&](const auto& desc, u32 index) {
+            constexpr bool is_texture{
+                std::is_same_v<decltype(desc), const Shader::TextureDescriptor&> ||
+                std::is_same_v<decltype(desc), const Shader::TextureBufferDescriptor&>};
             if (desc.cbuf_index == Shader::ATTRIBUTE_HANDLE_CBUF_INDEX) {
                 return TexturePair(attribute_handle, via_header_index);
             }
@@ -385,18 +404,26 @@ bool GraphicsPipeline::ConfigureImpl(bool is_indexed) {
             const u32 index_offset{index << desc.size_shift};
             const u32 offset{desc.cbuf_offset + index_offset};
             const GPUVAddr addr{cbufs[desc.cbuf_index].address + offset};
-            if constexpr (std::is_same_v<decltype(desc), const Shader::TextureDescriptor&> ||
-                          std::is_same_v<decltype(desc), const Shader::TextureBufferDescriptor&>) {
+            if (desc.is_storage) {
+                // The handle is in a storage buffer, the constant buffer only holds its address
+                const GPUVAddr pointer_addr{cbufs[desc.cbuf_index].address + desc.cbuf_offset};
+                const s64 handle_offset{s64{desc.storage_offset} +
+                                        s64{index} * desc.storage_stride};
+                u32 raw{Tegra::ReadStorageTextureHandle(*gpu_memory, pointer_addr, handle_offset)};
+                if constexpr (is_texture) {
+                    raw <<= desc.shift_left;
+                    if (desc.has_secondary) {
+                        raw |= read_secondary(desc, 0) << desc.secondary_shift_left;
+                    }
+                }
+                return TexturePair(raw, via_header_index);
+            }
+            if constexpr (is_texture) {
                 if (desc.has_secondary) {
-                    ASSERT(cbufs[desc.secondary_cbuf_index].enabled);
-                    const u32 second_offset{desc.secondary_cbuf_offset + index_offset};
-                    const GPUVAddr separate_addr{cbufs[desc.secondary_cbuf_index].address +
-                                                 second_offset};
                     const u32 lhs_raw{gpu_memory->Read<u32>(addr) << desc.shift_left};
-                    const u32 rhs_raw{gpu_memory->Read<u32>(separate_addr)
+                    const u32 rhs_raw{read_secondary(desc, index_offset)
                                       << desc.secondary_shift_left};
-                    const u32 raw{lhs_raw | rhs_raw};
-                    return TexturePair(raw, via_header_index);
+                    return TexturePair(lhs_raw | rhs_raw, via_header_index);
                 }
             }
             return TexturePair(gpu_memory->Read<u32>(addr), via_header_index);

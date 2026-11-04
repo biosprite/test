@@ -42,6 +42,10 @@ constexpr u32 NUM_TEXTURE_TYPES = 9;
 /// instead of reading it from a constant buffer. The host supplies the handle of each draw run.
 constexpr u32 ATTRIBUTE_HANDLE_CBUF_INDEX = 0xFFFF;
 
+/// Secondary constant buffer index marking an immediate that the shader ORs into the handle
+/// (usually the sampler index), secondary_cbuf_offset holds the immediate itself
+constexpr u32 IMMEDIATE_HANDLE_CBUF_INDEX = 0xFFFE;
+
 enum class TexturePixelFormat {
     A8B8G8R8_UNORM,
     A8B8G8R8_SNORM,
@@ -190,6 +194,16 @@ struct TextureBufferDescriptor {
     u32 secondary_shift_left;
     u32 count;
     u32 size_shift;
+    /// Handle is stored in the storage buffer whose {address, size} descriptor is at
+    /// (cbuf_index, cbuf_offset), storage_offset bytes (signed) into the buffer, elements of a
+    /// dynamically indexed table are storage_stride bytes apart
+    s32 storage_offset;
+    u32 storage_stride;
+    bool is_storage;
+    /// The secondary word is stored in the storage buffer whose descriptor is at
+    /// (secondary_cbuf_index, secondary_cbuf_offset), secondary_storage_offset bytes into it
+    s32 secondary_storage_offset;
+    bool secondary_is_storage;
 
     auto operator<=>(const TextureBufferDescriptor&) const = default;
 };
@@ -204,6 +218,10 @@ struct ImageBufferDescriptor {
     u32 cbuf_offset;
     u32 count;
     u32 size_shift;
+    /// Same storage buffer sourced handle layout as TextureBufferDescriptor
+    s32 storage_offset;
+    u32 storage_stride;
+    bool is_storage;
 
     auto operator<=>(const ImageBufferDescriptor&) const = default;
 };
@@ -223,6 +241,16 @@ struct TextureDescriptor {
     u32 secondary_shift_left;
     u32 count;
     u32 size_shift;
+    /// Handle is stored in the storage buffer whose {address, size} descriptor is at
+    /// (cbuf_index, cbuf_offset), storage_offset bytes (signed) into the buffer, elements of a
+    /// dynamically indexed table are storage_stride bytes apart
+    s32 storage_offset;
+    u32 storage_stride;
+    bool is_storage;
+    /// The secondary word is stored in the storage buffer whose descriptor is at
+    /// (secondary_cbuf_index, secondary_cbuf_offset), secondary_storage_offset bytes into it
+    s32 secondary_storage_offset;
+    bool secondary_is_storage;
 
     auto operator<=>(const TextureDescriptor&) const = default;
 };
@@ -238,6 +266,10 @@ struct ImageDescriptor {
     u32 cbuf_offset;
     u32 count;
     u32 size_shift;
+    /// Same storage buffer sourced handle layout as TextureDescriptor
+    s32 storage_offset;
+    u32 storage_stride;
+    bool is_storage;
 
     auto operator<=>(const ImageDescriptor&) const = default;
 };
