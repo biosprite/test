@@ -533,10 +533,13 @@ bool GraphicsPipeline::ConfigureImpl(bool is_indexed) {
     RenderAreaPushConstant render_area;
     const VideoCommon::SamplerId* samplers_it{samplers.data()};
     const VideoCommon::ImageViewInOut* views_it{views.data()};
-    // (Collected only when color target snapshots are on: see ResolveFeedbackLoop)
+    // (Collected only when color target snapshots are on and the draw can read its own writes,
+    // so other draws do no extra work: see ResolveFeedbackLoop)
     SampledImageEntries sampled_entries;
     SampledImageEntries* const sampled_entries_ptr{
-        Settings::values.color_target_snapshots.GetValue() ? &sampled_entries : nullptr};
+        Settings::values.color_target_snapshots.GetValue() && texture_cache.CanOverlapItself()
+            ? &sampled_entries
+            : nullptr};
     const auto prepare_stage{[&](size_t stage) LAMBDA_FORCEINLINE {
         buffer_cache.BindHostStageBuffers(stage);
         PushImageDescriptors(texture_cache, guest_descriptor_queue, stage_infos[stage], rescaling,

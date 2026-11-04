@@ -178,6 +178,10 @@ public:
     /// guest GPU does). Only with color target snapshots on.
     [[nodiscard]] ImageViewId ResolveFeedbackLoop(ImageViewId view_id);
 
+    /// Two fragments of the current draw can land on one pixel (culling off, several primitives):
+    /// only then can it read its own writes, see ResolveFeedbackLoop
+    [[nodiscard]] bool CanOverlapItself() const;
+
     /// The guest ordered render target writes before later texture reads: copies taken for
     /// feedback loops are outdated
     void BarrierFeedbackSnapshots() noexcept {
@@ -398,9 +402,6 @@ private:
 
     /// Destroys the snapshot image of an image, if any
     void DeleteFeedbackSnapshot(ImageId image_id);
-
-    /// Two fragments of the current draw can land on one pixel (culling off, several primitives)
-    [[nodiscard]] bool CanOverlapItself() const;
 
     /// Logs each distinct kind of draw that takes a snapshot, once (probe)
     void LogFeedbackSnapshotCase(ImageViewId view_id, size_t rt_index);

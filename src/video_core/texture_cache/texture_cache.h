@@ -336,7 +336,7 @@ bool TextureCache<P>::CanOverlapItself() const {
 
 template <class P>
 ImageViewId TextureCache<P>::ResolveFeedbackLoop(ImageViewId view_id) {
-    if (!view_id || rt_active_mask == 0 || !CanOverlapItself()) {
+    if (!view_id || rt_active_mask == 0) {
         return view_id;
     }
     const ImageViewBase& view = slot_image_views[view_id];
