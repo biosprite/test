@@ -364,10 +364,12 @@ void TextureCache<P>::LogFeedbackSnapshotCase(ImageViewId view_id, size_t rt_ind
     const bool blend = regs.blend.enable[rt_index] != 0;
     const auto& scissor = regs.scissor_test[0];
     const auto& viewport = regs.viewports[0];
+    // (Whether two fragments of the draw can land on one pixel: both faces drawn, many primitives)
+    const auto& draw = maxwell3d->draw_manager.draw_state;
     const std::string key = fmt::format(
         "image {}x{} levels={} layers={} format={} | sampled levels {}+{} layers {}+{} | "
         "written rt{} level {} layer {}+{} mask {}{}{}{} blend={} | scissor {} {},{}-{},{} | "
-        "viewport {},{} {}x{} | rts={:#x}",
+        "viewport {},{} {}x{} | rts={:#x} | cull={} face={} | topology={} {}={} instances={}",
         image.info.size.width, image.info.size.height, image.info.resources.levels,
         image.info.resources.layers, static_cast<u32>(image.info.format), view.range.base.level,
         view.range.extent.levels, view.range.base.layer, view.range.extent.layers, rt_index,
@@ -375,7 +377,11 @@ void TextureCache<P>::LogFeedbackSnapshotCase(ImageViewId view_id, size_t rt_ind
         mask.R ? "R" : "", mask.G ? "G" : "", mask.B ? "B" : "", mask.A ? "A" : "", blend,
         scissor.enable ? "on" : "off", scissor.min_x.Value(), scissor.min_y.Value(),
         scissor.max_x.Value(), scissor.max_y.Value(), viewport.x.Value(), viewport.y.Value(),
-        viewport.width.Value(), viewport.height.Value(), rt_active_mask);
+        viewport.width.Value(), viewport.height.Value(), rt_active_mask,
+        regs.gl_cull_test_enabled != 0, static_cast<u32>(regs.gl_cull_face),
+        static_cast<u32>(draw.topology), draw.draw_indexed ? "indices" : "vertices",
+        draw.draw_indexed ? draw.index_buffer.count : draw.vertex_buffer.count,
+        draw.instance_count);
     if (feedback_logged_cases.size() < 256 && feedback_logged_cases.insert(key).second) {
         LOG_INFO(HW_GPU, "Color target snapshot case: {}", key);
     }
