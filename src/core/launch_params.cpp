@@ -75,7 +75,7 @@ LaunchParams ParseLaunchParams(Core::System& system, int argc, char *argv[], wch
                 if (std::regex_match(str_arg, re)) {
                     std::smatch match;
                     std::regex_search(str_arg, match, re);
-                    ASSERT(match.size() == 5);
+                    ASSERT(static_cast<int>(match.size()) == 5);
                     p.nickname = match[1];
                     p.password = match[2];
                     p.address = match[3];
@@ -94,19 +94,19 @@ LaunchParams ParseLaunchParams(Core::System& system, int argc, char *argv[], wch
                 break;
             case 'u': {
                 // Launch game with a specific user
-                bool argument_ok = isdigit(optarg[0]);
+                bool argument_ok = isdigit(static_cast<unsigned char>(optarg[0])) != 0;
                 p.selected_user = atoi(optarg);
                 if (!argument_ok) {
                     // try to look it up by username, only finds the first username that matches.
                     auto const user_idx = system.GetProfileManager().GetUserIndex(optarg);
                     if (user_idx != std::nullopt) {
-                        p.selected_user = user_idx.value();
+                        p.selected_user = static_cast<int>(user_idx.value());
                     } else {
                         LOG_ERROR(Frontend, "Invalid user argument '{}'", optarg);
                         break;
                     }
                 }
-                if (system.GetProfileManager().UserExistsIndex(*p.selected_user)) {
+                if (system.GetProfileManager().UserExistsIndex(static_cast<std::size_t>(*p.selected_user))) {
                     Settings::values.current_user = s32(*p.selected_user);
                 } else {
                     LOG_ERROR(Frontend, "Selected user {} doesn't exist", *p.selected_user);

@@ -272,6 +272,10 @@ add_subdirectory(input_common)
 add_subdirectory(frontend_common)
 add_subdirectory(shader_recompiler)
 
+if (CMAKE_SYSTEM_NAME STREQUAL "WindowsStore")
+    add_subdirectory(uwp)
+endif()
+
 if (YUZU_TESTS)
     add_subdirectory(tests)
 endif()

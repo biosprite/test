@@ -1,0 +1,39 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "uwp-x64",
+      "displayName": "Eden UWP x64 (nucleo, sem interface)",
+      "description": "Compila o nucleo do Eden para UWP/AppContainer. Usar via tools/uwp/build-env.bat",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-uwp",
+      "cacheVariables": {
+        "CMAKE_SYSTEM_NAME": "WindowsStore",
+        "CMAKE_SYSTEM_VERSION": "10.0",
+        "CMAKE_BUILD_TYPE": "Release",
+        "ENABLE_QT": "OFF",
+        "YUZU_CMD": "OFF",
+        "YUZU_ROOM": "OFF",
+        "YUZU_ROOM_STANDALONE": "OFF",
+        "ENABLE_CUBEB": "OFF",
+        "ENABLE_LIBUSB": "OFF",
+        "ENABLE_WEB_SERVICE": "OFF",
+        "ENABLE_OPENGL": "OFF",
+        "ENABLE_UPDATE_CHECKER": "OFF",
+        "USE_DISCORD_PRESENCE": "OFF",
+        "YUZU_CRASH_DUMPS": "OFF",
+        "YUZU_TESTS": "OFF",
+        "BUILD_TESTING": "OFF",
+        "ENABLE_WERROR": "OFF",
+        "YUZU_USE_BUNDLED_OPENSSL": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "uwp-x64",
+      "configurePreset": "uwp-x64"
+    }
+  ]
+}

@@ -5,6 +5,11 @@
 
 #include "common/zbic_compression.h"
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4505) // unreferenced local function has been removed
+#endif
+
 #define ZSTD_ZBIC_SUPPORT 1
 #define ZSTDLIB_VISIBLE static
 #define ZSTDLIB_HIDDEN static
@@ -20,6 +25,10 @@
 #define g_ZSTD_threading_useless_symbol g_ZSTD_zbic_threading_useless_symbol
 #include "zstd.c"
 #undef g_ZSTD_threading_useless_symbol
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 namespace Common::Compression {
 

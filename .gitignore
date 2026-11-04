@@ -67,3 +67,9 @@ vulkansdk*.exe
 
 # Build-time generated external sources
 externals/generated
+
+# eden-UWP: chave de teste e pacotes gerados
+.local/
+*.pfx
+*.cer
+*.appx
