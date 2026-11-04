@@ -3,7 +3,11 @@
 
 #include <algorithm>
 #include <QApplication>
+#include <QDesktopServices>
 #include <QDialogButtonBox>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QUrl>
 #include <QFrame>
 #include <QGuiApplication>
 #include <QKeyEvent>
@@ -33,7 +37,7 @@ namespace {
 //   with no menu open lets go of any such grab.
 // - A submenu's popup would hide its parent menu, which still took the mouse unseen: a
 //   submenu opens in its menu's place instead.
-// - A smaller dialog is a card on a darker screen, like its own window on a desktop, with an
+// - A smaller dialog is a card on a black screen, like its own window on a desktop, with an
 //   Expand button to fill the screen (Shrink to go back).
 class GamescopeDialogs final : public QObject {
 public:
@@ -126,8 +130,7 @@ private:
             corner.append(close);
         }
         QPushButton* expand = nullptr;
-        // (A message box is only a few lines and its buttons: nothing to expand)
-        if (centred && !dialog->inherits("QMessageBox")) {
+        if (centred && !IsSmallPrompt(dialog)) {
             expand = new QPushButton(tr("Expand"), dialog);
             expand->setToolTip(tr("Fill the screen"));
             corner.prepend(expand);
@@ -185,7 +188,31 @@ private:
                 place(full);
             });
         }
-        place(false);
+        // File pickers, per-game settings and the room browser open expanded (Shrink: a card)
+        const bool starts_full = expand && (qobject_cast<QFileDialog*>(dialog) ||
+                                            dialog->inherits("ConfigurePerGame") ||
+                                            dialog->inherits("Lobby"));
+        if (starts_full) {
+            expand->setProperty("gamescope_full", true);
+        }
+        place(starts_full);
+    }
+
+    // A prompt or short form: a few lines and fields, nothing to gain from filling the screen
+    static bool IsSmallPrompt(QWidget* dialog) {
+        static constexpr const char* small[] = {
+            "QMessageBox",       "QInputDialog",          "AboutDialog",
+            "DataDialog",        "DirectConnectWindow",   "HostRoomWindow",
+            "RyujinxDialog",     "LimitableInputDialog",  "SetPlayTimeDialog",
+            "SequenceDialog",    "NewUserDialog",         "ConfigureProfileManagerDeleteDialog",
+            "MigrationDialog",   "CalibrationConfigurationDialog",
+        };
+        for (const char* name : small) {
+            if (dialog->inherits(name)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // A dialog leaves through its button row; without one (the room browser, Create Room) it
@@ -199,15 +226,15 @@ private:
         return true;
     }
 
-    // The dialog's own area is a card on a darker screen, so it doesn't float edgeless
+    // The dialog's own area is a card on a black screen, so it doesn't float edgeless
     static QFrame* AddCard(QWidget* dialog, const QRect& inner) {
         const QColor base = dialog->palette().color(QPalette::Window);
         if (dialog->objectName().isEmpty()) {
             dialog->setObjectName(QStringLiteral("gamescopeDialog"));
         }
         dialog->setStyleSheet(dialog->styleSheet() +
-                              QStringLiteral("\n#%1 { background-color: %2; }")
-                                  .arg(dialog->objectName(), base.darker(160).name()));
+                              QStringLiteral("\n#%1 { background-color: black; }")
+                                  .arg(dialog->objectName()));
         auto* card = new QFrame(dialog);
         card->setObjectName(QStringLiteral("gamescopeCard"));
         card->setStyleSheet(QStringLiteral("#gamescopeCard { background-color: %1; border: 1px "
@@ -355,10 +382,41 @@ bool IsRunningUnder() {
            qgetenv("XDG_CURRENT_DESKTOP") == "gamescope";
 }
 
+// Opening a folder starts the desktop's file manager, which can't show under gamescope (in Game
+// Mode it doesn't even reach a display): folders and files open in Eden's own file browser
+class FolderBrowser final : public QObject {
+    Q_OBJECT
+
+public:
+    explicit FolderBrowser(QWidget* main_) : QObject(main_), main{main_} {}
+
+public slots:
+    void Open(const QUrl& url) {
+        const QFileInfo info(url.toLocalFile());
+        const QString folder = info.isDir() ? info.absoluteFilePath() : info.absolutePath();
+        QWidget* parent = QApplication::activeWindow() ? QApplication::activeWindow() : main;
+        QFileDialog browser(parent, folder);
+        browser.setOption(QFileDialog::DontUseNativeDialog);
+        browser.setFileMode(QFileDialog::ExistingFiles);
+        browser.setLabelText(QFileDialog::Reject, tr("Close"));
+        browser.setDirectory(folder);
+        if (!info.isDir()) {
+            browser.selectFile(info.fileName());
+        }
+        browser.exec();
+    }
+
+private:
+    QWidget* main;
+};
+
 void FitDialogsAndMenus(QWidget* main) {
     if (IsRunningUnder()) {
         qApp->installEventFilter(new GamescopeDialogs(main));
+        QDesktopServices::setUrlHandler(QStringLiteral("file"), new FolderBrowser(main), "Open");
     }
 }
 
 } // namespace Gamescope
+
+#include "gamescope.moc"
