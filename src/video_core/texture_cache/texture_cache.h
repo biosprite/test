@@ -302,8 +302,33 @@ void TextureCache<P>::CheckFeedbackLoop(std::span<const ImageViewInOut> views) {
 }
 
 template <class P>
+bool TextureCache<P>::IsScreenSpacePass() const {
+    // One full-screen quad or triangle with culling off: the filter and composite passes that
+    // read the pixels around their own (Xenoblade Chronicles 2's cloud sea). Meshes drawn into a
+    // target they read (Breath of the Wild's G-buffer layers) read their own pixel and are left
+    // alone: copying for them cost ~2 GB/s and fixed nothing visible.
+    using Topology = Tegra::Engines::Maxwell3D::Regs::PrimitiveTopology;
+    const auto& regs = maxwell3d->regs;
+    const auto& draw = maxwell3d->draw_manager.draw_state;
+    if (regs.gl_cull_test_enabled != 0) {
+        return false;
+    }
+    const u32 count = draw.draw_indexed ? draw.index_buffer.count : draw.vertex_buffer.count;
+    switch (draw.topology) {
+    case Topology::Triangles:
+        return count == 3;
+    case Topology::TriangleStrip:
+    case Topology::TriangleFan:
+    case Topology::Quads:
+        return count == 3 || count == 4;
+    default:
+        return false;
+    }
+}
+
+template <class P>
 ImageViewId TextureCache<P>::ResolveFeedbackLoop(ImageViewId view_id) {
-    if (!view_id || rt_active_mask == 0) {
+    if (!view_id || rt_active_mask == 0 || !IsScreenSpacePass()) {
         return view_id;
     }
     const ImageViewBase& view = slot_image_views[view_id];

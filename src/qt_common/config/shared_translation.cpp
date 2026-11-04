@@ -276,8 +276,8 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
     INSERT(Settings, color_target_snapshots, tr("D24 Emulation"),
            tr("A draw that reads the image it draws to reads a copy taken before the draw, as on "
               "the Switch. Fixes the lines over Xenoblade Chronicles 2's cloud sea on AMD GPUs. "
-              "Costs a copy per such draw (a few FPS in Breath of the Wild): turn it on per "
-              "game."));
+              "Only full-screen passes take the copy, so most games pay little: turn it on per "
+              "game where it fixes something."));
     INSERT(Settings, fix_bloom_effects, tr("Fix bloom effects"), tr("Removes bloom in Burnout."));
     INSERT(Settings, cloud_sea_fixes, tr("Cloud sea fixes (experimental)"),
            tr("Exact varying interpolation and same-frame occlusion reads.\nFixes the cloud sea "

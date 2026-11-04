@@ -399,6 +399,9 @@ private:
     /// Destroys the snapshot image of an image, if any
     void DeleteFeedbackSnapshot(ImageId image_id);
 
+    /// The current draw is a full-screen pass (one quad or triangle, culling off)
+    [[nodiscard]] bool IsScreenSpacePass() const;
+
     /// Logs each distinct kind of draw that takes a snapshot, once (probe)
     void LogFeedbackSnapshotCase(ImageViewId view_id, size_t rt_index);
 
