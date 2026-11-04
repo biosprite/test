@@ -40,9 +40,17 @@ struct HandleKey {
     u32 sec_index, sec_offset, sec_shift_left;
     u32 count;
     bool has_secondary;
+    s32 storage_offset;
+    bool is_storage;
+    s32 sec_storage_offset;
+    bool sec_is_storage;
     constexpr bool operator==(const HandleKey& o) const noexcept {
-        return std::tie(index, offset, shift_left, sec_index, sec_offset, sec_shift_left, count, has_secondary)
-            == std::tie(o.index, o.offset, o.shift_left, o.sec_index, o.sec_offset, o.sec_shift_left, o.count, o.has_secondary);
+        return std::tie(index, offset, shift_left, sec_index, sec_offset, sec_shift_left, count,
+                        has_secondary, storage_offset, is_storage, sec_storage_offset,
+                        sec_is_storage) ==
+               std::tie(o.index, o.offset, o.shift_left, o.sec_index, o.sec_offset,
+                        o.sec_shift_left, o.count, o.has_secondary, o.storage_offset,
+                        o.is_storage, o.sec_storage_offset, o.sec_is_storage);
     }
 };
 struct HandleKeyHash {
@@ -52,6 +60,10 @@ struct HandleKeyHash {
         h ^= (size_t(k.sec_index) << 33) ^ (size_t(k.sec_offset) << 2);
         h ^= (size_t(k.sec_shift_left) << 3);
         h ^= (size_t(k.count) << 7);
+        h ^= (size_t(k.storage_offset) << 11);
+        h ^= (k.is_storage ? 0x517cc1b727220a95ULL : 0ULL);
+        h ^= (size_t(k.sec_storage_offset) << 13);
+        h ^= (k.sec_is_storage ? 0x6a09e667f3bcc909ULL : 0ULL);
         return h ^ (k.has_secondary ? 0x9e3779b97f4a7c15ULL : 0ULL);
     }
 };
@@ -66,6 +78,18 @@ struct ConstBufferAddr {
     IR::U32 dynamic_offset;
     u32 count;
     bool has_secondary;
+    /// When is_storage is set the handle is not in the constant buffer itself: (index, offset)
+    /// locate the NVN-style {u64 address, u32 size} descriptor of a storage buffer and the handle
+    /// lives storage_offset bytes (signed, LDG immediates can be negative) inside that buffer
+    /// (element 0 for dynamic arrays, which are storage_stride bytes apart and indexed by
+    /// dynamic_offset)
+    s32 storage_offset;
+    u32 storage_stride;
+    bool is_storage;
+    /// The secondary word also lives in a storage buffer, (secondary_index, secondary_offset)
+    /// locate its descriptor and secondary_storage_offset the word inside the buffer
+    s32 secondary_storage_offset;
+    bool secondary_is_storage;
 };
 
 class Environment {
@@ -75,6 +99,10 @@ public:
     [[nodiscard]] virtual u64 ReadInstruction(u32 address) = 0;
 
     [[nodiscard]] virtual u32 ReadCbufValue(u32 cbuf_index, u32 cbuf_offset) = 0;
+
+    /// Reads a 32-bit word from global (GPU virtual) memory, used for bindless texture handles
+    /// stored in storage buffers. Returns 0 when the address is not mapped.
+    [[nodiscard]] virtual u32 ReadGlobalU32(u64 gpu_addr) = 0;
 
     [[nodiscard]] virtual TextureType ReadTextureType(u32 raw_handle) = 0;
 

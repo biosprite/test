@@ -232,4 +232,23 @@ private:
     Common::ScratchBuffer<u8> tmp_buffer;
 };
 
+/// Reads a bindless texture handle stored in global memory. The storage buffer that holds it is
+/// described by an NVN-style {u64 address, u32 size} entry at pointer_addr (in a constant buffer)
+/// and the handle lives handle_offset bytes (signed) inside that buffer. Returns 0 when unmapped.
+[[nodiscard]] inline u32 ReadStorageTextureHandle(const MemoryManager& gpu_memory,
+                                                  GPUVAddr pointer_addr, s64 handle_offset) {
+    if (!gpu_memory.GpuToCpuAddress(pointer_addr)) {
+        return 0;
+    }
+    const GPUVAddr storage_addr{gpu_memory.Read<u64>(pointer_addr)};
+    if (storage_addr == 0) {
+        return 0;
+    }
+    const GPUVAddr handle_addr{storage_addr + static_cast<u64>(handle_offset)};
+    if (!gpu_memory.GpuToCpuAddress(handle_addr)) {
+        return 0;
+    }
+    return gpu_memory.Read<u32>(handle_addr);
+}
+
 } // namespace Tegra

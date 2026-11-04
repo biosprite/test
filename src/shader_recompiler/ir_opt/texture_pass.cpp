@@ -88,6 +88,33 @@ IR::Value ResolveConditionalPhi(IR::Value value, const IR::Block* block) {
 constexpr u32 DESCRIPTOR_SIZE = 8;
 constexpr u32 DESCRIPTOR_SIZE_SHIFT = u32(std::countr_zero(DESCRIPTOR_SIZE));
 constexpr u32 DESCRIPTOR_MAX_COUNT = 1024;
+/// Upper bound of elements read from a table of handles that lives in a storage buffer, the
+/// host has no size information for the array so the shader index is clamped to this
+constexpr u32 STORAGE_DESCRIPTOR_MAX_COUNT = 32;
+/// Marks a handle that comes from global memory with an addressing the host can't resolve. It
+/// stops the search so it doesn't fall through to the storage buffer pointer words.
+constexpr u32 UNTRACKABLE_STORAGE_HANDLE = (std::numeric_limits<u32>::max)();
+
+ConstBufferAddr MakeUntrackable() {
+    return ConstBufferAddr{
+        .index = UNTRACKABLE_STORAGE_HANDLE,
+        .offset = 0,
+        .shift_left = 0,
+        .secondary_index = 0,
+        .secondary_offset = 0,
+        .secondary_shift_left = 0,
+        .dynamic_offset = {},
+        .count = 1,
+        .has_secondary = false,
+        .storage_offset = 0,
+        .storage_stride = 0,
+        .is_storage = true,
+    };
+}
+
+bool IsUntrackable(const ConstBufferAddr& addr) {
+    return addr.index == UNTRACKABLE_STORAGE_HANDLE;
+}
 
 u32 DynamicDescriptorSizeShift(const IR::U32& dynamic_offset) {
     const IR::Inst* const inst = dynamic_offset.InstRecursive();
@@ -98,6 +125,42 @@ u32 DynamicDescriptorSizeShift(const IR::U32& dynamic_offset) {
         return DESCRIPTOR_SIZE_SHIFT;
     const u32 size_shift = shift.U32();
     return size_shift >= DESCRIPTOR_SIZE_SHIFT && size_shift < 31 ? size_shift : DESCRIPTOR_SIZE_SHIFT;
+}
+
+struct StorageTableIndex {
+    IR::U32 index;  ///< Element index expression
+    u32 stride;     ///< Element stride in bytes
+};
+
+/// Splits the dynamic byte offset of a table of handles in a storage buffer into its index and
+/// stride: idx << shift or idx * stride. Unlike constant buffer tables the stride is arbitrary.
+std::optional<StorageTableIndex> SplitStorageTableIndex(const IR::U32& dynamic_offset) {
+    const IR::Inst* const inst = dynamic_offset.TryInstRecursive();
+    if (!inst) {
+        return std::nullopt;
+    }
+    const IR::Value stride{inst->Arg(1)};
+    if (!stride.IsImmediate()) {
+        return std::nullopt;
+    }
+    u32 stride_bytes{};
+    if (inst->GetOpcode() == IR::Opcode::ShiftLeftLogical32) {
+        if (stride.U32() >= 31) {
+            return std::nullopt;
+        }
+        stride_bytes = 1U << stride.U32();
+    } else if (inst->GetOpcode() == IR::Opcode::IMul32) {
+        stride_bytes = stride.U32();
+    } else {
+        return std::nullopt;
+    }
+    if (stride_bytes < sizeof(u32) || stride_bytes % sizeof(u32) != 0) {
+        return std::nullopt;
+    }
+    return StorageTableIndex{
+        .index = IR::U32{inst->Arg(0)},
+        .stride = stride_bytes,
+    };
 }
 
 u32 DynamicDescriptorCount(u32 base_offset, u32 size_shift, u32 max_descriptors) {
@@ -326,19 +389,53 @@ static inline bool IsAttributeHandle(const ConstBufferAddr& cbuf) {
     return cbuf.index == ATTRIBUTE_HANDLE_CBUF_INDEX;
 }
 
+/// Reads the first element of a handle stored in global memory: the storage buffer address is
+/// read from its {u64 address, u32 size} descriptor at (cbuf_index, cbuf_offset)
+static inline u32 ReadStorageHandleCached(Environment& env, u32 cbuf_index, u32 cbuf_offset,
+                                          s32 storage_offset) {
+    const u64 address_low{ReadCbufCached(env, cbuf_index, cbuf_offset)};
+    const u64 address_high{ReadCbufCached(env, cbuf_index, cbuf_offset + 4)};
+    const u64 storage_addr{address_low | (address_high << 32)};
+    if (storage_addr == 0) {
+        return 0;
+    }
+    return env.ReadGlobalU32(storage_addr + static_cast<u64>(s64{storage_offset}));
+}
+
+/// Reads the word the shader ORs into the handle: an immediate, a constant buffer word or a word
+/// stored in a storage buffer
+static inline u32 ReadSecondaryHandleCached(Environment& env, const ConstBufferAddr& cbuf) {
+    if (cbuf.secondary_index == IMMEDIATE_HANDLE_CBUF_INDEX) {
+        return cbuf.secondary_offset;
+    }
+    if (cbuf.secondary_is_storage) {
+        return ReadStorageHandleCached(env, cbuf.secondary_index, cbuf.secondary_offset,
+                                       cbuf.secondary_storage_offset);
+    }
+    return ReadCbufCached(env, cbuf.secondary_index, cbuf.secondary_offset);
+}
+
 static inline u32 GetTextureHandleCached(Environment& env, const ConstBufferAddr& cbuf) {
-    // Must all be uniquely different variables
-    // If has secondary, then it will be cbuf.secondary_{index|offset}, else its 0.
-    // So we can just hand it out the raw variable without using sec_idx or sec_off
-    // because comparing 0 against 0 will yield true.
-    const HandleKey hk{cbuf.index, cbuf.offset, cbuf.shift_left, cbuf.secondary_index, cbuf.secondary_offset, cbuf.secondary_shift_left, cbuf.count, cbuf.has_secondary};
+    const HandleKey hk{cbuf.index,          cbuf.offset,        cbuf.shift_left,
+                       cbuf.secondary_index, cbuf.secondary_offset, cbuf.secondary_shift_left,
+                       cbuf.count,          cbuf.has_secondary, cbuf.storage_offset,
+                       cbuf.is_storage,     cbuf.secondary_storage_offset,
+                       cbuf.secondary_is_storage};
     if (auto it = env.handle_cache.find(hk); it != env.handle_cache.end())
         return it->second;
-    const u32 sec_idx = cbuf.has_secondary ? cbuf.secondary_index  : cbuf.index;
-    const u32 sec_off = cbuf.has_secondary ? cbuf.secondary_offset : cbuf.offset;
-    const u32 lhs = ReadCbufCached(env, cbuf.index, cbuf.offset) << cbuf.shift_left;
-    const u32 rhs = ReadCbufCached(env, sec_idx, sec_off) << cbuf.secondary_shift_left;
-    const u32 handle = lhs | rhs;
+    u32 handle{};
+    if (cbuf.is_storage) {
+        handle = ReadStorageHandleCached(env, cbuf.index, cbuf.offset, cbuf.storage_offset)
+                 << cbuf.shift_left;
+    } else {
+        handle = ReadCbufCached(env, cbuf.index, cbuf.offset) << cbuf.shift_left;
+    }
+    if (cbuf.has_secondary) {
+        handle |= ReadSecondaryHandleCached(env, cbuf) << cbuf.secondary_shift_left;
+    } else if (!cbuf.is_storage) {
+        // Without a secondary word the unshifted word is ORed back in
+        handle |= ReadCbufCached(env, cbuf.index, cbuf.offset);
+    }
     env.handle_cache.emplace(hk, handle);
     return handle;
 }
@@ -366,23 +463,228 @@ static inline bool IsTexturePixelFormatIntegerCached(Environment& env,
 }
 
 
-std::optional<ConstBufferAddr> Track(const IR::Value& value, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block);
-static inline std::optional<ConstBufferAddr> TrackCached(const IR::Value& v, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block) {
+std::optional<ConstBufferAddr> Track(const IR::Value& value, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block, const Info& info);
+static inline std::optional<ConstBufferAddr> TrackCached(const IR::Value& v, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block, const Info& info) {
     if (const IR::Inst* key = v.TryInstRecursive()) {
         if (auto it = env.track_cache.find(key); it != env.track_cache.end()) return it->second;
-        auto found = Track(v, env, host_info, block);
+        auto found = Track(v, env, host_info, block, info);
         if (found) env.track_cache.emplace(key, *found);
         return found;
     }
-    return Track(v, env, host_info, block);
+    return Track(v, env, host_info, block, info);
 }
 
-std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block);
+std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block, const Info& info);
 
-std::optional<ConstBufferAddr> Track(const IR::Value& value, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block) {
-    return IR::BreadthFirstSearch(value, [&env, &host_info, block](const IR::Inst* inst) {
-        return TryGetConstBuffer(inst, env, host_info, block);
+std::optional<ConstBufferAddr> Track(const IR::Value& value, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block, const Info& info) {
+    return IR::BreadthFirstSearch(value, [&env, &host_info, block, &info](const IR::Inst* inst) {
+        return TryGetConstBuffer(inst, env, host_info, block, info);
     }, [&](IR::Value operand) { return ResolveConditionalPhi(operand, block); });
+}
+
+/// Returns true when value is the low 32 bits of the storage buffer address read from the
+/// constant buffer word that the storage buffer pass tracked
+bool IsStorageAddressLow(const IR::Value& value, const StorageBufferDescriptor& ssbo) {
+    const IR::Inst* inst{value.TryInstRecursive()};
+    if (!inst) {
+        return false;
+    }
+    if (inst->GetOpcode() == IR::Opcode::CompositeExtractU32x2) {
+        const IR::Value element{inst->Arg(1)};
+        if (!element.IsImmediate() || element.U32() != 0) {
+            return false;
+        }
+        inst = inst->Arg(0).TryInstRecursive();
+        if (!inst || inst->GetOpcode() != IR::Opcode::GetCbufU32x2) {
+            return false;
+        }
+    } else if (inst->GetOpcode() != IR::Opcode::GetCbufU32) {
+        return false;
+    }
+    const IR::Value index{inst->Arg(0)};
+    const IR::Value offset{inst->Arg(1)};
+    return index.IsImmediate() && offset.IsImmediate() && index.U32() == ssbo.cbuf_index &&
+           offset.U32() == ssbo.cbuf_offset;
+}
+
+/// Matches the aligned storage buffer base the storage buffer pass subtracts from addresses:
+/// (address_low & ~(alignment - 1)) or plain address_low when no alignment is needed
+bool IsAlignedStorageAddress(const IR::Value& value, const StorageBufferDescriptor& ssbo) {
+    if (IsStorageAddressLow(value, ssbo)) {
+        return true;
+    }
+    const IR::Inst* const inst{value.TryInstRecursive()};
+    if (!inst || inst->GetOpcode() != IR::Opcode::BitwiseAnd32) {
+        return false;
+    }
+    return inst->Arg(1).IsImmediate() && IsStorageAddressLow(inst->Arg(0), ssbo);
+}
+
+/// Compares two resolved values, IR::Value::operator== is not usable on vector immediates
+bool SameValue(const IR::Value& lhs, const IR::Value& rhs) {
+    if (lhs.IsImmediate() != rhs.IsImmediate()) {
+        return false;
+    }
+    if (!lhs.IsImmediate()) {
+        return lhs.InstRecursive() == rhs.InstRecursive();
+    }
+    if (lhs.Type() != rhs.Type()) {
+        return false;
+    }
+    switch (lhs.Type()) {
+    case IR::Type::U32:
+        return lhs.U32() == rhs.U32();
+    case IR::Type::U64:
+        return lhs.U64() == rhs.U64();
+    default:
+        return false;
+    }
+}
+
+using PhiStack = boost::container::small_vector<const IR::Inst*, 8>;
+
+std::optional<IR::Value> ResolveInvariantPhiImpl(const IR::Inst* phi, PhiStack& visited) {
+    if (visited.size() >= 8) {
+        return std::nullopt;
+    }
+    visited.push_back(phi);
+    std::optional<IR::Value> incoming;
+    for (size_t arg = 0; arg < phi->NumArgs(); ++arg) {
+        IR::Value value{phi->Arg(arg).Resolve()};
+        if (const IR::Inst* const inst{value.TryInstRecursive()};
+            inst && inst->GetOpcode() == IR::Opcode::Phi) {
+            if (std::ranges::find(visited, inst) != visited.end()) {
+                // Back edge, it carries the value of the phi being resolved
+                continue;
+            }
+            const std::optional<IR::Value> resolved{ResolveInvariantPhiImpl(inst, visited)};
+            if (!resolved) {
+                return std::nullopt;
+            }
+            value = *resolved;
+        }
+        if (incoming && !SameValue(*incoming, value)) {
+            return std::nullopt;
+        }
+        incoming = value;
+    }
+    return incoming;
+}
+
+/// Looks through phi nodes whose incoming values are all the same value defined outside of the
+/// loop (the back edges only carry the phi itself), the storage buffer address of a table of
+/// handles read inside a loop reaches the load this way
+IR::Value ResolveInvariantPhi(const IR::Value& value) {
+    const IR::Inst* const inst{value.TryInstRecursive()};
+    if (!inst || inst->GetOpcode() != IR::Opcode::Phi) {
+        return value;
+    }
+    PhiStack visited;
+    return ResolveInvariantPhiImpl(inst, visited).value_or(value);
+}
+
+struct StorageAddressTerms {
+    bool has_base{};      ///< The storage buffer address was found in the expression
+    u32 immediate{};      ///< Sum of the immediate byte offsets
+    IR::U32 dynamic;      ///< Optional dynamic byte offset (idx << shift or idx * stride)
+};
+
+/// Decomposes the address passed to a global memory load into base + immediates + dynamic index
+bool CollectStorageAddressTerms(const IR::Value& raw_value, const StorageBufferDescriptor& ssbo,
+                                StorageAddressTerms& terms, u32 depth) {
+    if (depth > 16) {
+        return false;
+    }
+    const IR::Value value{ResolveInvariantPhi(raw_value)};
+    if (value.IsImmediate()) {
+        terms.immediate +=
+            value.Type() == IR::Type::U64 ? static_cast<u32>(value.U64()) : value.U32();
+        return true;
+    }
+    if (IsStorageAddressLow(value, ssbo)) {
+        if (terms.has_base) {
+            return false;
+        }
+        terms.has_base = true;
+        return true;
+    }
+    const IR::Inst* const inst{value.InstRecursive()};
+    switch (inst->GetOpcode()) {
+    case IR::Opcode::IAdd32:
+    case IR::Opcode::IAdd64:
+        return CollectStorageAddressTerms(inst->Arg(0), ssbo, terms, depth + 1) &&
+               CollectStorageAddressTerms(inst->Arg(1), ssbo, terms, depth + 1);
+    case IR::Opcode::ConvertU32U64:
+    case IR::Opcode::ConvertU64U32:
+        return CollectStorageAddressTerms(inst->Arg(0), ssbo, terms, depth + 1);
+    case IR::Opcode::PackUint2x32: {
+        const IR::Inst* const vector{inst->Arg(0).TryInstRecursive()};
+        if (!vector || vector->GetOpcode() != IR::Opcode::CompositeConstructU32x2) {
+            return false;
+        }
+        // Only the low word matters, the high word carries the address high bits (and carry)
+        return CollectStorageAddressTerms(vector->Arg(0), ssbo, terms, depth + 1);
+    }
+    default:
+        if (value.Type() != IR::Type::U32 || !terms.dynamic.IsEmpty()) {
+            return false;
+        }
+        terms.dynamic = IR::U32{value};
+        return true;
+    }
+}
+
+/// Tracks a bindless handle loaded from a storage buffer back to the constant buffer words that
+/// hold the storage buffer address, so the host can read the handle itself when binding
+std::optional<ConstBufferAddr> TrackStorageHandle(const IR::Inst& load, u32 element_offset,
+                                                  const Info& info) {
+    const IR::Value binding{load.Arg(0)};
+    const IR::Value offset{load.Arg(1)};
+    if (!binding.IsImmediate() || binding.U32() >= info.storage_buffers_descriptors.size()) {
+        return MakeUntrackable();
+    }
+    const StorageBufferDescriptor& ssbo{info.storage_buffers_descriptors[binding.U32()]};
+    StorageAddressTerms terms;
+    terms.immediate = element_offset;
+    if (offset.IsImmediate()) {
+        terms.has_base = true;
+        terms.immediate += offset.U32();
+    } else {
+        // The storage buffer pass emits: (address_low [+ offsets]) - (address_low & ~align_mask)
+        const IR::Inst* const sub{offset.InstRecursive()};
+        if (sub->GetOpcode() != IR::Opcode::ISub32 || !IsAlignedStorageAddress(sub->Arg(1), ssbo) ||
+            !CollectStorageAddressTerms(sub->Arg(0), ssbo, terms, 0) || !terms.has_base) {
+            return MakeUntrackable();
+        }
+    }
+    u32 count{1};
+    u32 stride{0};
+    IR::U32 table_index;
+    if (!terms.dynamic.IsEmpty()) {
+        const std::optional<StorageTableIndex> table{SplitStorageTableIndex(terms.dynamic)};
+        if (!table) {
+            return MakeUntrackable();
+        }
+        // The shader indexes the descriptor array directly with the element index, so unlike
+        // constant buffer tables no size shift is applied to dynamic_offset
+        table_index = table->index;
+        stride = table->stride;
+        count = STORAGE_DESCRIPTOR_MAX_COUNT;
+    }
+    return ConstBufferAddr{
+        .index = ssbo.cbuf_index,
+        .offset = ssbo.cbuf_offset,
+        .shift_left = 0,
+        .secondary_index = 0,
+        .secondary_offset = 0,
+        .secondary_shift_left = 0,
+        .dynamic_offset = table_index,
+        .count = count,
+        .has_secondary = false,
+        .storage_offset = static_cast<s32>(terms.immediate),
+        .storage_stride = stride,
+        .is_storage = true,
+    };
 }
 
 std::optional<u32> TryGetConstant(IR::Value& value, Environment& env) {
@@ -406,23 +708,77 @@ std::optional<u32> TryGetConstant(IR::Value& value, Environment& env) {
     return ReadCbufCached(env, index_number, offset_number);
 }
 
-std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block) {
+std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environment& env, const HostTranslateInfo& host_info, const IR::Block* block, const Info& info) {
     switch (inst->GetOpcode()) {
     default:
         return std::nullopt;
-    case IR::Opcode::BitwiseOr32: {
-        std::optional lhs{TrackCached(inst->Arg(0), env, host_info, block)};
-        std::optional rhs{TrackCached(inst->Arg(1), env, host_info, block)};
-        if (!lhs || !rhs) {
+    case IR::Opcode::LoadStorage32:
+        return TrackStorageHandle(*inst, 0, info);
+    case IR::Opcode::LoadStorageU8:
+    case IR::Opcode::LoadStorageS8:
+    case IR::Opcode::LoadStorageU16:
+    case IR::Opcode::LoadStorageS16:
+    case IR::Opcode::LoadStorage64:
+    case IR::Opcode::LoadStorage128:
+        // Handles are 32-bit words, 64 and 128 bit loads are tracked through CompositeExtract
+        return MakeUntrackable();
+    case IR::Opcode::CompositeExtractU32x2:
+    case IR::Opcode::CompositeExtractU32x4: {
+        const IR::Inst* const vector{inst->Arg(0).TryInstRecursive()};
+        if (!vector || (vector->GetOpcode() != IR::Opcode::LoadStorage64 &&
+                        vector->GetOpcode() != IR::Opcode::LoadStorage128)) {
             return std::nullopt;
+        }
+        const IR::Value element{inst->Arg(1)};
+        if (!element.IsImmediate()) {
+            return MakeUntrackable();
+        }
+        return TrackStorageHandle(*vector, element.U32() * sizeof(u32), info);
+    }
+    case IR::Opcode::BitwiseOr32: {
+        const IR::Value op1{inst->Arg(0)};
+        const IR::Value op2{inst->Arg(1)};
+        if (op1.IsImmediate() != op2.IsImmediate()) {
+            // word | immediate, the immediate usually carries the sampler index
+            const u32 immediate{(op1.IsImmediate() ? op1 : op2).U32()};
+            std::optional lhs{
+                TrackCached(op1.IsImmediate() ? op2 : op1, env, host_info, block, info)};
+            if (!lhs || IsUntrackable(*lhs)) {
+                return lhs;
+            }
+            if (lhs->has_secondary) {
+                return lhs->is_storage ? std::optional{MakeUntrackable()} : std::nullopt;
+            }
+            // Tables (count > 1) are fine, the immediate is the same for every element
+            lhs->secondary_index = IMMEDIATE_HANDLE_CBUF_INDEX;
+            lhs->secondary_offset = immediate;
+            lhs->secondary_shift_left = 0;
+            lhs->secondary_storage_offset = 0;
+            lhs->secondary_is_storage = false;
+            lhs->has_secondary = true;
+            return lhs;
+        }
+        std::optional lhs{TrackCached(op1, env, host_info, block, info)};
+        std::optional rhs{TrackCached(op2, env, host_info, block, info)};
+        const bool any_storage{(lhs && lhs->is_storage) || (rhs && rhs->is_storage)};
+        if (!lhs || !rhs) {
+            // Don't let the search fall through to the storage buffer address words
+            return any_storage ? std::optional{MakeUntrackable()} : std::nullopt;
+        }
+        if (IsUntrackable(*lhs) || IsUntrackable(*rhs)) {
+            return MakeUntrackable();
         }
         if (lhs->has_secondary || rhs->has_secondary) {
-            return std::nullopt;
+            return any_storage ? std::optional{MakeUntrackable()} : std::nullopt;
         }
         if (lhs->count > 1 || rhs->count > 1) {
-            return std::nullopt;
+            return any_storage ? std::optional{MakeUntrackable()} : std::nullopt;
         }
-        if (lhs->shift_left > 0 || lhs->index > rhs->index || lhs->offset > rhs->offset) {
+        if (rhs->is_storage && !lhs->is_storage) {
+            // The storage sourced word is always the primary one
+            std::swap(lhs, rhs);
+        } else if (!lhs->is_storage &&
+                   (lhs->shift_left > 0 || lhs->index > rhs->index || lhs->offset > rhs->offset)) {
             std::swap(lhs, rhs);
         }
         return ConstBufferAddr{
@@ -435,6 +791,11 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
             .dynamic_offset = {},
             .count = 1,
             .has_secondary = true,
+            .storage_offset = lhs->storage_offset,
+            .storage_stride = lhs->storage_stride,
+            .is_storage = lhs->is_storage,
+            .secondary_storage_offset = rhs->storage_offset,
+            .secondary_is_storage = rhs->is_storage,
         };
     }
     case IR::Opcode::ShiftLeftLogical32: {
@@ -442,7 +803,7 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
         if (!shift.IsImmediate()) {
             return std::nullopt;
         }
-        std::optional lhs{TrackCached(inst->Arg(0), env, host_info, block)};
+        std::optional lhs{TrackCached(inst->Arg(0), env, host_info, block, info)};
         if (lhs) {
             lhs->shift_left = shift.U32();
         }
@@ -470,7 +831,7 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
                 return std::nullopt;
             } while (false);
         }
-        std::optional lhs{TrackCached(op1, env, host_info, block)};
+        std::optional lhs{TrackCached(op1, env, host_info, block, info)};
         if (lhs) {
             lhs->shift_left = static_cast<u32>(std::countr_zero(op2.U32()));
         }
@@ -499,6 +860,9 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
             .dynamic_offset = {},
             .count = 1,
             .has_secondary = false,
+            .storage_offset = 0,
+            .storage_stride = 0,
+            .is_storage = false,
         };
     }
     IR::Inst* const offset_inst{offset.InstRecursive()};
@@ -530,6 +894,9 @@ std::optional<ConstBufferAddr> TryGetConstBuffer(const IR::Inst* inst, Environme
         .dynamic_offset = dynamic_offset,
         .count = DynamicDescriptorCount(base_offset, size_shift, (std::min)({DESCRIPTOR_MAX_COUNT, sampled_limit, resource_limit})),
         .has_secondary = false,
+        .storage_offset = 0,
+        .storage_stride = 0,
+        .is_storage = false,
     };
 }
 
@@ -545,11 +912,17 @@ bool IsAttributeSourcedHandle(const IR::Value& handle) {
            inst->GetOpcode() == IR::Opcode::GetAttributeU32;
 }
 
-TextureInst MakeInst(Environment& env, IR::Block* block, IR::Inst& inst, const HostTranslateInfo& host_info) {
+TextureInst MakeInst(Environment& env, IR::Block* block, IR::Inst& inst, const HostTranslateInfo& host_info, const Info& info) {
     ConstBufferAddr addr;
     if (IsBindless(inst)) {
-        const std::optional<ConstBufferAddr> track_addr{TrackCached(inst.Arg(0), env, host_info, block)};
+        const std::optional<ConstBufferAddr> track_addr{TrackCached(inst.Arg(0), env, host_info, block, info)};
 
+        if (track_addr && IsUntrackable(*track_addr)) {
+            // Better to fail loudly than to bind whatever the storage buffer address words decode
+            // to (an out of range or garbage texture header)
+            throw NotImplementedException(
+                "Bindless texture handle loaded from global memory with an unsupported address");
+        }
         if (track_addr) {
             addr = *track_addr;
         } else if (host_info.support_attribute_texture_handle &&
@@ -567,6 +940,9 @@ TextureInst MakeInst(Environment& env, IR::Block* block, IR::Inst& inst, const H
                 .dynamic_offset = {},
                 .count = 1,
                 .has_secondary = false,
+                .storage_offset = 0,
+                .storage_stride = 0,
+                .is_storage = false,
             };
         } else {
             throw NotImplementedException("Failed to track bindless texture constant buffer");
@@ -582,6 +958,9 @@ TextureInst MakeInst(Environment& env, IR::Block* block, IR::Inst& inst, const H
             .dynamic_offset = {},
             .count = 1,
             .has_secondary = false,
+            .storage_offset = 0,
+            .storage_stride = 0,
+            .is_storage = false,
         };
     }
     return TextureInst{
@@ -592,12 +971,7 @@ TextureInst MakeInst(Environment& env, IR::Block* block, IR::Inst& inst, const H
 }
 
 u32 GetTextureHandle(Environment& env, const ConstBufferAddr& cbuf) {
-    const u32 secondary_index{cbuf.has_secondary ? cbuf.secondary_index : cbuf.index};
-    const u32 secondary_offset{cbuf.has_secondary ? cbuf.secondary_offset : cbuf.offset};
-    const u32 lhs_raw{env.ReadCbufValue(cbuf.index, cbuf.offset) << cbuf.shift_left};
-    const u32 rhs_raw{env.ReadCbufValue(secondary_index, secondary_offset)
-                      << cbuf.secondary_shift_left};
-    return lhs_raw | rhs_raw;
+    return GetTextureHandleCached(env, cbuf);
 }
 
 [[maybe_unused]] TextureType ReadTextureType(Environment& env, const ConstBufferAddr& cbuf) {
@@ -631,7 +1005,12 @@ public:
                    desc.secondary_cbuf_offset == existing.secondary_cbuf_offset &&
                    desc.secondary_shift_left == existing.secondary_shift_left &&
                    desc.count == existing.count && desc.size_shift == existing.size_shift &&
-                   desc.has_secondary == existing.has_secondary;
+                   desc.has_secondary == existing.has_secondary &&
+                   desc.storage_offset == existing.storage_offset &&
+                   desc.storage_stride == existing.storage_stride &&
+                   desc.is_storage == existing.is_storage &&
+                   desc.secondary_storage_offset == existing.secondary_storage_offset &&
+                   desc.secondary_is_storage == existing.secondary_is_storage;
         });
     }
 
@@ -639,7 +1018,10 @@ public:
         const u32 index{Add(image_buffer_descriptors, desc, [&desc](const auto& existing) {
             return desc.format == existing.format && desc.cbuf_index == existing.cbuf_index &&
                    desc.cbuf_offset == existing.cbuf_offset && desc.count == existing.count &&
-                   desc.size_shift == existing.size_shift;
+                   desc.size_shift == existing.size_shift &&
+                   desc.storage_offset == existing.storage_offset &&
+                   desc.storage_stride == existing.storage_stride &&
+                   desc.is_storage == existing.is_storage;
         })};
         image_buffer_descriptors[index].is_written |= desc.is_written;
         image_buffer_descriptors[index].is_read |= desc.is_read;
@@ -657,7 +1039,12 @@ public:
                    desc.secondary_cbuf_index == existing.secondary_cbuf_index &&
                    desc.secondary_cbuf_offset == existing.secondary_cbuf_offset &&
                    desc.secondary_shift_left == existing.secondary_shift_left &&
-                   desc.count == existing.count && desc.size_shift == existing.size_shift;
+                   desc.count == existing.count && desc.size_shift == existing.size_shift &&
+                   desc.storage_offset == existing.storage_offset &&
+                   desc.storage_stride == existing.storage_stride &&
+                   desc.is_storage == existing.is_storage &&
+                   desc.secondary_storage_offset == existing.secondary_storage_offset &&
+                   desc.secondary_is_storage == existing.secondary_is_storage;
         })};
         // TODO: Read this from TIC
         texture_descriptors[index].is_multisample |= desc.is_multisample;
@@ -670,7 +1057,10 @@ public:
             return desc.type == existing.type && desc.format == existing.format &&
                    desc.cbuf_index == existing.cbuf_index &&
                    desc.cbuf_offset == existing.cbuf_offset && desc.count == existing.count &&
-                   desc.size_shift == existing.size_shift;
+                   desc.size_shift == existing.size_shift &&
+                   desc.storage_offset == existing.storage_offset &&
+                   desc.storage_stride == existing.storage_stride &&
+                   desc.is_storage == existing.is_storage;
         })};
         image_descriptors[index].is_written |= desc.is_written;
         image_descriptors[index].is_read |= desc.is_read;
@@ -698,12 +1088,14 @@ private:
 
 void PatchImageSampleImplicitLod(IR::Block& block, IR::Inst& inst) {
     IR::IREmitter ir{block, IR::Block::InstructionList::s_iterator_to(inst)};
+    // Must run after the descriptor and array index of the sample are final, the size query reads
+    // the same descriptor and array element
     const auto info{inst.Flags<IR::TextureInstInfo>()};
     const IR::Value coord(inst.Arg(1));
-    const IR::Value handle(ir.Imm32(0));
+    const IR::Value index(inst.Arg(0));
     const IR::U32 lod{ir.Imm32(0)};
     const IR::U1 skip_mips{ir.Imm1(true)};
-    const IR::Value texture_size = ir.ImageQueryDimension(handle, lod, skip_mips, info);
+    const IR::Value texture_size = ir.ImageQueryDimension(index, lod, skip_mips, info);
     inst.SetArg(
         1, ir.CompositeConstruct(
                ir.FPMul(IR::F32(ir.CompositeExtract(coord, 0)),
@@ -771,7 +1163,7 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
             if (!IsTextureInstruction(inst)) {
                 continue;
             }
-            to_replace.push_back(MakeInst(env, block, inst, host_info));
+            to_replace.push_back(MakeInst(env, block, inst, host_info, program.info));
         }
     }
     // Sort instructions to visit textures by constant buffer index, then by offset
@@ -787,17 +1179,19 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
     };
     const u32 sampled_dynamic_cap = DynamicSampledTextureCap(program.info, host_info, DynamicSampledTextureArrayCount(to_replace));
     bool has_last_is_integer{false};
-    u32 last_cbuf_index{};
-    u32 last_cbuf_offset{};
+    u32 last_handle{};
     bool last_is_integer{false};
     const auto is_texture_pixel_format_integer{[&](const ConstBufferAddr& cbuf_addr) {
-        if (has_last_is_integer && last_cbuf_index == cbuf_addr.index &&
-            last_cbuf_offset == cbuf_addr.offset) {
+        if (IsAttributeHandle(cbuf_addr)) {
+            return false;
+        }
+        // Keyed by handle: descriptors read from the same storage buffer share (index, offset)
+        const u32 handle{GetTextureHandleCached(env, cbuf_addr)};
+        if (has_last_is_integer && last_handle == handle) {
             return last_is_integer;
         }
         last_is_integer = IsTexturePixelFormatIntegerCached(env, cbuf_addr);
-        last_cbuf_index = cbuf_addr.index;
-        last_cbuf_offset = cbuf_addr.offset;
+        last_handle = handle;
         has_last_is_integer = true;
         return last_is_integer;
     }};
@@ -809,18 +1203,22 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
         const auto& cbuf{texture_inst.cbuf};
         auto flags{inst->Flags<IR::TextureInstInfo>()};
         bool is_multisample{false};
+        bool is_rect_sample{false};
         switch (inst->GetOpcode()) {
         case IR::Opcode::ImageQueryDimensions:
             flags.type.Assign(ReadTextureTypeCached(env, cbuf));
             inst->SetFlags(flags);
             break;
         case IR::Opcode::ImageSampleImplicitLod:
+        case IR::Opcode::ImageSampleExplicitLod:
+        case IR::Opcode::ImageSampleDrefImplicitLod:
+        case IR::Opcode::ImageSampleDrefExplicitLod:
+        case IR::Opcode::ImageGather:
+        case IR::Opcode::ImageGatherDref:
             if (flags.type != TextureType::Color2D) {
                 break;
             }
-            if (ReadTextureTypeCached(env, cbuf) == TextureType::Color2DRect) {
-                PatchImageSampleImplicitLod(*texture_inst.block, *texture_inst.inst);
-            }
+            is_rect_sample = ReadTextureTypeCached(env, cbuf) == TextureType::Color2DRect;
             break;
         case IR::Opcode::ImageFetch:
             if (flags.type == TextureType::Color2D || flags.type == TextureType::Color2DRect ||
@@ -845,6 +1243,10 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
         }
         u32 index;
         u32 size_shift = cbuf.count > 1 ? DynamicDescriptorSizeShift(cbuf.dynamic_offset) : DESCRIPTOR_SIZE_SHIFT;
+        if (cbuf.is_storage) {
+            // dynamic_offset already is the element index, storage_stride carries the stride
+            size_shift = 0;
+        }
         u32 count = cbuf.count;
         switch (inst->GetOpcode()) {
         case IR::Opcode::ImageRead:
@@ -860,7 +1262,8 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
         case IR::Opcode::ImageAtomicXor32:
         case IR::Opcode::ImageAtomicExchange32:
         case IR::Opcode::ImageWrite: {
-            if (cbuf.has_secondary) {
+            // Images have no sampler, an immediate ORed into the handle is ignored
+            if (cbuf.has_secondary && cbuf.secondary_index != IMMEDIATE_HANDLE_CBUF_INDEX) {
                 throw NotImplementedException("Unexpected separate sampler");
             }
             const bool is_written{inst->GetOpcode() != IR::Opcode::ImageRead};
@@ -876,6 +1279,9 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
                     .cbuf_offset = cbuf.offset,
                     .count = count,
                     .size_shift = size_shift,
+                    .storage_offset = cbuf.storage_offset,
+                    .storage_stride = cbuf.storage_stride,
+                    .is_storage = cbuf.is_storage,
                 });
             } else {
                 index = descriptors.Add(ImageDescriptor{
@@ -888,6 +1294,9 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
                     .cbuf_offset = cbuf.offset,
                     .count = count,
                     .size_shift = size_shift,
+                    .storage_offset = cbuf.storage_offset,
+                    .storage_stride = cbuf.storage_stride,
+                    .is_storage = cbuf.is_storage,
                 });
             }
             break;
@@ -904,6 +1313,11 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
                     .secondary_shift_left = cbuf.secondary_shift_left,
                     .count = count,
                     .size_shift = size_shift,
+                    .storage_offset = cbuf.storage_offset,
+                    .storage_stride = cbuf.storage_stride,
+                    .is_storage = cbuf.is_storage,
+                    .secondary_storage_offset = cbuf.secondary_storage_offset,
+                    .secondary_is_storage = cbuf.secondary_is_storage,
                 });
             } else {
                 count = std::min(count, sampled_dynamic_cap);
@@ -922,6 +1336,11 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
                     .secondary_shift_left = cbuf.secondary_shift_left,
                     .count = count,
                     .size_shift = size_shift,
+                    .storage_offset = cbuf.storage_offset,
+                    .storage_stride = cbuf.storage_stride,
+                    .is_storage = cbuf.is_storage,
+                    .secondary_storage_offset = cbuf.secondary_storage_offset,
+                    .secondary_is_storage = cbuf.secondary_is_storage,
                 });
                 flags.is_integer.Assign(is_integer ? 1 : 0);
             }
@@ -937,6 +1356,10 @@ void TexturePass(Environment& env, IR::Program& program, const HostTranslateInfo
             inst->SetArg(0, ir.UMin(ir.ShiftRightLogical(cbuf.dynamic_offset, shift), ir.Imm32(count - 1)));
         } else {
             inst->SetArg(0, IR::Value{});
+        }
+
+        if (is_rect_sample) {
+            PatchImageSampleImplicitLod(*texture_inst.block, *texture_inst.inst);
         }
 
         if (!host_info.support_snorm_render_buffer && inst->GetOpcode() == IR::Opcode::ImageFetch &&

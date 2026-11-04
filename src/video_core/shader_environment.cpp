@@ -153,6 +153,15 @@ u64 GenericEnvironment::ReadInstruction(u32 address) {
     return gpu_memory->Read<u64>(program_base + address);
 }
 
+u32 GenericEnvironment::ReadGlobalU32(u64 gpu_addr) {
+    u32 value{};
+    if (gpu_memory->GpuToCpuAddress(gpu_addr).has_value()) {
+        value = gpu_memory->Read<u32>(gpu_addr);
+    }
+    global_values.emplace(gpu_addr, value);
+    return value;
+}
+
 std::optional<u64> GenericEnvironment::Analyze() {
     const std::optional<u64> size{TryFindSize()};
     if (!size) {
@@ -203,6 +212,7 @@ void GenericEnvironment::Serialize(std::ofstream& file) const {
     const u64 num_texture_pixel_formats{static_cast<u64>(texture_pixel_formats.size())};
     const u64 num_cbuf_values{static_cast<u64>(cbuf_values.size())};
     const u64 num_cbuf_replacement_values{static_cast<u64>(cbuf_replacements.size())};
+    const u64 num_global_values{static_cast<u64>(global_values.size())};
 
     file.write(reinterpret_cast<const char*>(&code_size), sizeof(code_size))
         .write(reinterpret_cast<const char*>(&num_texture_types), sizeof(num_texture_types))
@@ -211,6 +221,7 @@ void GenericEnvironment::Serialize(std::ofstream& file) const {
         .write(reinterpret_cast<const char*>(&num_cbuf_values), sizeof(num_cbuf_values))
         .write(reinterpret_cast<const char*>(&num_cbuf_replacement_values),
                sizeof(num_cbuf_replacement_values))
+        .write(reinterpret_cast<const char*>(&num_global_values), sizeof(num_global_values))
         .write(reinterpret_cast<const char*>(&local_memory_size), sizeof(local_memory_size))
         .write(reinterpret_cast<const char*>(&texture_bound), sizeof(texture_bound))
         .write(reinterpret_cast<const char*>(&start_address), sizeof(start_address))
@@ -235,6 +246,10 @@ void GenericEnvironment::Serialize(std::ofstream& file) const {
     for (const auto& [key, type] : cbuf_replacements) {
         file.write(reinterpret_cast<const char*>(&key), sizeof(key))
             .write(reinterpret_cast<const char*>(&type), sizeof(type));
+    }
+    for (const auto& [address, value] : global_values) {
+        file.write(reinterpret_cast<const char*>(&address), sizeof(address))
+            .write(reinterpret_cast<const char*>(&value), sizeof(value));
     }
     if (stage == Shader::Stage::Compute) {
         file.write(reinterpret_cast<const char*>(&workgroup_size), sizeof(workgroup_size))
@@ -464,6 +479,7 @@ void FileEnvironment::Deserialize(std::ifstream& file) {
     u64 num_texture_pixel_formats{};
     u64 num_cbuf_values{};
     u64 num_cbuf_replacement_values{};
+    u64 num_global_values{};
     file.read(reinterpret_cast<char*>(&code_size), sizeof(code_size))
         .read(reinterpret_cast<char*>(&num_texture_types), sizeof(num_texture_types))
         .read(reinterpret_cast<char*>(&num_texture_pixel_formats),
@@ -471,6 +487,7 @@ void FileEnvironment::Deserialize(std::ifstream& file) {
         .read(reinterpret_cast<char*>(&num_cbuf_values), sizeof(num_cbuf_values))
         .read(reinterpret_cast<char*>(&num_cbuf_replacement_values),
               sizeof(num_cbuf_replacement_values))
+        .read(reinterpret_cast<char*>(&num_global_values), sizeof(num_global_values))
         .read(reinterpret_cast<char*>(&local_memory_size), sizeof(local_memory_size))
         .read(reinterpret_cast<char*>(&texture_bound), sizeof(texture_bound))
         .read(reinterpret_cast<char*>(&start_address), sizeof(start_address))
@@ -508,6 +525,13 @@ void FileEnvironment::Deserialize(std::ifstream& file) {
             .read(reinterpret_cast<char*>(&value), sizeof(value));
         cbuf_replacements.emplace(key, value);
     }
+    for (size_t i = 0; i < num_global_values; ++i) {
+        u64 address;
+        u32 value;
+        file.read(reinterpret_cast<char*>(&address), sizeof(address))
+            .read(reinterpret_cast<char*>(&value), sizeof(value));
+        global_values.emplace(address, value);
+    }
     if (stage == Shader::Stage::Compute) {
         file.read(reinterpret_cast<char*>(&workgroup_size), sizeof(workgroup_size))
             .read(reinterpret_cast<char*>(&shared_memory_size), sizeof(shared_memory_size));
@@ -537,6 +561,14 @@ u32 FileEnvironment::ReadCbufValue(u32 cbuf_index, u32 cbuf_offset) {
     const auto it{cbuf_values.find(MakeCbufKey(cbuf_index, cbuf_offset))};
     if (it == cbuf_values.end()) {
         throw Shader::LogicError("Uncached read texture type");
+    }
+    return it->second;
+}
+
+u32 FileEnvironment::ReadGlobalU32(u64 gpu_addr) {
+    const auto it{global_values.find(gpu_addr)};
+    if (it == global_values.end()) {
+        throw Shader::LogicError("Uncached global memory read");
     }
     return it->second;
 }

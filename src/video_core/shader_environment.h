@@ -47,6 +47,8 @@ public:
 
     [[nodiscard]] u64 ReadInstruction(u32 address) final;
 
+    [[nodiscard]] u32 ReadGlobalU32(u64 gpu_addr) final;
+
     [[nodiscard]] std::optional<u64> Analyze();
 
     void SetCachedSize(size_t size_bytes);
@@ -83,6 +85,7 @@ protected:
     ::Common::unordered_map<u32, Shader::TexturePixelFormat> texture_pixel_formats;
     ::Common::unordered_map<u64, u32> cbuf_values;
     ::Common::unordered_map<u64, Shader::ReplaceConstant> cbuf_replacements;
+    ::Common::unordered_map<u64, u32> global_values;
 
     u32 local_memory_size{};
     u32 texture_bound{};
@@ -174,6 +177,8 @@ public:
 
     [[nodiscard]] u32 ReadCbufValue(u32 cbuf_index, u32 cbuf_offset) override;
 
+    [[nodiscard]] u32 ReadGlobalU32(u64 gpu_addr) override;
+
     [[nodiscard]] Shader::TextureType ReadTextureType(u32 handle) override;
 
     [[nodiscard]] Shader::TexturePixelFormat ReadTexturePixelFormat(u32 handle) override;
@@ -205,6 +210,7 @@ private:
     ::Common::unordered_map<u32, Shader::TexturePixelFormat> texture_pixel_formats;
     ::Common::unordered_map<u64, u32> cbuf_values;
     ::Common::unordered_map<u64, Shader::ReplaceConstant> cbuf_replacements;
+    ::Common::unordered_map<u64, u32> global_values;
     std::array<u32, 3> workgroup_size{};
     u32 local_memory_size{};
     u32 shared_memory_size{};
