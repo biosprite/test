@@ -319,6 +319,7 @@ ImageViewId TextureCache<P>::ResolveFeedbackLoop(ImageViewId view_id) {
     // Only color targets the draw writes: a draw only reading its target sees what it expects
     const auto& regs = maxwell3d->regs;
     bool is_written = false;
+    size_t written_index = 0;
     for (size_t index = 0; index < NUM_RT; ++index) {
         if ((rt_active_mask & (1u << index)) == 0 || rt_image_id[index] != view.image_id) {
             continue;
@@ -328,12 +329,47 @@ ImageViewId TextureCache<P>::ResolveFeedbackLoop(ImageViewId view_id) {
             continue;
         }
         const auto& mask = regs.color_mask[regs.color_mask_common ? 0 : index];
-        is_written |= mask.R || mask.G || mask.B || mask.A;
+        if (mask.R || mask.G || mask.B || mask.A) {
+            if (!is_written) {
+                written_index = index;
+            }
+            is_written = true;
+        }
     }
     if (!is_written) {
         return view_id;
     }
+    LogFeedbackSnapshotCase(view_id, written_index);
     return SnapshotImageView(view_id);
+}
+
+template <class P>
+void TextureCache<P>::LogFeedbackSnapshotCase(ImageViewId view_id, size_t rt_index) {
+    // Probe: each distinct kind of draw that takes a snapshot, once, to tell which ones need it
+    // (same texels read and written) from the ones that pay for nothing (mip chains, small draws)
+    const ImageViewBase& view = slot_image_views[view_id];
+    const ImageBase& image = slot_images[view.image_id];
+    const ImageViewBase& target = slot_image_views[render_targets.color_buffer_ids[rt_index]];
+    const auto& regs = maxwell3d->regs;
+    const auto& mask = regs.color_mask[regs.color_mask_common ? 0 : rt_index];
+    const bool blend = regs.blend.enable[rt_index] != 0;
+    const auto& scissor = regs.scissor_test[0];
+    const auto& viewport = regs.viewports[0];
+    const std::string key = fmt::format(
+        "image {}x{} levels={} layers={} format={} | sampled levels {}+{} layers {}+{} | "
+        "written rt{} level {} layer {}+{} mask {}{}{}{} blend={} | scissor {} {},{}-{},{} | "
+        "viewport {},{} {}x{} | rts={:#x}",
+        image.info.size.width, image.info.size.height, image.info.resources.levels,
+        image.info.resources.layers, static_cast<u32>(image.info.format), view.range.base.level,
+        view.range.extent.levels, view.range.base.layer, view.range.extent.layers, rt_index,
+        target.range.base.level, target.range.base.layer, target.range.extent.layers,
+        mask.R ? "R" : "", mask.G ? "G" : "", mask.B ? "B" : "", mask.A ? "A" : "", blend,
+        scissor.enable ? "on" : "off", scissor.min_x.Value(), scissor.min_y.Value(),
+        scissor.max_x.Value(), scissor.max_y.Value(), viewport.x.Value(), viewport.y.Value(),
+        viewport.width.Value(), viewport.height.Value(), rt_active_mask);
+    if (feedback_logged_cases.size() < 256 && feedback_logged_cases.insert(key).second) {
+        LOG_INFO(HW_GPU, "Color target snapshot case: {}", key);
+    }
 }
 
 template <class P>

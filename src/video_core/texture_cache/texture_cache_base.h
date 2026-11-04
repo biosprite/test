@@ -399,6 +399,9 @@ private:
     /// Destroys the snapshot image of an image, if any
     void DeleteFeedbackSnapshot(ImageId image_id);
 
+    /// Logs each distinct kind of draw that takes a snapshot, once (probe)
+    void LogFeedbackSnapshotCase(ImageViewId view_id, size_t rt_index);
+
     /// Remove image views references from the cache
     void RemoveImageViewReferences(std::span<const ImageViewId> removed_views);
 
@@ -468,6 +471,7 @@ private:
     u32 feedback_reuses = 0;
     u64 feedback_copied_bytes = 0;
     std::chrono::steady_clock::time_point feedback_log_time{};
+    Common::unordered_set<std::string> feedback_logged_cases;
     bool last_feedback_loop_result = false;
     FramebufferId last_framebuffer_id{};
     u64 last_framebuffer_serial = 0;
