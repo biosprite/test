@@ -38,10 +38,10 @@
 #include "yuzu/configuration/configuration_shared.h"
 #include "yuzu/configuration/configure_graphics.h"
 #include "yuzu/configuration/shared_widget.h"
+#include "yuzu/util/gamescope.h"
 
 #ifdef HAS_RESHADE
 #include "yuzu/configuration/configure_post_processing.h"
-#include "yuzu/util/gamescope.h"
 #endif
 
 ConfigureGraphics::ConfigureGraphics(
