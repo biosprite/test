@@ -790,6 +790,17 @@ GraphicsPipeline* PipelineCache::BuiltPipeline(GraphicsPipeline* pipeline) const
     if (!use_asynchronous_shaders) {
         return pipeline;
     }
+    // Draws into small off-screen targets often build something used for a long time (lookup
+    // tables, noise or fog textures, generated once): skipping one loses it for the session
+    // (Super Mario Odyssey's fog, missing after a fresh shader cache). Wait for those; only skip
+    // draws into scene-sized targets, where a skipped draw costs one frame.
+    {
+        const auto& rt0 = maxwell3d->regs.rt[0];
+        const u64 area = u64{rt0.width} * u64{rt0.height};
+        if (rt0.width != 0 && area < u64{640} * 360) {
+            return pipeline;
+        }
+    }
     // If something is using depth, we can assume that games are not rendering anything which
     // will be used one time.
     if (maxwell3d->regs.zeta_enable) {
