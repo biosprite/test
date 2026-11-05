@@ -682,18 +682,6 @@ struct Values {
     SwitchableSetting<bool> gpu_unswizzle_enabled{linkage, false, "gpu_unswizzle_enabled",
                                                   Category::RendererHacks};
 
-    // "D24 emulation": a draw sampling a color target it also writes reads a copy taken before
-    // the draw (Xenoblade Chronicles 2's cloud sea reads depth packed in such a target). Off by
-    // default: it costs a copy per such draw. The key keeps its first name for saved configs.
-    // Changeable in game: each draw reads it.
-    SwitchableSetting<bool> color_target_snapshots{linkage,
-                                                   false,
-                                                   "color_target_snapshots",
-                                                   Category::RendererHacks,
-                                                   Specialization::Default,
-                                                   true,
-                                                   true};
-
     SwitchableSetting<ExtendedDynamicState> dyna_state{linkage,
 #if defined(__ANDROID__)
                                            ExtendedDynamicState::Disabled,
