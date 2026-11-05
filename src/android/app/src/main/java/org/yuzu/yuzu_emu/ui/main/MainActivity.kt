@@ -15,6 +15,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.fragment.app.FragmentManager
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.ViewCompat
@@ -300,6 +301,11 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
     }
 
     private fun checkKeys() {
+        val firstTimeSetup = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+            .getBoolean(Settings.PREF_FIRST_APP_LAUNCH, true)
+        if (firstTimeSetup) {
+            return
+        }
         if (!NativeLibrary.areKeysPresent()) {
             MessageDialogFragment.newInstance(
                 titleId = R.string.keys_missing,
@@ -405,7 +411,11 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
             }
         }
 
-    fun processGamesDir(result: Uri, calledFromGameFragment: Boolean = false) {
+    fun processGamesDir(
+        result: Uri,
+        calledFromGameFragment: Boolean = false,
+        dialogFragmentManager: FragmentManager? = null,
+    ) {
         contentResolver.takePersistableUriPermission(
             result,
             Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -422,8 +432,9 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
             return
         }
 
+        val fragmentManager = dialogFragmentManager ?: supportFragmentManager
         AddGameFolderDialogFragment.newInstance(uriString, calledFromGameFragment)
-            .show(supportFragmentManager, AddGameFolderDialogFragment.TAG)
+            .show(fragmentManager, AddGameFolderDialogFragment.TAG)
     }
 
     fun processExternalContentDir(result: Uri) {
@@ -461,13 +472,19 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
         }
     }
 
-    fun processKey(result: Uri, extension: String = "keys") {
+    fun processKey(
+        result: Uri,
+        extension: String = "keys",
+        dialogFragmentManager: FragmentManager? = null,
+        reloadGameLibrary: Boolean = true,
+    ) {
         InstallableActions.processKey(
             activity = this,
-            fragmentManager = supportFragmentManager,
+            fragmentManager = dialogFragmentManager ?: supportFragmentManager,
             gamesViewModel = gamesViewModel,
             result = result,
-            extension = extension
+            extension = extension,
+            reloadGameLibrary = reloadGameLibrary,
         )
     }
 
@@ -477,10 +494,14 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
         }
     }
 
-    fun processFirmware(result: Uri, onComplete: (() -> Unit)? = null) {
+    fun processFirmware(
+        result: Uri,
+        onComplete: ((success: Boolean) -> Unit)? = null,
+        dialogFragmentManager: FragmentManager? = null,
+    ) {
         InstallableActions.processFirmware(
             activity = this,
-            fragmentManager = supportFragmentManager,
+            fragmentManager = dialogFragmentManager ?: supportFragmentManager,
             homeViewModel = homeViewModel,
             result = result,
             onComplete = onComplete
