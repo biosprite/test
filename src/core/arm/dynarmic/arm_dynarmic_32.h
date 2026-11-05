@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <unordered_set>
+
 #include <dynarmic/interface/A32/a32.h>
 #include <dynarmic/interface/code_page.h>
 
@@ -54,6 +56,8 @@ public:
     Kernel::KProcess* m_process{};
     const bool m_debugger_enabled{};
     const bool m_check_memory_access{};
+    // PCs for which a backtrace has already been logged after an exception
+    std::unordered_set<u32> m_logged_exception_pcs;
 };
 
 class ArmDynarmic32 final : public ArmInterface {

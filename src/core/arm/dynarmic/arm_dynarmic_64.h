@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <memory>
+#include <unordered_set>
 #include "common/container/unordered_map.h"
 
 #include <dynarmic/interface/A64/a64.h>
@@ -68,6 +69,8 @@ public:
     Kernel::KProcess* m_process{};
     const bool m_debugger_enabled{};
     const bool m_check_memory_access{};
+    // PCs for which a backtrace has already been logged after an exception
+    std::unordered_set<u64> m_logged_exception_pcs;
     static constexpr u64 MinimumRunCycles = 10000U;
 };
 

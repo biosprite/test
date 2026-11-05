@@ -124,7 +124,13 @@ void DynarmicCallbacks64::ExceptionRaised(u64 pc, Dynarmic::A64::Exception excep
         if (m_debugger_enabled) {
             ReturnException(pc, InstructionBreakpoint);
         } else {
-            m_parent.LogBacktrace(m_process);
+            // Execution resumes after the faulting instruction, so a game can hit the same
+            // unimplemented instruction every frame. Symbolicating a backtrace re-parses the
+            // symbol tables of every module each time, which is slow enough to stall emulation,
+            // so only do it the first time a given PC faults.
+            if (m_logged_exception_pcs.insert(pc).second) {
+                m_parent.LogBacktrace(m_process);
+            }
             LOG_CRITICAL(Core_ARM, "ExceptionRaised(exception = {}, pc = {:08X}, code = {:08X})", static_cast<std::size_t>(exception), pc, m_memory.Read32(pc));
         }
     }
