@@ -26,6 +26,7 @@ constexpr Result ResultInvalidClient(ErrorModule::SM, 2);
 constexpr Result ResultAlreadyRegistered(ErrorModule::SM, 4);
 constexpr Result ResultInvalidServiceName(ErrorModule::SM, 6);
 constexpr Result ResultNotRegistered(ErrorModule::SM, 7);
+constexpr Result ResultNotAllowed(ErrorModule::SM, 8);
 
 ServiceManager::ServiceManager(Kernel::KernelCore& kernel_) : kernel{kernel_} {
     controller_interface = std::make_unique<Controller>(kernel.System());
@@ -184,6 +185,15 @@ Result SM::GetServiceImpl(Kernel::KClientSession** out_client_session, HLEReques
     if (port_result == Service::SM::ResultInvalidServiceName) {
         LOG_ERROR(Service_SM, "Invalid service name '{}'", name);
         return Service::SM::ResultInvalidServiceName;
+    }
+
+    // A program may only use the services listed in the service access control of its NPDM. The
+    // SDK relies on the denial to pick the variant of a service an application may use, e.g. it
+    // tries "ssl:s" and "bsd:s" before falling back to "ssl" and "bsd:u".
+    if (const auto* process = ctx.GetThread().GetOwnerProcess();
+        process != nullptr && !process->IsServiceAccessPermitted(name)) {
+        LOG_WARNING(Service_SM, "Service '{}' is not in the access control of the process", name);
+        return Service::SM::ResultNotAllowed;
     }
 
     if (port_result != ResultSuccess) {

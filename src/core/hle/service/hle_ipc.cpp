@@ -30,7 +30,7 @@
 namespace Service {
 
 SessionRequestHandler::SessionRequestHandler(Kernel::KernelCore& kernel_, const char* service_name_)
-    : kernel{kernel_} {}
+    : kernel{kernel_}, handler_name{service_name_} {}
 
 SessionRequestHandler::~SessionRequestHandler() = default;
 
@@ -46,7 +46,13 @@ bool SessionRequestManager::HasSessionRequestHandler(const HLERequestContext& co
         const auto object_id = message_header.object_id;
 
         if (object_id > DomainHandlerCount()) {
-            LOG_CRITICAL(IPC, "object_id {} is too big!", object_id);
+            LOG_CRITICAL(IPC,
+                         "object_id {} ({:#x}) is too big! service={}, command={}, handlers={}, "
+                         "input_objects={}, data_size={:#x}",
+                         object_id, object_id,
+                         HasSessionHandler() ? SessionHandler().GetHandlerName() : "?",
+                         context.GetCommand(), DomainHandlerCount(),
+                         message_header.input_object_count.Value(), message_header.size.Value());
             return false;
         }
         return !DomainHandler(object_id - 1).expired();
@@ -305,8 +311,10 @@ Result HLERequestContext::WriteToOutgoingCommandBuffer() {
         }
     }
 
-    // Copy the translated command buffer back into the thread's command buffer area.
-    memory.WriteBlock(thread->GetTlsAddress(), cmd_buf.data(), write_size * sizeof(u32));
+    // Copy the translated command buffer back into the client's message buffer (TLS or user buffer).
+    const u64 reply_address =
+        message_address != 0 ? message_address : GetInteger(thread->GetTlsAddress());
+    memory.WriteBlock(reply_address, cmd_buf.data(), write_size * sizeof(u32));
 
     return ResultSuccess;
 }

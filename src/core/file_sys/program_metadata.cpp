@@ -96,6 +96,36 @@ Loader::ResultStatus ProgramMetadata::Load(VirtualFile file) {
         return Loader::ResultStatus::ErrorBadKernelCapabilityDescriptors;
     }
 
+    // Service access control: a sequence of entries made of one control byte (bits 0-2 hold the
+    // name length minus one, bit 7 is set for services the program may host) followed by the name.
+    // A malformed list only disables the access checks, it does not prevent the program from loading.
+    aci_service_access_control.clear();
+    constexpr u32 MaxServiceAccessControlSize = 0x200; // Limit enforced by sm on hardware
+    if (aci_header.sac_size > MaxServiceAccessControlSize) {
+        LOG_WARNING(Loader, "Service access control too large ({} bytes), access checks disabled", aci_header.sac_size);
+        return Loader::ResultStatus::Success;
+    }
+    std::vector<u8> sac(aci_header.sac_size);
+    const u64 sac_offset = npdm_header.aci_offset + aci_header.sac_offset;
+    if (file->ReadBytes(sac.data(), sac.size(), sac_offset) != sac.size()) {
+        LOG_WARNING(Loader, "Unable to read the service access control, access checks disabled");
+        return Loader::ResultStatus::Success;
+    }
+    for (std::size_t offset = 0; offset < sac.size();) {
+        const u8 control = sac[offset++];
+        const std::size_t name_length = (control & 0x7) + 1;
+        if (offset + name_length > sac.size()) {
+            LOG_WARNING(Loader, "Malformed service access control, access checks disabled");
+            aci_service_access_control.clear();
+            break;
+        }
+        aci_service_access_control.push_back({
+            .name = std::string(reinterpret_cast<const char*>(sac.data() + offset), name_length),
+            .is_server = (control & 0x80) != 0,
+        });
+        offset += name_length;
+    }
+
     return Loader::ResultStatus::Success;
 }
 

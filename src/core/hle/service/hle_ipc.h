@@ -77,8 +77,14 @@ public:
     virtual Result HandleSyncRequest(Kernel::KServerSession& session,
                                      HLERequestContext& context) = 0;
 
+    /// Name of the service this handler was created for, for diagnostics.
+    const char* GetHandlerName() const {
+        return handler_name;
+    }
+
 protected:
     Kernel::KernelCore& kernel;
+    const char* handler_name;
 };
 
 using SessionRequestHandlerWeakPtr = std::weak_ptr<SessionRequestHandler>;
@@ -391,6 +397,12 @@ public:
         is_deferred = is_deferred_;
     }
 
+    /// Sets the guest address the request was read from, the reply is written back there. Requests
+    /// sent with svcSendSyncRequestWithUserBuffer use a user buffer rather than the thread's TLS.
+    void SetMessageAddress(u64 address) {
+        message_address = address;
+    }
+
 private:
     friend struct IPC::ResponseBuilder;
 
@@ -400,6 +412,7 @@ private:
     Kernel::KServerSession* server_session{};
     Kernel::KHandleTable* client_handle_table{};
     Kernel::KThread* thread{};
+    u64 message_address{};
 
     boost::container::static_vector<IPC::BufferDescriptorX, IPC::MAX_BUFFER_DESCRIPTORS> buffer_x_descriptors;
     boost::container::static_vector<IPC::BufferDescriptorABW, IPC::MAX_BUFFER_DESCRIPTORS> buffer_a_descriptors;

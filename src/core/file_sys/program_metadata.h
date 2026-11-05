@@ -1,9 +1,13 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
 
 #include <array>
+#include <string>
 #include <vector>
 
 #include "common/bit_field.h"
@@ -49,6 +53,14 @@ class ProgramMetadata {
 public:
     using KernelCapabilityDescriptors = std::vector<u32>;
 
+    /// Entry of the service access control (SAC) of the ACI0: a service the program may use or,
+    /// when is_server is set, host. Names may end with '*' to match any service with that prefix.
+    struct ServiceAccess {
+        std::string name;
+        bool is_server;
+    };
+    using ServiceAccessControl = std::vector<ServiceAccess>;
+
     ProgramMetadata();
     ~ProgramMetadata();
 
@@ -81,6 +93,9 @@ public:
     u32 GetSystemResourceSize() const;
     PoolPartition GetPoolPartition() const;
     const KernelCapabilityDescriptors& GetKernelCapabilities() const;
+    const ServiceAccessControl& GetServiceAccessControl() const {
+        return aci_service_access_control;
+    }
     const std::array<u8, 0x10>& GetName() const {
         return npdm_header.application_name;
     }
@@ -184,6 +199,7 @@ private:
     FileAccessHeader aci_file_access{};
 
     KernelCapabilityDescriptors aci_kernel_capabilities{};
+    ServiceAccessControl aci_service_access_control{};
 };
 
 } // namespace FileSys

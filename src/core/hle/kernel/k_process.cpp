@@ -1258,6 +1258,14 @@ Result KProcess::LoadFromMetadata(KernelCore& kernel, const FileSys::ProgramMeta
     // Initialize for application process.
     R_TRY(this->Initialize(kernel, params, metadata.GetKernelCapabilities(), res_limit, pool, aslr_space_start));
 
+    // Remember which services the program may use; entries flagged as server only allow hosting.
+    m_service_access_control.clear();
+    for (const auto& entry : metadata.GetServiceAccessControl()) {
+        if (!entry.is_server) {
+            m_service_access_control.push_back(entry.name);
+        }
+    }
+
     // Assign remaining properties.
     m_ideal_core_id = metadata.GetMainThreadCore();
 
@@ -1266,6 +1274,23 @@ Result KProcess::LoadFromMetadata(KernelCore& kernel, const FileSys::ProgramMeta
 
     // We succeeded.
     R_SUCCEED();
+}
+
+bool KProcess::IsServiceAccessPermitted(std::string_view service_name) const {
+    // No access control (homebrew, KIPs, manual metadata): allow everything.
+    if (m_service_access_control.empty()) {
+        return true;
+    }
+    for (const auto& allowed : m_service_access_control) {
+        if (allowed.ends_with('*')) {
+            if (service_name.starts_with(std::string_view{allowed}.substr(0, allowed.size() - 1))) {
+                return true;
+            }
+        } else if (allowed == service_name) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void KProcess::LoadModule(KernelCore& kernel, CodeSet code_set, KProcessAddress base_addr) {
