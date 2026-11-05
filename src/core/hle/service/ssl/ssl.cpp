@@ -565,8 +565,11 @@ private:
 
 class ISslService final : public ServiceFramework<ISslService> {
 public:
-    explicit ISslService(Core::System& system_)
-        : ServiceFramework{system_, "ssl"}, cert_store{system} {
+    // Serves both "ssl" and "ssl:s" (nn::ssl::sf::ISslServiceForSystem, 15.0.0+): the system
+    // variant is a superset of the application one. The SDK tries "ssl:s" before "ssl"; sm denies
+    // it to applications through their service access control, so they end up on "ssl".
+    explicit ISslService(Core::System& system_, const char* name, bool is_system)
+        : ServiceFramework{system_, name}, cert_store{system} {
         // clang-format off
         static const FunctionInfo functions[] = {
             {0, &ISslService::CreateContext, "CreateContext"},
@@ -578,11 +581,24 @@ public:
             {6, nullptr, "FlushSessionCache"},
             {7, nullptr, "SetDebugOption"},
             {8, nullptr, "GetDebugOption"},
-            {8, nullptr, "ClearTls12FallbackFlag"},
+            {9, nullptr, "ClearTls12FallbackFlag"},
+            {10, nullptr, "GetCertificateByIndex"},
+            {11, nullptr, "GetTrustedCertificateCount"},
+        };
+        static const FunctionInfo system_functions[] = {
+            {100, nullptr, "CreateContextForSystem"},
+            {101, nullptr, "SetThreadCoreMask"},
+            {102, nullptr, "GetThreadCoreMask"},
+            {103, nullptr, "VerifySignature"},
+            {104, nullptr, "ResetCoverageCounters"},
+            {105, nullptr, "DumpCoverageProfile"},
         };
         // clang-format on
 
         RegisterHandlers(functions);
+        if (is_system) {
+            RegisterHandlers(system_functions);
+        }
     }
 
 private:
@@ -631,149 +647,11 @@ private:
     CertStore cert_store;
 };
 
-class ISslServiceForSystem final : public ServiceFramework<ISslServiceForSystem> {
-    public:
-        explicit ISslServiceForSystem(Core::System& system_) : ServiceFramework{system_, "ssl:s"} {
-            // clang-format off
-            static const FunctionInfo functions[] = {
-                {0, D<&ISslServiceForSystem::CreateContext>, "CreateContext"},
-                {1, D<&ISslServiceForSystem::GetContextCount>, "GetContextCount"},
-                {2, D<&ISslServiceForSystem::GetCertificates>, "GetCertificates"},
-                {3, D<&ISslServiceForSystem::GetCertificateBufSize>, "GetCertificateBufSize"},
-                {4, D<&ISslServiceForSystem::DebugIoctl>, "DebugIoctl"},
-                {5, D<&ISslServiceForSystem::SetInterfaceVersion>, "SetInterfaceVersion"},
-                {6, D<&ISslServiceForSystem::FlushSessionCache>, "FlushSessionCache"},
-                {7, D<&ISslServiceForSystem::SetDebugOption>, "SetDebugOption"},
-                {8, D<&ISslServiceForSystem::GetDebugOption>, "GetDebugOption"},
-                {9, D<&ISslServiceForSystem::ClearTls12FallbackFlag>, "ClearTls12FallbackFlag"},
-                {100, D<&ISslServiceForSystem::CreateContextForSystem>, "CreateContextForSystem"},
-                {101, D<&ISslServiceForSystem::SetThreadCoreMask>, "SetThreadCoreMask"},
-                {102, D<&ISslServiceForSystem::GetThreadCoreMask>, "GetThreadCoreMask"},
-                {103, D<&ISslServiceForSystem::VerifySignature>, "VerifySignature"}
-            };
-            // clang-format on
-
-            RegisterHandlers(functions);
-        };
-
-        Result CreateContext() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result GetContextCount() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result GetCertificates() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result GetCertificateBufSize() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result DebugIoctl() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result SetInterfaceVersion() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result FlushSessionCache() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result SetDebugOption() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result GetDebugOption() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result ClearTls12FallbackFlag() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result CreateContextForSystem() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result SetThreadCoreMask() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result GetThreadCoreMask() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-
-        Result VerifySignature() {
-            LOG_DEBUG(Service_SSL, "(STUBBED) called.");
-
-            // TODO (jarrodnorwell)
-
-            return ResultSuccess;
-        };
-    };
-
 void LoopProcess(Core::System& system) {
     auto server_manager = std::make_unique<ServerManager>(system);
 
-    server_manager->RegisterNamedService("ssl", std::make_shared<ISslService>(system));
-    server_manager->RegisterNamedService("ssl:s", std::make_shared<ISslServiceForSystem>(system));
+    server_manager->RegisterNamedService("ssl", std::make_shared<ISslService>(system, "ssl", false));
+    server_manager->RegisterNamedService("ssl:s", std::make_shared<ISslService>(system, "ssl:s", true));
     ServerManager::RunServer(std::move(server_manager));
 }
 
