@@ -396,7 +396,10 @@ void Scheduler::InvalidateState() {
 }
 
 void Scheduler::EndPendingOperations() {
-    query_cache->CounterReset(VideoCommon::QueryType::ZPassPixelCount64);
+    // Host queries can't span command buffers: close the samples counter, keeping what it has
+    // accumulated. Resetting it lost the samples of guest queries spanning a submission, which
+    // frequent submissions make common (Xenoblade Chronicles 2's sky flashes).
+    query_cache->CounterClose(VideoCommon::QueryType::ZPassPixelCount64);
     EndRenderPass();
 }
 
