@@ -4,7 +4,9 @@
 // SPDX-FileCopyrightText: Copyright 2018 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include <array>
 #include <cctype>
+#include <cstring>
 #include <locale>
 #include "common/hex_util.h"
 #include "common/logging.h"
@@ -87,7 +89,29 @@ void StandardVmCallbacks::MemoryWriteUnsafe(VAddr address, const void* data, u64
         return;
     }
 
-    if (process->GetMemory().WriteBlock(address, data, size)) {
+    // Cheats write the same values over and over (12 times a second): a write that changes nothing
+    // has nothing to write or to invalidate
+    std::array<u8, 16> current{};
+    if (size <= current.size() && process->GetMemory().ReadBlock(address, current.data(), size) &&
+        std::memcmp(current.data(), data, size) == 0) {
+        return;
+    }
+    if (!process->GetMemory().WriteBlock(address, data, size)) {
+        return;
+    }
+    // Only code needs the translated code dropped. Invalidating on every data write halted every
+    // emulated core and searched its translated blocks, at a cost that grows as more code is
+    // translated (Tears of the Kingdom with cheats: ~480 invalidations a second, the frame rate
+    // falling over the session).
+    const auto is_executable = [process](VAddr page_address) {
+        Kernel::KMemoryInfo info{};
+        Kernel::Svc::PageInfo page_info{};
+        if (process->GetPageTable().QueryInfo(&info, &page_info, page_address) != ResultSuccess) {
+            return true;
+        }
+        return True(info.GetPermission() & Kernel::KMemoryPermission::UserExecute);
+    };
+    if (is_executable(address) || is_executable(address + size - 1)) {
         Core::InvalidateInstructionCacheRange(process, address, size);
     }
 }
