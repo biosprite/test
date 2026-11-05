@@ -381,11 +381,15 @@ ImageViewId TextureCache<P>::ResolveFeedbackLoop(ImageViewId view_id) {
 template <class P>
 ImageViewId TextureCache<P>::SnapshotImageView(ImageViewId view_id) {
     const ImageId image_id = slot_image_views[view_id].image_id;
-    {
-        const ImageBase& image = slot_images[image_id];
-        if (image.info.num_samples > 1 || True(image.flags & ImageFlagBits::Rescaled)) {
-            return view_id;
-        }
+    if (slot_images[image_id].info.num_samples > 1) {
+        return view_id;
+    }
+    // A rescaled image gets a rescaled snapshot: one taken while the scale differed is replaced
+    const bool is_rescaled = True(slot_images[image_id].flags & ImageFlagBits::Rescaled);
+    if (const auto old = feedback_snapshots.find(image_id);
+        old != feedback_snapshots.end() &&
+        True(slot_images[old->second.image_id].flags & ImageFlagBits::Rescaled) != is_rescaled) {
+        DeleteFeedbackSnapshot(image_id);
     }
     auto [it, is_new] = feedback_snapshots.try_emplace(image_id);
     if (is_new) {
@@ -395,7 +399,14 @@ ImageViewId TextureCache<P>::SnapshotImageView(ImageViewId view_id) {
         const VAddr cpu_addr = image.cpu_addr;
         it->second.image_id = slot_images.insert(runtime, info, gpu_addr, cpu_addr);
         it->second.epoch = 0;
-        runtime.TransitionImageLayout(slot_images[it->second.image_id]);
+        Image& new_snapshot = slot_images[it->second.image_id];
+        runtime.TransitionImageLayout(new_snapshot);
+        // (Before any view of it exists: the views then use the scaled image. Its contents are
+        // overwritten by the copy below, so nothing is carried over.)
+        if (is_rescaled && !new_snapshot.ScaleUp(true)) {
+            DeleteFeedbackSnapshot(image_id);
+            return view_id;
+        }
     }
     const ImageId snapshot_id = it->second.image_id;
     Image& image = slot_images[image_id];
@@ -413,18 +424,27 @@ ImageViewId TextureCache<P>::SnapshotImageView(ImageViewId view_id) {
     it->second.epoch = feedback_epoch;
     const SubresourceRange& range = view_info.range;
     boost::container::small_vector<ImageCopy, 16> copies;
+    const auto& resolution = Settings::values.resolution_info;
     for (s32 level = range.base.level; level < range.base.level + range.extent.levels; ++level) {
         const SubresourceLayers layers{
             .base_level = level,
             .base_layer = range.base.layer,
             .num_layers = range.extent.layers,
         };
+        Extent3D extent = MipSize(image.info.size, static_cast<u32>(level));
+        if (is_rescaled) {
+            // Both images hold their contents at the scaled size
+            extent.width = resolution.ScaleUp(extent.width);
+            if (image.info.type == ImageType::e2D) {
+                extent.height = resolution.ScaleUp(extent.height);
+            }
+        }
         copies.push_back(ImageCopy{
             .src_subresource = layers,
             .dst_subresource = layers,
             .src_offset = {},
             .dst_offset = {},
-            .extent = MipSize(image.info.size, static_cast<u32>(level)),
+            .extent = extent,
         });
     }
     runtime.CopyImage(snapshot, image, copies);
