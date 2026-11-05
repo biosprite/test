@@ -507,9 +507,6 @@ bool GraphicsPipeline::ConfigureImpl(bool is_indexed) {
     if constexpr (Spec::enabled_stages[1]) {
         bind_stage_info(1);
     }
-    if (uses_host_viewport) {
-        host_viewport_words = GetHostViewport0(device, regs, texture_cache.IsRescaling());
-    }
     if constexpr (Spec::enabled_stages[2]) {
         bind_stage_info(2);
     }
@@ -569,6 +566,12 @@ bool GraphicsPipeline::ConfigureImpl(bool is_indexed) {
         buffer_cache.any_buffer_uploaded = false;
     }
     texture_cache.UpdateRenderTargets(false);
+    // After the render targets are updated: IsRescaling describes this draw's targets only from
+    // here on. Before, a pass right after a draw to unscaled targets got the 1x viewport while
+    // gl_FragCoord is scaled, and full-screen passes came out at 1x in the top left corner.
+    if (uses_host_viewport) {
+        host_viewport_words = GetHostViewport0(device, regs, texture_cache.IsRescaling());
+    }
     texture_cache.CheckFeedbackLoop(std::span<const VideoCommon::ImageViewInOut>{views.data(),
                                                                                  views.size()});
     // Textures that the draw also writes as color targets sample a copy taken before it
