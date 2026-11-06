@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include <chrono>
-#include <cstdint>
 #include <filesystem>
 #include <QRadioButton>
 #include <fstream>
@@ -333,7 +331,7 @@ void UpdateDialog::Download() {
 bool UpdateDialog::downloadFile(
     std::string& write_data, const std::string &url, std::optional<std::filesystem::path> path,
     QtCommon::Frontend::QtProgressDialog *progress) {
-    std::function<bool(std::string_view, intptr_t)> on_data;
+    std::function<bool(std::string_view)> on_data;
 
     std::ofstream file;
     std::string filename;
@@ -370,7 +368,7 @@ bool UpdateDialog::downloadFile(
         };
     }
 
-    auto callback = [&progress](const hydro::DownloadState& state) {
+    auto callback = [&progress, &on_data](const hydro::DownloadState& state) {
         if (!on_data(state.buffer))
             return false;
 
@@ -407,21 +405,21 @@ bool UpdateDialog::downloadFile(
             tr("Download cancelled"),
             tr("Download was cancelled by the user."));
         return false;
-    } else if (res.error) {
-        LOG_ERROR(Frontend, "URL {} returned error {}", url, res.error.message);
+    } else if (!res) {
+        LOG_ERROR(Frontend, "URL {} returned error {}", url, res.error());
 
         QtCommon::Frontend::Critical(
             tr("Failed to download file"),
             tr("URL %1 returned error %2.")
-                .arg(QString::fromStdString(url), QString::fromStdString(res.error.message)));
+                .arg(QString::fromStdString(url), QString::fromStdString(std::format("{}", res.error()))));
         return false;
-    } else if (res.status_code < 200 || res.status_code >= 300) {
-        LOG_ERROR(Frontend, "URL {} returned status {}", url, res.status_code);
+    } else if (res->status_code < hydro::Status::Ok || res->status_code >= hydro::Status::MultipleChoices) {
+        LOG_ERROR(Frontend, "URL {} returned status {}", url, std::to_underlying(res->status_code));
 
         QtCommon::Frontend::Critical(
             tr("Failed to download file"),
             tr("URL %1 returned status code %2.")
-                .arg(QString::fromStdString(url), QString::number(res.status_code)));
+                .arg(QString::fromStdString(url), QString::number(std::to_underlying(res->status_code))));
         return false;
     }
 
