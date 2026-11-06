@@ -5,12 +5,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <array>
-#include <chrono>
 #include <format>
 #include <mutex>
 #include <string>
-
-#include <cpr/cpr.h>
 
 #ifdef YUZU_BUNDLED_OPENSSL
 #include <openssl/cert.h>
@@ -19,6 +16,8 @@
 #include "common/logging.h"
 #include "web_service/web_backend.h"
 #include "web_service/web_result.h"
+
+import hydrocarbon;
 
 namespace WebService {
 
@@ -71,59 +70,51 @@ struct Client::Impl {
                              const std::string& data, const std::string& accept,
                              const std::string& jwt_ = "", const std::string& username_ = "",
                              const std::string& token_ = "") {
-        cpr::SslOptions opts;
+        hydro::RequestOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
-        opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
+        opts.connect.cert = std::string{kCert};
 #endif
 
-        cpr::Header params{};
-
         if (!jwt_.empty()) {
-            params = {
-                {std::string("Authorization"), std::format("Bearer {}", jwt_)},
-            };
+            opts.headers.add("Authorization", std::format("Bearer {}", jwt_));
         } else if (!username_.empty()) {
-            params = {
-                {std::string("x-username"), username_},
-                {std::string("x-token"), token_},
-            };
+            opts.headers.add("x-username", username_);
+            opts.headers.add("x-token", token_);
         }
 
-        params.emplace("api-version",
-                       std::string(API_VERSION.begin(), API_VERSION.end()));
+        opts.headers.add("api-version", std::string(API_VERSION.begin(), API_VERSION.end()));
         if (method != "GET") {
-            params.emplace("Content-Type", "application/json");
+            opts.headers.add("Content-Type", "application/json");
         }
 
-        // TODO: net.cpp this
-        auto result = cpr::Post(cpr::Url(std::format("{}{}", host, path)), cpr::Body(data), params,
-                                opts, cpr::Timeout{std::chrono::seconds{30}},
-                                cpr::ConnectTimeout{std::chrono::seconds{10}});
+        opts.body = data;
 
-        if (result.error) {
-            LOG_ERROR(WebService, "{} to {} returned error {}", method, host + path, result.error.message);
+        auto res = hydro::post(std::format("{}{}", host, path), opts);
+
+        if (!res) {
+            LOG_ERROR(WebService, "{} to {} returned error {}", method, host + path, res.error());
             return WebResult{WebResult::Code::LibError, "Null response", ""};
         }
 
-        if (result.status_code >= 400) {
+        if (res->status_code >= hydro::Status::BadRequest) {
             LOG_ERROR(WebService, "{} to {} returned error status code: {}", method, host + path,
-                      result.status_code);
-            return WebResult{WebResult::Code::HttpError, std::to_string(result.status_code), ""};
+                      std::to_underlying(res->status_code));
+            return WebResult{WebResult::Code::HttpError, std::to_string(std::to_underlying(res->status_code)), ""};
         }
 
-        auto content_type = result.header.find("content-type");
+        auto content_type = res->headers.get("content-type");
 
-        if (content_type == result.header.end()) {
+        if (!content_type) {
             LOG_ERROR(WebService, "{} to {} returned no content", method, host + path);
             return WebResult{WebResult::Code::WrongContent, "", ""};
         }
 
-        if (content_type->second.find(accept) == std::string::npos) {
+        if (content_type->find(accept) == std::string::npos) {
             LOG_ERROR(WebService, "{} to {} returned wrong content: {}", method, host + path,
-                      content_type->second);
+                      content_type.value());
             return WebResult{WebResult::Code::WrongContent, "Wrong content", ""};
         }
-        return WebResult{WebResult::Code::Success, "", result.text};
+        return WebResult{WebResult::Code::Success, "", res->body};
     }
 
     // Retrieve a new JWT from given username and token

@@ -238,7 +238,7 @@ if (BOOST_NO_HEADERS)
 else()
     target_link_libraries(common PUBLIC Boost::headers)
 endif()
-target_link_libraries(common PRIVATE OpenSSL::SSL cpr::cpr jacinth::jacinth)
+target_link_libraries(common PRIVATE OpenSSL::SSL hydro::carbon jacinth::jacinth)
 target_link_libraries(common PUBLIC Boost::filesystem Boost::context)
 
 if (lz4_ADDED)

@@ -256,15 +256,21 @@ else()
     endif()
 endif()
 
+# These externals need their compiler flags to match the rest of the world
+# C++20 modules are sad sometimes
+
 # Jacinth (json)
-# needs its compiler flags to match the rest of the world since it's a module
 AddJsonPackage(jacinth)
+
+# Hydrocarbon (http)
+AddJsonPackage(hydrocarbon)
+
 
 # enable POSIX threads
 if (jacinth_ADDED)
     target_link_libraries(jacinth PRIVATE Threads::Threads)
 else()
-    target_link_libraries(jacinth::jacinth PRIVATE Threads::Threads)
+    target_link_libraries(jacinth::jacinth INTERFACE Threads::Threads)
 endif()
 
 add_subdirectory(common)

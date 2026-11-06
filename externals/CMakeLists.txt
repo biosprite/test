@@ -67,26 +67,6 @@ if (WIN32 AND NOT TARGET LLVM::Demangle)
     add_library(LLVM::Demangle ALIAS demangle)
 endif()
 
-# curl (http)
-# disable protocols we don't need
-foreach(proto AWS DICT FILE GOPHER IMAP LDAP MQTT IPFS SMTP TELNET TFTP)
-    set(CURL_DISABLE_${proto} ON)
-endforeach()
-
-AddJsonPackage(curl)
-
-# cpr (http)
-# cpr's version detection is broken when we use our own bundled packages
-set(CURL_VERSION_STRING "8.22.0")
-find_package(OpenSSL REQUIRED)
-message(STATUS "OpenSSL FOUND: ${OpenSSL_FOUND}")
-AddJsonPackage(cpr)
-
-# Amazing, absolutely incredible
-if (cpr_ADDED AND CXX_CLANG)
-    target_compile_options(cpr PRIVATE -w)
-endif()
-
 if (YUZU_STATIC_ROOM)
     return()
 endif()

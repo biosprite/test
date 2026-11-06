@@ -4,16 +4,12 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
-#include <cpr/callback.h>
-#include <cpr/cpr.h>
 #include <QRadioButton>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/split.hpp>
-#include <cpr/cprtypes.h>
-#include <cpr/response.h>
 #include "common/fs/path_util.h"
 #include "common/logging.h"
 #include "qt_common/abstract/frontend.h"
@@ -34,6 +30,8 @@
 #include <QProcess>
 
 #undef GetSaveFileName
+
+import hydrocarbon;
 
 static std::string sha256_hash(EVP_MD_CTX* ctx, const std::string& input) {
     char output[65];
@@ -343,7 +341,7 @@ bool UpdateDialog::downloadFile(
         file = std::ofstream(path->string(), std::ios::out | std::ios::binary);
 
         // write file in chunks
-        on_data = [&write_data, filename, &file](std::string_view t_data, intptr_t) {
+        on_data = [&write_data, filename, &file](std::string_view t_data) {
             write_data += t_data;
 
             try {
@@ -362,27 +360,30 @@ bool UpdateDialog::downloadFile(
     } else {
         LOG_INFO(Frontend, "Downloading {}", url);
 
-        on_data = [&write_data](std::string_view t_data, intptr_t) {
+        on_data = [&write_data](std::string_view t_data) {
             write_data += t_data;
             return true;
         };
     }
 
-    auto callback = [&progress](size_t total, size_t now, size_t, size_t, intptr_t) {
+    auto callback = [&progress](const hydro::DownloadState& state) {
+        if (!on_data(state.buffer))
+            return false;
+
         QGuiApplication::processEvents();
-        if (total > 0)
-            progress->setValue(int((now * 100) / total));
+        if (state.content_length > 0)
+            progress->setValue(int((state.bytes_received * 100) / state.content_length));
         return !progress->wasCanceled();
     };
 
-    cpr::SslOptions opts;
+    hydro::RequestOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
-    opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
+    opts.connect.cert = std::string{kCert};
 #endif
 
-    const auto res =
-        cpr::Get(cpr::Url{url}, cpr::ProgressCallback(callback), cpr::WriteCallback{on_data}, opts,
-                 cpr::ConnectTimeout{std::chrono::seconds{10}});
+    opts.callback = callback;
+
+    auto res = hydro::get(url, opts);
 
     if (progress->wasCanceled()) {
         LOG_ERROR(Frontend, "URL {} download cancelled by user", url);

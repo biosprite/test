@@ -40,17 +40,6 @@
         "repo": "arun11299/cpp-jwt",
         "version": "7f24eb4c32"
     },
-    "cpr": {
-        "hash": "1b7b897807df6fab11e6b797d8dd8835d928b8f24dfee1fceda53af7d0b147d088312a4402eec4a06caa1e01b05488f81465a2c49bb6e5fbfbb52c1fa537602d",
-        "options": [
-            "CPR_USE_SYSTEM_CURL ON",
-            "CPR_CURL_USE_LIBPSL OFF",
-            "CPR_FORCE_OPENSSL_BACKEND",
-            "CPR_ENABLE_INSTALL OFF"
-        ],
-        "repo": "libcpr/cpr",
-        "version": "b2d95f260f"
-    },
     "cubeb": {
         "find_args": "CONFIG",
         "hash": "8a4bcb2f83ba590f52c66626e895304a73eb61928dbc57777e1822e55378e3568366f17f9da4b80036cc2ef4ea9723c32abf6e7d9bbe00fb03654f0991596ab0",
@@ -62,29 +51,6 @@
         ],
         "repo": "mozilla/cubeb",
         "version": "fa02160712"
-    },
-    "curl": {
-        "find_args": "COMPONENTS HTTP HTTPS",
-        "hash": "6284a82c908329fda4b5a8c2efe409bf477a1fd79a0b71c04ae62ee407a4f00751722e98c1b73c728b0b79ee032eed1d1903876783c48cc6be71166619c025a7",
-        "min_version": "7.64.0",
-        "options": [
-            "CURL_USE_LIBPSL OFF",
-            "BUILD_CURL_EXE OFF",
-            "CURL_USE_OPENSSL ON",
-            "CURL_USE_LIBSSH2 OFF",
-            "CURL_BROTLI OFF",
-            "USE_NGHTTP2 OFF",
-            "USE_LIBIDN2 OFF",
-            "CURL_DISABLE_INSTALL ON",
-            "CURL_ENABLE_EXPORT_TARGET OFF",
-            "BUILD_EXAMPLES OFF"
-        ],
-        "package": "CURL",
-        "patches": [
-            "0001-fix-try-compile-with-bundled-zlib-alias.patch"
-        ],
-        "repo": "curl/curl",
-        "version": "curl-8_22_0"
     },
     "discord-rpc": {
         "find_args": "MODULE",
@@ -131,10 +97,15 @@
         "repo": "FeralInteractive/gamemode",
         "version": "ce6fe122f3"
     },
+    "hydrocarbon": {
+        "hash": "759364ecbd8f74c1771aee0ca3c4e1f8c439d31b2bfca59794d4cd64ef5aa910999b2603c325fc084ec3cf46754e67e2433def50b6a652bf02fa2de94f7c96b6",
+        "repo": "crueter/hydrocarbon",
+        "version": "c50ede2f55"
+    },
     "jacinth": {
-        "hash": "30165e823dfe5fec090bb766e1123a0378502bcbc2e95806a5ae3b1b0f1aa83255c3850d0e3d04258ddc1d07e220351875074ebc845332f9d3b24c15f9668e01",
+        "hash": "bba5f830724013b334043b0fc783ced7e478c8d2691d2ee6dafc92ce5df4866b2d656a1ee5ffe3e4b75d11e4ae3a4dc86b7578f9a73c438909fd54775540e6af",
         "repo": "crueter/jacinth",
-        "version": "5a727972bb"
+        "version": "0.1.0"
     },
     "lagoon": {
         "hash": "b9380f99c6effaeccc6d8f81d4942e852c11ad28613df637e155451556ae5826f93765bee57a5c87a9740d2bd1db463ad0f55a947772fe9d57eeabae3efa373e",

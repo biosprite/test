@@ -1,14 +1,11 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-#include <iostream>
 #include <optional>
 
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/replace.hpp>
 #include <boost/algorithm/string/split.hpp>
-#include <cpr/api.h>
-#include <cpr/cpr.h>
 
 #include "common/scm_rev.h"
 #include "net.h"
@@ -25,11 +22,12 @@
 #endif
 
 import jacinth;
+import hydrocarbon;
 
 namespace Common::Net {
 
-static constexpr auto DefaultTimeout = std::chrono::seconds{30};
-static constexpr auto DefaultConnectTimeout = std::chrono::seconds{10};
+// static constexpr auto DefaultTimeout = std::chrono::seconds{30};
+// static constexpr auto DefaultConnectTimeout = std::chrono::seconds{10};
 
 std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
     // TODO(crueter): Need better handling for this as a whole.
@@ -105,23 +103,22 @@ std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
 }
 
 std::optional<std::string> MakeRequest(const std::string& url) {
-    cpr::SslOptions opts;
+    hydro::RequestOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
-    opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
+    opts.connect.cert = std::string{kCert};
 #endif
 
-    cpr::Response res = cpr::Get(cpr::Url{url}, opts, cpr::Timeout{DefaultTimeout},
-                                 cpr::ConnectTimeout{DefaultConnectTimeout});
+    auto res = hydro::get(url, opts);
 
-    if (res.error) {
-        LOG_ERROR(Frontend, "Failed to download {}: {}", url, res.error.message);
+    if (!res) {
+        LOG_ERROR(Frontend, "Failed to download {}: {}", url, res.error());
         return std::nullopt;
-    } else if (res.status_code < 200 || res.status_code >= 300) {
-        LOG_ERROR(Frontend, "Received status code {} for {}", res.status_code, url);
+    } else if (res->status_code < hydro::Status::Ok || res->status_code >= hydro::Status::MultipleChoices) {
+        LOG_ERROR(Frontend, "Received status code {} for {}", std::to_underlying(res->status_code), url);
         return std::nullopt;
     }
 
-    return res.text;
+    return res->body;
 }
 
 std::optional<std::string> MakeRequest(const std::string_view url) {
@@ -181,19 +178,19 @@ std::vector<Release> GetReleasesFromJson(const std::string& body) {
 }
 
 bool HeadRequest(const std::string& url) {
-    cpr::SslOptions opts;
+    // TODO: add timeouts
+    hydro::RequestOptions opts;
 #ifdef YUZU_BUNDLED_OPENSSL
-    opts = cpr::Ssl(cpr::ssl::CaInfoBlob{std::string{kCert}});
+    opts.connect.cert = std::string{kCert};
 #endif
 
-    cpr::Response res = cpr::Get(cpr::Url{url}, opts, cpr::Timeout{DefaultTimeout},
-                                 cpr::ConnectTimeout{DefaultConnectTimeout});
+    auto res = hydro::head(url, opts);
 
-    if (res.error) {
-        LOG_ERROR(Frontend, "Failed to download {}: {}", url, res.error.message);
+    if (!res) {
+        LOG_ERROR(Frontend, "Failed to download {}: {}", url, res.error());
         return false;
-    } else if (res.status_code < 200 || res.status_code >= 300) {
-        LOG_ERROR(Frontend, "Received status code {} for {}", res.status_code, url);
+    } else if (res->status_code < hydro::Status::Ok || res->status_code >= hydro::Status::MultipleChoices) {
+        LOG_ERROR(Frontend, "Received status code {} for {}", std::to_underlying(res->status_code), url);
         return false;
     }
 
