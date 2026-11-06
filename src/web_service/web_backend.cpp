@@ -8,6 +8,7 @@
 #include <format>
 #include <mutex>
 #include <string>
+#include <utility>
 
 #ifdef YUZU_BUNDLED_OPENSSL
 #include <openssl/cert.h>
