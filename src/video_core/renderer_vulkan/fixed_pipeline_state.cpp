@@ -366,6 +366,23 @@ void FixedPipelineState::DynamicState::Refresh2(const Maxwell& regs,
     depth_bias_enable.Assign(enabled_lut[POLYGON_OFFSET_ENABLE_LUT[topology_index]] != 0 ? 1 : 0);
 }
 
+DepthClampClip MaxwellDepthClampClip(const Maxwell& regs, bool has_depth_clip_enable) {
+    using GeometryClip = Maxwell::ViewportClipControl::GeometryClip;
+    const auto& control = regs.viewport_clip_control;
+    // (The clip modes that clip in z, as Eden has always clipped them)
+    const bool clips_z = control.geometry_clip == GeometryClip::Passthrough ||
+                         control.geometry_clip == GeometryClip::FrustumXYZ ||
+                         control.geometry_clip == GeometryClip::FrustumZ;
+    if (!has_depth_clip_enable) {
+        return {.clamp = !clips_z, .clip = clips_z};
+    }
+    // Clamped as the pixel z bits ask (Super Smash Bros. Ultimate asks for clip and clamp on
+    // every draw: its background broke on drivers that don't clamp unasked), clipped as before
+    // (Tears of the Kingdom's sky needs its clipping)
+    const bool clamp = control.pixel_min_z != 0 || control.pixel_max_z != 0;
+    return {.clamp = clamp, .clip = clips_z};
+}
+
 void FixedPipelineState::DynamicState::Refresh3(const Maxwell& regs,
                                                 const DynamicFeatures& features) {
     if (!features.has_dynamic_state3_logic_op_enable) {
@@ -376,12 +393,9 @@ void FixedPipelineState::DynamicState::Refresh3(const Maxwell& regs,
     // the pipeline's value rather than the dynamic one. A pipeline always created with clamp on
     // lost near/far clipping on every draw (Tears of the Kingdom's sky with EDS3 on Windows,
     // NVIDIA and AMD). Baking the same per-draw value keeps both in agreement.
-    depth_clamp_disabled.Assign(regs.viewport_clip_control.geometry_clip ==
-                                    Maxwell::ViewportClipControl::GeometryClip::Passthrough ||
-                                regs.viewport_clip_control.geometry_clip ==
-                                    Maxwell::ViewportClipControl::GeometryClip::FrustumXYZ ||
-                                regs.viewport_clip_control.geometry_clip ==
-                                    Maxwell::ViewportClipControl::GeometryClip::FrustumZ);
+    const auto depth = MaxwellDepthClampClip(regs, features.has_depth_clip_enable);
+    depth_clamp_disabled.Assign(depth.clamp ? 0 : 1);
+    depth_clip_disabled.Assign(depth.clip ? 0 : 1);
     if (!features.has_dynamic_state3_line_stipple_enable) {
         line_stipple_enable.Assign(regs.line_stipple_enable);
     }
