@@ -98,9 +98,9 @@
         "version": "ce6fe122f3"
     },
     "hydrocarbon": {
-        "hash": "759364ecbd8f74c1771aee0ca3c4e1f8c439d31b2bfca59794d4cd64ef5aa910999b2603c325fc084ec3cf46754e67e2433def50b6a652bf02fa2de94f7c96b6",
+        "hash": "fad3bfe021c6efff3316de571540f298ff44ca8d50e0ba2c3c420173f20d507b03fc1f20b56083cda1a265cca5cfac6ef6370b67a7babef56261899d9ec3ddaa",
         "repo": "crueter/hydrocarbon",
-        "version": "c50ede2f55"
+        "version": "812cde313b"
     },
     "jacinth": {
         "hash": "bba5f830724013b334043b0fc783ced7e478c8d2691d2ee6dafc92ce5df4866b2d656a1ee5ffe3e4b75d11e4ae3a4dc86b7578f9a73c438909fd54775540e6af",

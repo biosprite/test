@@ -5,11 +5,15 @@
 #include <cstdint>
 #include <filesystem>
 #include <QRadioButton>
+#include <fstream>
+
 #include <QSaveFile>
 #include <QStandardPaths>
+
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/join.hpp>
 #include <boost/algorithm/string/split.hpp>
+
 #include "common/fs/path_util.h"
 #include "common/logging.h"
 #include "qt_common/abstract/frontend.h"
