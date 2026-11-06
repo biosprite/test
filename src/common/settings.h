@@ -654,10 +654,6 @@ struct Values {
     SwitchableSetting<bool> emulate_bgr565{linkage, false, "emulate_bgr565",
                                             Category::RendererHacks};
 
-    // exact varying interpolation and same frame occlusion reads
-    SwitchableSetting<bool> cloud_sea_fixes{linkage, false, "cloud_sea_fixes",
-                                            Category::RendererHacks};
-
     SwitchableSetting<bool> use_asynchronous_shaders{linkage, false, "use_asynchronous_shaders",
                                                      Category::RendererHacks};
 

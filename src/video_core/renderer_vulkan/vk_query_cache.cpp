@@ -179,7 +179,6 @@ public:
                               use_precise ? VK_QUERY_CONTROL_PRECISE_BIT : 0);
         });
 
-        counted_since_reset = false;
         has_started = true;
     }
 
@@ -355,10 +354,6 @@ public:
         }
         if (!current_query) {
             new_query->flags |= VideoCommon::QueryFlagBits::IsFinalValueSynced;
-            if (!counted_since_reset && Settings::values.cloud_sea_fixes.GetValue()) {
-                // Nothing was counted since the last reset, the value is zero
-                new_query->flags |= VideoCommon::QueryFlagBits::IsValueKnown;
-            }
             return index;
         }
         new_query->start_bank_id = current_query->start_bank_id;
@@ -476,7 +471,6 @@ private:
     void ReserveHostQuery() {
         size_t new_slot = ReserveBankSlot();
         current_bank->AddReference(1);
-        counted_since_reset = true;
         num_slots_used++;
         if (current_query) {
             size_t bank_id = current_query->start_bank_id;
@@ -611,7 +605,6 @@ private:
     size_t first_accumulation_checkpoint{};
     size_t last_accumulation_checkpoint{};
     bool accumulation_since_last_sync{};
-    bool counted_since_reset{};
     VideoCommon::HostQueryBase* current_query;
     bool has_started{};
     std::mutex flush_guard;
@@ -1670,6 +1663,17 @@ void QueryCacheRuntime::SyncValues(std::span<SyncValuesType> values, VkBuffer ba
             impl->buffer_cache.MarkQueryRange(sync_val.address, static_cast<u32>(sync_val.size));
         }
     });
+    // Also write the values to guest memory right here: shaders can read them from the buffer
+    // before a deferred write reaches guest memory, and a copy from stale guest memory then
+    // culls things that are visible (the Xenoblade Chronicles 2 cloud sea). The buffer cache
+    // lock is already held, which InlineMemory expects.
+    if constexpr (SyncValuesType::GeneratesBaseBuffer) {
+        for (auto& val : values) {
+            impl->buffer_cache.InlineMemory(
+                val.address, val.size,
+                std::span<const u8>{reinterpret_cast<const u8*>(&val.value), val.size});
+        }
+    }
 
     VkBuffer src_buffer;
     [[maybe_unused]] StagingBufferRef ref;

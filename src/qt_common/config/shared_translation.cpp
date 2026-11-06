@@ -274,10 +274,6 @@ std::unique_ptr<TranslationMap> InitializeTranslations(QObject* parent) {
            tr("Enables access to previous buffer states.\nThis option may improve rendering "
               "quality and performance consistency in some games."));
     INSERT(Settings, fix_bloom_effects, tr("Fix bloom effects"), tr("Removes bloom in Burnout."));
-    INSERT(Settings, cloud_sea_fixes, tr("Cloud sea fixes (experimental)"),
-           tr("Exact varying interpolation and same-frame occlusion reads.\nFixes the cloud sea "
-              "in Xenoblade Chronicles 2 (wobble, one-frame pops).\nKnown to hang loading in some "
-              "games, see the toggle description."));
 
     // Renderer (Extensions)
     INSERT(Settings, dyna_state, tr("Extended Dynamic State"),

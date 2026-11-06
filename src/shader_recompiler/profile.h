@@ -15,6 +15,7 @@ enum class Stage : u32;
 struct Profile {
     u32 supported_spirv{0x00010000};
     bool unified_descriptor_binding{};
+    bool needs_depth_quantize{}; ///< Host lacks native D24: quantize sampled depth to 24-bit unorm
     bool support_descriptor_aliasing{};
     bool support_int8{};
     bool support_uniform_and_storage_buffer_8bit{};

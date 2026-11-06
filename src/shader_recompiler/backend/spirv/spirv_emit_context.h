@@ -43,6 +43,7 @@ struct TextureDefinition {
     u32 count;
     bool is_multisample;
     bool is_integer;
+    bool is_depth;
 };
 
 struct TextureBufferDefinition {

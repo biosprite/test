@@ -337,6 +337,25 @@ bool IsTextureInteger(EmitContext& ctx, const IR::TextureInstInfo& info) {
     return ctx.textures.at(info.descriptor_index).is_integer;
 }
 
+/// Quantizes a sampled depth value to the guest's 24-bit unorm precision. Hosts without native
+/// D24 store depth as float, which spreads precision differently and shows as a grid on surfaces
+/// seen at steep angles; the conversion matches Detail::DepthTo24 in the readback path.
+Id QuantizeDepthSample(EmitContext& ctx, Id color) {
+    Id depth{ctx.OpCompositeExtract(ctx.F32[1], color, 0U)};
+    const Id scale{ctx.Const(16777215.0f)};
+    const Id inv_scale{ctx.Const(1.0f / 16777215.0f)};
+    depth = ctx.OpFMul(ctx.F32[1], depth, scale);
+    depth = ctx.OpRoundEven(ctx.F32[1], depth);
+    depth = ctx.OpFMul(ctx.F32[1], depth, inv_scale);
+    return ctx.OpCompositeInsert(ctx.F32[4], depth, color, 0U);
+}
+
+/// Returns true when the sampled texture is depth and the host needs the quantization.
+bool NeedsDepthQuantize(EmitContext& ctx, const IR::TextureInstInfo& info) {
+    return ctx.profile.needs_depth_quantize && info.type != TextureType::Buffer &&
+           ctx.textures.at(info.descriptor_index).is_depth;
+}
+
 Id Decorate(EmitContext& ctx, IR::Inst* inst, Id sample) {
     const auto info{inst->Flags<IR::TextureInstInfo>()};
     if (info.relaxed_precision != 0) {
@@ -576,6 +595,9 @@ Id EmitImageSampleImplicitLod(EmitContext& ctx, IR::Inst* inst, const IR::Value&
                     &EmitContext::OpImageSampleExplicitLod, ctx, inst, result_type,
                     Texture(ctx, info, index), coords, operands.Mask(), operands.Span());
     }
+    if (!is_integer && NeedsDepthQuantize(ctx, info)) {
+        color = QuantizeDepthSample(ctx, color);
+    }
     return is_integer ? ctx.OpBitcast(ctx.F32[4], color) : color;
 }
 
@@ -589,6 +611,9 @@ Id EmitImageSampleExplicitLod(EmitContext& ctx, IR::Inst* inst, const IR::Value&
     Id result = Emit(&EmitContext::OpImageSparseSampleExplicitLod,
                      &EmitContext::OpImageSampleExplicitLod, ctx, inst, result_type,
                      Texture(ctx, info, index), coords, operands.Mask(), operands.Span());
+    if (!is_integer && NeedsDepthQuantize(ctx, info)) {
+        result = QuantizeDepthSample(ctx, result);
+    }
     return is_integer ? ctx.OpBitcast(ctx.F32[4], result) : result;
 }
 
@@ -667,9 +692,12 @@ Id EmitImageFetch(EmitContext& ctx, IR::Inst* inst, const IR::Value& index, Id c
         lod = Id{};
     }
     const ImageOperands operands(lod, ms);
-    const Id color{Emit(&EmitContext::OpImageSparseFetch, &EmitContext::OpImageFetch, ctx, inst,
-                        result_type, TextureImage(ctx, info, index), coords,
-                        operands.MaskOptional(), operands.Span())};
+    Id color{Emit(&EmitContext::OpImageSparseFetch, &EmitContext::OpImageFetch, ctx, inst,
+                  result_type, TextureImage(ctx, info, index), coords,
+                  operands.MaskOptional(), operands.Span())};
+    if (!is_integer && NeedsDepthQuantize(ctx, info)) {
+        color = QuantizeDepthSample(ctx, color);
+    }
     return is_integer ? ctx.OpBitcast(ctx.F32[4], color) : color;
 }
 

@@ -379,6 +379,7 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
     profile = Shader::Profile{
         .supported_spirv = device.SupportedSpirvVersion(),
         .unified_descriptor_binding = true,
+        .needs_depth_quantize = !device.SupportsD24DepthBuffer(),
         .support_descriptor_aliasing = device.IsDescriptorAliasingSupported(),
         .support_int8 = device.IsInt8Supported(),
         .support_uniform_and_storage_buffer_8bit =
@@ -476,11 +477,9 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .max_descriptor_set_samplers = device.GetMaxDescriptorSetSamplers(),
         // Hosts other than NVIDIA interpolate the varyings of huge clipped primitives less
         // precisely than the guest, see PositionVaryingPass
-        .support_barycentric_varyings = Settings::values.cloud_sea_fixes.GetValue() &&
-                                        driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+        .support_barycentric_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
                                         device.IsKhrFragmentShaderBarycentricSupported(),
-        .support_position_varyings = Settings::values.cloud_sea_fixes.GetValue() &&
-                                     driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY,
+        .support_position_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY,
         .max_descriptor_set_uniform_buffers = device.GetMaxDescriptorSetUniformBuffers(),
         .max_descriptor_set_uniform_buffers_dynamic = device.GetMaxDescriptorSetUniformBuffersDynamic(),
         .max_descriptor_set_storage_buffers = device.GetMaxDescriptorSetStorageBuffers(),
