@@ -75,6 +75,12 @@ public:
     /// Redraws the tab from its emulated controller after the engine reloaded it
     void RefreshFromController();
 
+    /// Use Any Controller as Joy-Cons: while this player plays as a single Joy-Con its mapping
+    /// is set automatically, and read-only here (with a note why)
+    [[nodiscard]] bool JoyConLocked() const {
+        return joycon_locked;
+    }
+
     /// In the automatic modes the tab hides the connection, device and motion choices
     void SetConnectionLocked(bool locked);
 
@@ -224,6 +230,9 @@ private:
     QPushButton* card_duplicate{};
     QPushButton* card_delete{};
     QLabel* card_status{};
+    QLabel* joycon_note{};
+    bool joycon_locked = false;
+    void ApplyJoyConLock();
     QTimer* card_timer{};
     std::string card_profile_key;
     QString card_profile_name;

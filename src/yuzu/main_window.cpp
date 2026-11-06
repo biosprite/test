@@ -2623,14 +2623,71 @@ std::string TurnStickSideways(const std::string& raw, bool right) {
     param.Set("axis_x", axis_y);
     param.Set("axis_y", axis_x);
     // Right: its x is the push's -y, its y the push's x. Left: its x is y, its y is -x.
-    param.Set("invert_x", right ? flip(invert_y) : invert_y);
-    param.Set("invert_y", right ? invert_x : flip(invert_x));
+    // (An SDL stick's y is read negated, after the axes are picked: SDL's y points down. So
+    // the new x, SDL's y as read, is already the push's -y, and the new y needs a flip of x;
+    // the left one the other way round.)
+    param.Set("invert_x", right ? invert_y : flip(invert_y));
+    param.Set("invert_y", right ? flip(invert_x) : invert_x);
+    // (The centre offsets follow their axes; each is minus the axis's resting value as read,
+    // and the swap reads each axis with the other's sign)
+    if (param.Has("offset_x") || param.Has("offset_y")) {
+        const float offset_x = param.Get("offset_x", 0.0f);
+        const float offset_y = param.Get("offset_y", 0.0f);
+        param.Set("offset_x", -offset_y);
+        param.Set("offset_y", -offset_x);
+    }
     return param.Serialize();
 }
 
+/// A stick binding the D-pad also moves (up, down, left, right: the D-pad buttons that push
+/// the stick that way); an empty D-pad leaves the stick as it is
+std::string StickWithDpad(const std::string& stick, const std::string& up,
+                          const std::string& down, const std::string& left,
+                          const std::string& right) {
+    if (up.empty() && down.empty() && left.empty() && right.empty()) {
+        return stick;
+    }
+    Common::ParamPackage param{{"engine", "analog_from_button"}};
+    param.Set("up", up);
+    param.Set("down", down);
+    param.Set("left", left);
+    param.Set("right", right);
+    if (!stick.empty()) {
+        param.Set("stick", stick);
+    }
+    return param.Serialize();
+}
+
+/// A player's bindings for a single Joy-Con held upright: the right one's stick is the left
+/// stick (the D-pad moves it too), L / ZL its SL / SR; the left one's SL / SR are R / ZR
+void BindUprightJoyCon(Settings::PlayerInput& set, bool right) {
+    using namespace Settings::NativeButton;
+    const auto pad = set.buttons;
+    auto& out = set.buttons;
+    if (right) {
+        out[RStick] = pad[LStick];
+        out[SLRight] = pad[L];
+        out[SRRight] = pad[ZL];
+        set.analogs[Settings::NativeAnalog::RStick] =
+            StickWithDpad(set.analogs[Settings::NativeAnalog::LStick], pad[DUp], pad[DDown],
+                          pad[DLeft], pad[DRight]);
+    } else {
+        out[SLLeft] = pad[R];
+        out[SRLeft] = pad[ZR];
+    }
+}
+
 /// A player's bindings for a single Joy-Con held sideways: face buttons by position, the
-/// shoulders to SL / SR, the left stick to its stick
+/// shoulders to SL / SR, the left stick to its stick (the D-pad moves it too), the motion
+/// turned to the Joy-Con's own axes (a game turns a sideways Joy-Con's stick and motion itself)
 void BindSidewaysJoyCon(Settings::PlayerInput& set, bool right) {
+    for (std::string& motion : set.motions) {
+        Common::ParamPackage param{motion};
+        if (param.Has("motion")) {
+            param.Set("turn", right ? 1 : -1);
+            motion = param.Serialize();
+        }
+    }
     using namespace Settings::NativeButton;
     const auto pad = set.buttons;
     auto& out = set.buttons;
@@ -2644,8 +2701,10 @@ void BindSidewaysJoyCon(Settings::PlayerInput& set, bool right) {
         out[SLRight] = pad[L];
         out[SRRight] = pad[R];
         out[RStick] = pad[LStick];
+        // (The D-pad as the player sees it: up pushes the turned stick as the stick's up does)
         set.analogs[Settings::NativeAnalog::RStick] =
-            TurnStickSideways(set.analogs[Settings::NativeAnalog::LStick], true);
+            StickWithDpad(TurnStickSideways(set.analogs[Settings::NativeAnalog::LStick], true),
+                          pad[DRight], pad[DLeft], pad[DUp], pad[DDown]);
     } else {
         // Turned a quarter the other way
         out[DLeft] = bottom;
@@ -2655,7 +2714,8 @@ void BindSidewaysJoyCon(Settings::PlayerInput& set, bool right) {
         out[SLLeft] = pad[L];
         out[SRLeft] = pad[R];
         set.analogs[Settings::NativeAnalog::LStick] =
-            TurnStickSideways(set.analogs[Settings::NativeAnalog::LStick], false);
+            StickWithDpad(TurnStickSideways(set.analogs[Settings::NativeAnalog::LStick], false),
+                          pad[DLeft], pad[DRight], pad[DDown], pad[DUp]);
     }
 }
 
@@ -3217,6 +3277,13 @@ void MainWindow::MergeConsoleProfileEdits(const std::array<Settings::PlayerInput
         const auto& b = before[i];
         // A device change is a controller swap (below), not an edit
         if (const auto device = sdl_device(a); device && device != sdl_device(b)) {
+            continue;
+        }
+        // A single Joy-Con's mapping is arranged from the set, not the set itself (its player
+        // tab is read-only meanwhile): nothing there is an edit
+        if (i < joycon_auto_set.size() && joycon_auto_set[i] &&
+            (*joycon_auto_set[i] == Settings::ControllerType::RightJoycon ||
+             *joycon_auto_set[i] == Settings::ControllerType::LeftJoycon)) {
             continue;
         }
         // Only mapping changes count as edits (connection and routing are the engine's). The
@@ -6031,9 +6098,11 @@ void MainWindow::ApplyConsoleControllerMode() {
     // put back), never a type set by hand.
     {
         std::optional<Core::HID::NpadStyleTag> supported;
+        bool horizontal = true;
         if (QtCommon::system && QtCommon::system->IsPoweredOn() &&
             Settings::values.console_joycon_auto.GetValue()) {
             supported = QtCommon::system->HIDCore().GetSupportedStyleTag();
+            horizontal = QtCommon::system->HIDCore().IsJoyHoldHorizontal();
         }
         for (int i = 0; i < static_cast<int>(players.size()) && i < 8; ++i) {
             auto& player = players[i];
@@ -6058,7 +6127,26 @@ void MainWindow::ApplyConsoleControllerMode() {
                     want = Settings::ControllerType::LeftJoycon;
                 }
             }
+            // A single Joy-Con is held as the game holds it: sideways or upright
+            const bool single = want == Settings::ControllerType::RightJoycon ||
+                                want == Settings::ControllerType::LeftJoycon;
+            const bool sideways = single && horizontal;
+            auto& was_sideways = joycon_auto_sideways[static_cast<std::size_t>(i)];
+            const auto say = [&](const QString& note) {
+                if (player.connected) {
+                    controller_hints.push_back(
+                        {QString{}, i, true, QDateTime::currentMSecsSinceEpoch(), false, note});
+                }
+            };
             if (want == player.controller_type) {
+                // (The game turned its Joy-Cons: the bindings follow on the routing pass)
+                if (set && single && was_sideways != sideways) {
+                    was_sideways = sideways;
+                    LOG_INFO(Frontend, "console-mode: P{} now holds its Joy-Con {}", i + 1,
+                             sideways ? "sideways" : "upright");
+                    say(sideways ? tr("P%1 plays as a sideways Joy-Con").arg(i + 1)
+                                 : tr("P%1 plays as an upright Joy-Con").arg(i + 1));
+                }
                 continue;
             }
             player.controller_type = want;
@@ -6066,21 +6154,35 @@ void MainWindow::ApplyConsoleControllerMode() {
             if (want == base) {
                 from.reset();
                 set.reset();
+                was_sideways = false;
                 LOG_INFO(Frontend, "console-mode: P{} back to a Pro Controller", i + 1);
+                say(tr("P%1 plays as a Pro Controller again").arg(i + 1));
                 continue;
             }
             from = base;
             set = want;
-            const bool single = want != Settings::ControllerType::DualJoyconDetached;
+            was_sideways = sideways;
             LOG_INFO(Frontend, "console-mode: P{} plays as {} (the game takes no Pro Controller)",
-                     i + 1, single ? "a sideways Joy-Con" : "Dual Joy-Cons");
-            if (player.connected) {
-                controller_hints.push_back(
-                    {QString{}, i, true, QDateTime::currentMSecsSinceEpoch(), false,
-                     single ? tr("P%1 plays as a sideways Joy-Con").arg(i + 1)
-                            : tr("P%1 plays as Dual Joy-Cons").arg(i + 1)});
+                     i + 1,
+                     !single    ? "Dual Joy-Cons"
+                     : sideways ? "a sideways Joy-Con"
+                                : "an upright Joy-Con");
+            say(!single    ? tr("P%1 plays as Dual Joy-Cons").arg(i + 1)
+                : sideways ? tr("P%1 plays as a sideways Joy-Con").arg(i + 1)
+                           : tr("P%1 plays as an upright Joy-Con").arg(i + 1));
+        }
+        // (For the player tabs: a single Joy-Con's mapping is the engine's)
+        std::array<int, 10> held{};
+        for (std::size_t i = 0; i < held.size(); ++i) {
+            const auto& set = joycon_auto_set[i];
+            if (set && (*set == Settings::ControllerType::RightJoycon ||
+                        *set == Settings::ControllerType::LeftJoycon)) {
+                held[i] = joycon_auto_sideways[i] ? 1 : 2;
             }
         }
+        auto& state = Common::GetControllerConsoleState();
+        std::scoped_lock lock{state.mutex};
+        state.joycon_held = held;
     }
 
     if (input_subsystem && console_profile) {
@@ -6260,19 +6362,26 @@ void MainWindow::ApplyConsoleControllerMode() {
                 }
             }
             auto& player = players[slot];
-            // A single sideways Joy-Con (set above): the buttons and stick arranged to fit
-            const bool sideways =
+            // A single Joy-Con (set above): the buttons and stick arranged to fit, sideways or
+            // upright as the game holds it
+            const bool single =
                 joycon_auto_set[static_cast<std::size_t>(slot)] &&
                 (player.controller_type == Settings::ControllerType::RightJoycon ||
                  player.controller_type == Settings::ControllerType::LeftJoycon);
-            if (sideways) {
-                BindSidewaysJoyCon(want,
-                                   player.controller_type == Settings::ControllerType::RightJoycon);
-            } else if (Settings::values.console_button_labels.GetValue() && !IsNintendoPad(id)) {
-                // Button Layout by label: the controller's A is the Switch's A
-                using namespace Settings::NativeButton;
-                std::swap(want.buttons[A], want.buttons[B]);
-                std::swap(want.buttons[X], want.buttons[Y]);
+            const bool right_joycon =
+                player.controller_type == Settings::ControllerType::RightJoycon;
+            if (single && joycon_auto_sideways[static_cast<std::size_t>(slot)]) {
+                BindSidewaysJoyCon(want, right_joycon);
+            } else {
+                if (Settings::values.console_button_labels.GetValue() && !IsNintendoPad(id)) {
+                    // Button Layout by label: the controller's A is the Switch's A
+                    using namespace Settings::NativeButton;
+                    std::swap(want.buttons[A], want.buttons[B]);
+                    std::swap(want.buttons[X], want.buttons[Y]);
+                }
+                if (single) {
+                    BindUprightJoyCon(want, right_joycon);
+                }
             }
             player.profile_name = want.profile_name;
             if (player.buttons != want.buttons || player.analogs != want.analogs ||

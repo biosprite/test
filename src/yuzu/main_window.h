@@ -716,6 +716,8 @@ private:
     /// type it set
     std::array<std::optional<Settings::ControllerType>, 10> joycon_auto_from{};
     std::array<std::optional<Settings::ControllerType>, 10> joycon_auto_set{};
+    /// A single Joy-Con set by it: held sideways (else upright), as the game holds it
+    std::array<bool, 10> joycon_auto_sideways{};
     /// Pause When a Controller Disconnects: since when each player waits (0 none), and the
     /// players a pause is for
     std::array<qint64, 10> waiting_since{};

@@ -470,6 +470,12 @@ void ConfigureInput::Initialize(InputCommon::InputSubsystem* input_subsystem,
         // The Controllers tab carries Console Mode in the automatic modes
         ui->handheldGroup->setVisible(!automatic);
         ui->connectedControllers->setVisible(!automatic);
+        // A player playing as a single Joy-Con: its mapping is the engine's (no Defaults/Clear)
+        if (auto* tab = qobject_cast<ConfigureInputPlayer*>(ui->consoleInputSettings->parent())) {
+            const bool locked = tab->JoyConLocked();
+            ui->buttonClearAll->setEnabled(!locked);
+            ui->buttonRestoreDefaults->setEnabled(!locked);
+        }
 
         if (generation == followed_generation) {
             return;

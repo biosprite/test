@@ -130,6 +130,14 @@ NpadStyleTag HIDCore::GetSupportedStyleTag() const {
     return supported_style_tag;
 }
 
+void HIDCore::SetJoyHoldHorizontal(bool horizontal) {
+    joy_hold_horizontal = horizontal;
+}
+
+bool HIDCore::IsJoyHoldHorizontal() const {
+    return joy_hold_horizontal;
+}
+
 s8 HIDCore::GetPlayerCount() const {
     s8 active_players = 0;
     for (std::size_t player_index = 0; player_index < available_controllers - 2; ++player_index) {

@@ -949,6 +949,62 @@ void ConfigureInputPlayer::ConnectPlayer(bool connected) {
 void ConfigureInputPlayer::RefreshFromController() {
     UpdateUI();
     UpdateInputDeviceCombobox();
+    ApplyJoyConLock();
+}
+
+void ConfigureInputPlayer::ApplyJoyConLock() {
+    int held = 0;
+    {
+        auto& state = Common::GetControllerConsoleState();
+        std::scoped_lock lock{state.mutex};
+        if (state.engine_active && player_index < state.joycon_held.size()) {
+            held = state.joycon_held[player_index];
+        }
+    }
+    const bool locked = held != 0;
+    const bool changed = locked != joycon_locked;
+    joycon_locked = locked;
+    for (auto* button : button_map) {
+        if (button) {
+            button->setEnabled(!locked);
+        }
+    }
+    for (std::size_t i = 0; i < analog_map_buttons.size(); ++i) {
+        for (auto* button : analog_map_buttons[i]) {
+            if (button) {
+                button->setEnabled(!locked);
+            }
+        }
+        for (QWidget* widget : std::initializer_list<QWidget*>{
+                 analog_map_modifier_button[i], analog_map_deadzone_slider[i],
+                 analog_map_modifier_slider[i], analog_map_range_spinbox[i]}) {
+            if (widget) {
+                widget->setEnabled(!locked);
+            }
+        }
+    }
+    // (Saving would keep the Joy-Con's arrangement as the player's own mapping)
+    if (card_save) {
+        card_save->setEnabled(!locked);
+        card_save_new->setEnabled(!locked);
+    }
+    if (joycon_note) {
+        joycon_note->setVisible(locked);
+        if (locked) {
+            joycon_note->setText(
+                (held == 1 ? tr("P%1 plays as a sideways Joy-Con for this game")
+                           : tr("P%1 plays as an upright Joy-Con for this game"))
+                    .arg(player_index + 1) +
+                tr(": its controls are set automatically. Pick a controller type to set them "
+                   "yourself."));
+        }
+    }
+    if (card_status) {
+        card_status->setVisible(!locked);
+    }
+    if (changed && !locked && profile_card && profile_card->isVisible()) {
+        UpdateProfileCard();
+    }
 }
 
 void ConfigureInputPlayer::SetConnectionLocked(bool locked) {
@@ -1098,6 +1154,7 @@ void ConfigureInputPlayer::SetConnectionLocked(bool locked) {
             card_timer->stop();
         }
     }
+    ApplyJoyConLock();
     ui->devicesGroup->setVisible(!locked);
     // The automatic modes bind motion themselves (the controller's own, or its real device's)
     ui->buttonMotionLeftGroup->setVisible(!locked);
@@ -1212,6 +1269,10 @@ void ConfigureInputPlayer::BuildProfileCard() {
     card_status = new QLabel(profile_card);
     card_status->setWordWrap(true);
     column->addWidget(card_status);
+    joycon_note = new QLabel(profile_card);
+    joycon_note->setWordWrap(true);
+    joycon_note->setVisible(false);
+    column->addWidget(joycon_note);
     // No taller than its rows: the drawing below gets the height
     profile_card->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
 
@@ -1508,6 +1569,9 @@ void ConfigureInputPlayer::UpdateInputDeviceCombobox() {
 }
 
 void ConfigureInputPlayer::RestoreDefaults() {
+    if (joycon_locked) {
+        return;
+    }
     // In the automatic modes the device list is hidden (and may say "Any"): the defaults are
     // those of the controller the bindings point at, or pointed at before Clear
     if (connection_locked) {
@@ -1561,6 +1625,9 @@ void ConfigureInputPlayer::RestoreMotions(const std::vector<Common::ParamPackage
 }
 
 void ConfigureInputPlayer::ClearAll() {
+    if (joycon_locked) {
+        return;
+    }
     // (The controller is remembered, for Defaults afterwards)
     if (const auto device = CurrentSdlDevice()) {
         locked_device = device;

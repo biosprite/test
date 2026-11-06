@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 
@@ -46,6 +47,10 @@ public:
 
     void SetSupportedStyleTag(NpadStyleTag style_tag);
     NpadStyleTag GetSupportedStyleTag() const;
+
+    /// How the running game holds a single Joy-Con: sideways (horizontal) or upright (the default)
+    void SetJoyHoldHorizontal(bool horizontal);
+    bool IsJoyHoldHorizontal() const;
 
     /// Counts the connected players from P1-P8
     s8 GetPlayerCount() const;
@@ -94,6 +99,7 @@ public:
     std::unique_ptr<EmulatedDevices> devices;
     Kernel::KernelCore& kernel;
     NpadStyleTag supported_style_tag{NpadStyleSet::All};
+    std::atomic<bool> joy_hold_horizontal{false};
     NpadIdType last_active_controller{NpadIdType::Handheld};
 };
 

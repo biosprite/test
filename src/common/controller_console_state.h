@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -84,6 +85,9 @@ struct ControllerConsoleState {
     std::set<unsigned> steam_hidden_models;
     /// Bumped when the engine reloads the emulated controllers: the player tabs refresh
     unsigned long long generation = 0;
+    /// Use Any Controller as Joy-Cons: each player playing as a single Joy-Con (0 no, 1 held
+    /// sideways, 2 upright). Its mapping is the engine's then: the player tab can't edit it.
+    std::array<int, 10> joycon_held{};
 };
 
 [[nodiscard]] inline ControllerConsoleState& GetControllerConsoleState() {
