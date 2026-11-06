@@ -265,12 +265,38 @@ AddJsonPackage(jacinth)
 # Hydrocarbon (http)
 AddJsonPackage(hydrocarbon)
 
+# Disable rtti, enable fwrapv, link POSIX threads
+macro(fix_modules target type)
+    if (MSVC)
+        set(flags /GR-)
+    else()
+        set(flags -fno-rtti -fwrapv)
+    endif()
+
+    target_link_libraries(${target} ${type} Threads::Threads)
+
+    # apply to imported modules
+    if (type STREQUAL INTERFACE)
+        set_property(TARGET ${target} PROPERTY
+            IMPORTED_CXX_MODULES_COMPILE_OPTIONS ${flags})
+    else()
+        # apply to compile target
+        target_compile_options(${target} ${type} ${flags})
+    endif()
+endmacro()
 
 # enable POSIX threads
 if (jacinth_ADDED)
-    target_link_libraries(jacinth PRIVATE Threads::Threads)
+    fix_modules(jacinth PRIVATE)
 else()
-    target_link_libraries(jacinth::jacinth INTERFACE Threads::Threads)
+    fix_modules(jacinth::jacinth INTERFACE)
+endif()
+
+# ditto, hydrocarbon
+if (hydrocarbon_ADDED)
+    fix_modules(hydrocarbon PRIVATE)
+else()
+    fix_modules(hydro::carbon INTERFACE)
 endif()
 
 add_subdirectory(common)

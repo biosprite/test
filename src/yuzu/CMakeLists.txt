@@ -403,7 +403,7 @@ elseif(WIN32)
     endif()
 endif()
 
-target_link_libraries(yuzu PRIVATE hydro::carbon)
+target_link_libraries(yuzu PRIVATE hydro::carbon jacinth::jacinth)
 target_link_libraries(yuzu PRIVATE common core input_common frontend_common network video_core qt_common)
 target_link_libraries(yuzu PRIVATE Boost::headers Qt6::Widgets Qt6::Charts Qt6::Concurrent)
 target_link_libraries(yuzu PRIVATE ${PLATFORM_LIBRARIES} Threads::Threads)
