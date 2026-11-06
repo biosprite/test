@@ -13,6 +13,7 @@
 #include <QKeyEvent>
 #include <QLayout>
 #include <QMenu>
+#include <QPointer>
 #include <QPushButton>
 #include <QScreen>
 #include <QTimer>
@@ -148,41 +149,67 @@ private:
         QFrame* card = centred ? AddCard(dialog, card_area) : nullptr;
         // Card: margins around the dialog's own size, buttons above its top right corner.
         // Full: the buttons in a strip at the top right of the screen.
-        const auto place = [dialog, layout, own, area, card_area, card, corner, strip,
-                            expand](bool full) {
-            if (full || !card) {
-                layout->setContentsMargins(own + QMargins(0, corner.isEmpty() ? 0 : strip, 0, 0));
-            } else {
-                layout->setContentsMargins(
-                    own + QMargins(card_area.left(), card_area.top(),
-                                   area.width() - card_area.right() - 1,
-                                   area.height() - card_area.bottom() - 1));
-            }
-            if (card) {
-                card->setVisible(!full);
-            }
-            if (expand) {
-                expand->setText(full ? tr("Shrink") : tr("Expand"));
-                expand->setToolTip(full ? tr("Back to its own size") : tr("Fill the screen"));
-                expand->adjustSize();
-            }
-            if (corner.isEmpty()) {
-                dialog->update();
+        // (The dialog's current layout each time, and guarded pointers: a message box rebuilds
+        // its layout on a style change, so AddCard's style sheet already deleted the one read
+        // above; the kept pointer crashed in QLayout::setContentsMargins)
+        QList<QPointer<QPushButton>> corner_buttons;
+        for (QPushButton* button : corner) {
+            corner_buttons.append(button);
+        }
+        const auto place = [dialog_ptr = QPointer<QWidget>{dialog}, own, area, card_area,
+                            card_ptr = QPointer<QFrame>{card}, corner_buttons, strip,
+                            expand_ptr = QPointer<QPushButton>{expand}](bool full) {
+            QWidget* const target = dialog_ptr.data();
+            QLayout* const target_layout = target ? target->layout() : nullptr;
+            if (!target_layout) {
                 return;
             }
-            int right = full || !card ? area.width() - 8 : card_area.right() + 1;
+            QFrame* const target_card = card_ptr.data();
+            QPushButton* const target_expand = expand_ptr.data();
+            QList<QPushButton*> buttons;
+            for (const QPointer<QPushButton>& button : corner_buttons) {
+                if (button) {
+                    buttons.append(button.data());
+                }
+            }
+            if (full || !target_card) {
+                target_layout->setContentsMargins(own +
+                                                  QMargins(0, buttons.isEmpty() ? 0 : strip, 0, 0));
+            } else {
+                target_layout->setContentsMargins(own +
+                                                  QMargins(card_area.left(), card_area.top(),
+                                                           area.width() - card_area.right() - 1,
+                                                           area.height() - card_area.bottom() - 1));
+            }
+            if (target_card) {
+                target_card->setVisible(!full);
+            }
+            if (target_expand) {
+                target_expand->setText(full ? tr("Shrink") : tr("Expand"));
+                target_expand->setToolTip(full ? tr("Back to its own size")
+                                               : tr("Fill the screen"));
+                target_expand->adjustSize();
+            }
+            if (buttons.isEmpty()) {
+                target->update();
+                return;
+            }
+            int right = full || !target_card ? area.width() - 8 : card_area.right() + 1;
             const int top =
-                full || !card ? 6 : (std::max)(6, card_area.top() - 14 - corner.first()->height() - 6);
-            for (auto it = corner.rbegin(); it != corner.rend(); ++it) {
+                full || !target_card
+                    ? 6
+                    : (std::max)(6, card_area.top() - 14 - buttons.first()->height() - 6);
+            for (auto it = buttons.rbegin(); it != buttons.rend(); ++it) {
                 (*it)->move(right - (*it)->width(), top);
                 (*it)->raise();
                 (*it)->show();
                 right -= (*it)->width() + 6;
             }
-            dialog->update();
+            target->update();
         };
         if (expand) {
             connect(expand, &QPushButton::clicked, dialog, [place, expand] {
+                // (The connection ends with the button, so expand is alive here)
                 const bool full = !expand->property("gamescope_full").toBool();
                 expand->setProperty("gamescope_full", full);
                 place(full);
