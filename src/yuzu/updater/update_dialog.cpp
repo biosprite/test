@@ -384,6 +384,7 @@ bool UpdateDialog::downloadFile(
     opts.connect.cert = std::string{kCert};
 #endif
 
+    opts.connect.connectionTimeout = std::chrono::milliseconds{10000};
     opts.callback = callback;
 
     auto res = hydro::get(url, opts);

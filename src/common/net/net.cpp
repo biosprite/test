@@ -28,7 +28,7 @@ import hydrocarbon;
 namespace Common::Net {
 
 // static constexpr auto DefaultTimeout = std::chrono::seconds{30};
-// static constexpr auto DefaultConnectTimeout = std::chrono::seconds{10};
+static constexpr auto DefaultConnectTimeout = std::chrono::milliseconds{10000};
 
 std::vector<NamedAsset> GetPlatformAssets(const Release& r) {
     // TODO(crueter): Need better handling for this as a whole.
@@ -109,6 +109,8 @@ std::optional<std::string> MakeRequest(const std::string& url) {
     opts.connect.cert = std::string{kCert};
 #endif
 
+    opts.connect.connectionTimeout = DefaultConnectTimeout;
+
     auto res = hydro::get(url, opts);
 
     if (!res) {
@@ -184,6 +186,8 @@ bool HeadRequest(const std::string& url) {
 #ifdef YUZU_BUNDLED_OPENSSL
     opts.connect.cert = std::string{kCert};
 #endif
+
+    opts.connect.connectionTimeout = DefaultConnectTimeout;
 
     auto res = hydro::head(url, opts);
 

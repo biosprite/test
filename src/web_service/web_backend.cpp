@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <array>
+#include <chrono>
 #include <format>
 #include <mutex>
 #include <string>
@@ -75,6 +76,8 @@ struct Client::Impl {
 #ifdef YUZU_BUNDLED_OPENSSL
         opts.connect.cert = std::string{kCert};
 #endif
+
+        opts.connect.connectionTimeout = std::chrono::milliseconds{10000};
 
         if (!jwt_.empty()) {
             opts.headers.add("Authorization", std::format("Bearer {}", jwt_));
