@@ -9414,6 +9414,11 @@ void MainWindow::OpenPerGameConfiguration(u64 title_id, const std::string& file_
         if (engine_players && !Settings::values.players.UsingGlobal()) {
             Settings::values.players.GetValue() = *engine_players;
         }
+        // (The running game's own value; otherwise the View menu keeps showing the global one)
+        if (QtCommon::system->IsPoweredOn()) {
+            ui->action_Show_Controller_Overlay->setChecked(
+                Settings::values.console_debug_overlay.GetValue());
+        }
     }
 
     const auto reload = UISettings::values.is_game_list_reload_pending.exchange(false);

@@ -205,12 +205,14 @@ struct Values {
 
     /// Show the controller debug overlay (the real pad state plus the logic's actions)
     SwitchableSetting<bool> console_debug_overlay{linkage, true, "console_debug_overlay",
-                                                  Category::LibraryApplet};
+                                                  Category::LibraryApplet,
+                                                  Specialization::Default, true, true};
     /// Modern Console: each player's starting input profile, comma-separated in player order
     Setting<std::string> modern_seat_profiles{linkage, std::string{}, "modern_seat_profiles",
                                               Category::LibraryApplet};
     /// Name a controller on screen for a moment when it takes a player or leaves one
-    SwitchableSetting<bool> console_hints{linkage, true, "console_hints", Category::LibraryApplet};
+    SwitchableSetting<bool> console_hints{linkage, true, "console_hints", Category::LibraryApplet,
+                                          Specialization::Default, true, true};
     /// The overlay's button history: shown, how many inputs it keeps, how long each lasts (in
     /// seconds), and the time between inputs
     SwitchableSetting<bool> console_history{linkage, true, "console_history",
