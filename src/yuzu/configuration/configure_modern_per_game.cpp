@@ -6,13 +6,14 @@
 #include <QVBoxLayout>
 
 #include "common/settings.h"
+#include "core/core.h"
 #include "yuzu/configuration/configure_modern_per_game.h"
 #include "yuzu/configuration/shared_widget.h"
 
 ConfigureModernPerGame::ConfigureModernPerGame(
-    std::shared_ptr<std::vector<ConfigurationShared::Tab*>> group,
+    Core::System& system_, std::shared_ptr<std::vector<ConfigurationShared::Tab*>> group,
     const ConfigurationShared::Builder& builder, QWidget* parent)
-    : Tab(group, parent) {
+    : Tab(group, parent), system{system_} {
     auto* layout = new QVBoxLayout(this);
     auto* box = new QGroupBox(tr("Modern Console"), this);
     auto* box_layout = new QVBoxLayout(box);
@@ -44,7 +45,9 @@ ConfigureModernPerGame::~ConfigureModernPerGame() = default;
 void ConfigureModernPerGame::SetConfiguration() {}
 
 void ConfigureModernPerGame::ApplyConfiguration() {
+    // (While a game runs, only the options it can change in game are applied)
+    const bool powered_on = system.IsPoweredOn();
     for (const auto& apply : apply_funcs) {
-        apply(true);
+        apply(powered_on);
     }
 }

@@ -73,7 +73,7 @@ ConfigurePerGame::ConfigurePerGame(QWidget* parent, u64 title_id_, const std::st
     system_tab = std::make_unique<ConfigureSystem>(system_, tab_group, *builder, this);
     network_tab = std::make_unique<ConfigureNetwork>(system_, this);
     applets_tab = std::make_unique<ConfigureApplets>(system_, tab_group, *builder, this);
-    modern_tab = std::make_unique<ConfigureModernPerGame>(tab_group, *builder, this);
+    modern_tab = std::make_unique<ConfigureModernPerGame>(system_, tab_group, *builder, this);
 
     ui->setupUi(this);
 
