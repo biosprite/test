@@ -38,7 +38,7 @@ namespace {
 //   with no menu open lets go of any such grab.
 // - A submenu's popup would hide its parent menu, which still took the mouse unseen: a
 //   submenu opens in its menu's place instead.
-// - A smaller dialog is a card on a black screen, like its own window on a desktop, with an
+// - A smaller dialog is a card on a darker screen, like its own window on a desktop, with an
 //   Expand button to fill the screen (Shrink to go back).
 class GamescopeDialogs final : public QObject {
 public:
@@ -253,15 +253,15 @@ private:
         return true;
     }
 
-    // The dialog's own area is a card on a black screen, so it doesn't float edgeless
+    // The dialog's own area is a card on a darker screen, so it doesn't float edgeless
     static QFrame* AddCard(QWidget* dialog, const QRect& inner) {
         const QColor base = dialog->palette().color(QPalette::Window);
         if (dialog->objectName().isEmpty()) {
             dialog->setObjectName(QStringLiteral("gamescopeDialog"));
         }
         dialog->setStyleSheet(dialog->styleSheet() +
-                              QStringLiteral("\n#%1 { background-color: black; }")
-                                  .arg(dialog->objectName()));
+                              QStringLiteral("\n#%1 { background-color: %2; }")
+                                  .arg(dialog->objectName(), base.darker(160).name()));
         auto* card = new QFrame(dialog);
         card->setObjectName(QStringLiteral("gamescopeCard"));
         card->setStyleSheet(QStringLiteral("#gamescopeCard { background-color: %1; border: 1px "
