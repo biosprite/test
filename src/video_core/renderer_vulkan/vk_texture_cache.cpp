@@ -160,6 +160,46 @@ constexpr VkBorderColor ConvertBorderColor(const std::array<float, 4>& color) {
           info.size.depth == 1;
 }
 
+/// Storage format the GPU BCn decoder writes to, or nullopt if the format is decoded on the CPU
+[[nodiscard]] std::optional<VkFormat> BcnStorageFormat(PixelFormat format) {
+    switch (format) {
+    case PixelFormat::BC1_RGBA_UNORM:
+    case PixelFormat::BC1_RGBA_SRGB:
+    case PixelFormat::BC2_UNORM:
+    case PixelFormat::BC2_SRGB:
+    case PixelFormat::BC3_UNORM:
+    case PixelFormat::BC3_SRGB:
+        return VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+    case PixelFormat::BC4_UNORM:
+        return VK_FORMAT_R8_UNORM;
+    case PixelFormat::BC4_SNORM:
+        return VK_FORMAT_R8_SNORM;
+    case PixelFormat::BC5_UNORM:
+        return VK_FORMAT_R8G8_UNORM;
+    case PixelFormat::BC5_SNORM:
+        return VK_FORMAT_R8G8_SNORM;
+    default:
+        return std::nullopt;
+    }
+}
+
+[[nodiscard]] bool WillUseAcceleratedBcnDecode(const Device& device, const ImageInfo& info) {
+    if (!IsPixelFormatBCn(info.format) || device.IsOptimalBcnSupported()) {
+        return false;
+    }
+    // knob1: decode BCn on the CPU
+    if (Settings::GetDebugKnobAt(1)) {
+        return false;
+    }
+    if (info.type != ImageType::e2D || info.num_samples != 1) {
+        return false;
+    }
+    const auto storage_format = BcnStorageFormat(info.format);
+    return storage_format && device.IsFormatSupported(*storage_format,
+                                                      VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT,
+                                                      FormatType::Optimal);
+}
+
 [[nodiscard]] VkImageCreateInfo MakeImageCreateInfo(const Device& device, const ImageInfo& info,
                                                     std::optional<VkFormat> format_override = {}) {
     auto format_info =
@@ -222,6 +262,11 @@ constexpr VkBorderColor ConvertBorderColor(const std::array<float, 4>& color) {
         return vk::Image{};
     }
     VkImageCreateInfo image_ci = MakeImageCreateInfo(device, info, format_override);
+    if (!format_override && WillUseAcceleratedBcnDecode(device, info)) {
+        // sRGB targets are written through a UNORM storage view
+        image_ci.flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+        image_ci.usage |= VK_IMAGE_USAGE_STORAGE_BIT;
+    }
     const VkImageFormatListCreateInfo image_format_list = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO,
         .pNext = nullptr,
@@ -946,6 +991,10 @@ TextureCacheRuntime::TextureCacheRuntime(const Device& device_, Scheduler& sched
         astc_decoder_pass.emplace(device, scheduler, descriptor_pool, staging_buffer_pool,
                                   compute_pass_descriptor_queue, memory_allocator);
     }
+    if (!device.IsOptimalBcnSupported()) {
+        bcn_decoder_pass.emplace(device, scheduler, descriptor_pool,
+                                 compute_pass_descriptor_queue);
+    }
     if (!device.IsKhrImageFormatListSupported()) {
         return;
     }
@@ -953,6 +1002,11 @@ TextureCacheRuntime::TextureCacheRuntime(const Device& device_, Scheduler& sched
         const auto image_format = static_cast<PixelFormat>(index_a);
         if (IsPixelFormatASTC(image_format) && !device.IsOptimalAstcSupported()) {
             view_formats[index_a].push_back(VK_FORMAT_A8B8G8R8_UNORM_PACK32);
+        }
+        if (IsPixelFormatBCn(image_format) && !device.IsOptimalBcnSupported()) {
+            if (const auto storage_format = BcnStorageFormat(image_format)) {
+                view_formats[index_a].push_back(*storage_format);
+            }
         }
         for (size_t index_b = 0; index_b < VideoCore::Surface::MaxPixelFormat; index_b++) {
             const auto view_format = static_cast<PixelFormat>(index_b);
@@ -1948,6 +2002,9 @@ Image::Image(TextureCacheRuntime& runtime_, const ImageInfo& info_, GPUVAddr gpu
         flags |= VideoCommon::ImageFlagBits::CostlyLoad;
     }
     if (IsPixelFormatBCn(info.format) && !runtime->device.IsOptimalBcnSupported()) {
+        if (WillUseAcceleratedBcnDecode(runtime->device, info)) {
+            flags |= VideoCommon::ImageFlagBits::AcceleratedUpload;
+        }
         flags |= VideoCommon::ImageFlagBits::Converted;
         flags |= VideoCommon::ImageFlagBits::CostlyLoad;
     }
@@ -2380,6 +2437,9 @@ VkImageView Image::StorageImageView(s32 level) noexcept {
             MaxwellToVK::SurfaceFormat(runtime->device, FormatType::Optimal, true, info.format);
         if (WillUseAcceleratedAstcDecode(runtime->device, info)) {
             format_info.format = VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+        } else if (IsPixelFormatBCn(info.format) &&
+                   True(flags & VideoCommon::ImageFlagBits::AcceleratedUpload)) {
+            format_info.format = *BcnStorageFormat(info.format);
         }
         view = MakeStorageView(runtime->device.GetLogical(), level, *(this->*current_image),
                                format_info.format);
@@ -3257,6 +3317,10 @@ void TextureCacheRuntime::AccelerateImageUpload(
 
     if (IsPixelFormatASTC(image.info.format)) {
         return astc_decoder_pass->Assemble(image, map, swizzles);
+    }
+    if (bcn_decoder_pass && IsPixelFormatBCn(image.info.format) &&
+        True(image.flags & VideoCommon::ImageFlagBits::AcceleratedUpload)) {
+        return bcn_decoder_pass->Assemble(image, map, swizzles);
     }
 
     if (!Settings::values.gpu_unswizzle_enabled.GetValue() || !bl3d_unswizzle_pass) {

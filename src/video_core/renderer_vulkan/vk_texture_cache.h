@@ -162,6 +162,7 @@ public:
     BlitImageHelper& blit_image_helper;
     RenderPassCache& render_pass_cache;
     std::optional<ASTCDecoderPass> astc_decoder_pass;
+    std::optional<BCnDecoderPass> bcn_decoder_pass;
 
     std::optional<BlockLinearUnswizzle3DPass> bl3d_unswizzle_pass;
     const Settings::ResolutionScalingInfo& resolution;

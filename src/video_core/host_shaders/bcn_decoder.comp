@@ -1,0 +1,183 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+// Decodes block-linear BC1-BC5 textures into uncompressed storage images.
+// Matches the CPU decoder in externals/bc_decoder.
+
+#version 450
+
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+layout(push_constant) uniform PushConstants {
+    uint layer_stride;
+    uint block_size;
+    uint x_shift;
+    uint block_height;
+    uint block_height_mask;
+    uint bytes_per_block_log2;
+    uint format;
+};
+
+layout(binding = 0, std430) readonly restrict buffer InputBuffer {
+    uint bcn_data[];
+};
+
+layout(binding = 1) uniform writeonly restrict image2DArray dest_image;
+
+const uint FORMAT_BC1 = 0;
+const uint FORMAT_BC2 = 1;
+const uint FORMAT_BC3 = 2;
+const uint FORMAT_BC4_UNORM = 3;
+const uint FORMAT_BC4_SNORM = 4;
+const uint FORMAT_BC5_UNORM = 5;
+const uint FORMAT_BC5_SNORM = 6;
+
+const uint GOB_SIZE_X_SHIFT = 6;
+const uint GOB_SIZE_Y_SHIFT = 3;
+const uint GOB_SIZE_SHIFT = GOB_SIZE_X_SHIFT + GOB_SIZE_Y_SHIFT;
+
+uint SwizzleOffset(uvec2 pos) {
+    return ((pos.x & 32u) << 3u) |
+           ((pos.y & 6u)  << 5u) |
+           ((pos.x & 16u) << 1u) |
+           ((pos.y & 1u)  << 4u) |
+           (pos.x & 15u);
+}
+
+uvec3 Expand565(uint c) {
+    return uvec3(((c & 0xF800u) >> 8u) | ((c & 0xE000u) >> 13u),
+                 ((c & 0x07E0u) >> 3u) | ((c & 0x0600u) >> 9u),
+                 ((c & 0x001Fu) << 3u) | ((c & 0x001Cu) >> 2u));
+}
+
+// Returns RGBA in [0, 255] for each of the 16 texels of a color block
+void DecodeColor(uint endpoints, uint indices, bool punch_through, out uvec4 texels[16]) {
+    const uint raw0 = endpoints & 0xFFFFu;
+    const uint raw1 = endpoints >> 16u;
+    const uvec3 c0 = Expand565(raw0);
+    const uvec3 c1 = Expand565(raw1);
+    uvec4 palette[4];
+    palette[0] = uvec4(c0, 255u);
+    palette[1] = uvec4(c1, 255u);
+    if (!punch_through || raw0 > raw1) {
+        palette[2] = uvec4((c0 * 2u + c1) / 3u, 255u);
+        palette[3] = uvec4((c1 * 2u + c0) / 3u, 255u);
+    } else {
+        palette[2] = uvec4((c0 + c1) >> 1u, 255u);
+        palette[3] = uvec4(0u);
+    }
+    for (uint i = 0; i < 16; ++i) {
+        texels[i] = palette[(indices >> (i * 2u)) & 3u];
+    }
+}
+
+uint ChannelIndex(uint lo, uint hi, uint texel) {
+    const uint bit = 16u + texel * 3u;
+    if (bit + 3u <= 32u) {
+        return (lo >> bit) & 7u;
+    }
+    if (bit >= 32u) {
+        return (hi >> (bit - 32u)) & 7u;
+    }
+    return ((lo >> bit) | (hi << (32u - bit))) & 7u;
+}
+
+// Returns each texel's value as a signed integer in [-128, 255]
+void DecodeChannel(uint lo, uint hi, bool is_signed, out int values[16]) {
+    int e0 = int(lo & 0xFFu);
+    int e1 = int((lo >> 8u) & 0xFFu);
+    if (is_signed) {
+        e0 = (e0 << 24) >> 24;
+        e1 = (e1 << 24) >> 24;
+    }
+    int palette[8];
+    palette[0] = e0;
+    palette[1] = e1;
+    if (e0 > e1) {
+        for (int i = 2; i < 8; ++i) {
+            palette[i] = ((8 - i) * e0 + (i - 1) * e1) / 7;
+        }
+    } else {
+        for (int i = 2; i < 6; ++i) {
+            palette[i] = ((6 - i) * e0 + (i - 1) * e1) / 5;
+        }
+        palette[6] = is_signed ? -128 : 0;
+        palette[7] = is_signed ? 127 : 255;
+    }
+    for (uint i = 0; i < 16; ++i) {
+        values[i] = palette[ChannelIndex(lo, hi, i)];
+    }
+}
+
+float ToFloat(int value, bool is_signed) {
+    return is_signed ? max(float(value) / 127.0, -1.0) : float(value) / 255.0;
+}
+
+void main() {
+    uvec3 pos = gl_GlobalInvocationID;
+    const ivec3 base = ivec3(pos.xy * 4u, pos.z);
+    const ivec3 size = imageSize(dest_image);
+    if (any(greaterThanEqual(base, size))) {
+        return;
+    }
+
+    pos.x <<= bytes_per_block_log2;
+    const uint block_y = pos.y >> GOB_SIZE_Y_SHIFT;
+    uint offset = pos.z * layer_stride;
+    offset += (block_y >> block_height) * block_size;
+    offset += (block_y & block_height_mask) << GOB_SIZE_SHIFT;
+    offset += (pos.x >> GOB_SIZE_X_SHIFT) << x_shift;
+    offset += SwizzleOffset(pos.xy);
+
+    const uint word = offset >> 2u;
+    const uint w0 = bcn_data[word];
+    const uint w1 = bcn_data[word + 1u];
+
+    vec4 result[16];
+    if (format == FORMAT_BC1 || format == FORMAT_BC2 || format == FORMAT_BC3) {
+        uvec4 texels[16];
+        if (format == FORMAT_BC1) {
+            DecodeColor(w0, w1, true, texels);
+        } else {
+            DecodeColor(bcn_data[word + 2u], bcn_data[word + 3u], false, texels);
+            if (format == FORMAT_BC2) {
+                for (uint i = 0; i < 16; ++i) {
+                    const uint a = ((i < 8u ? w0 : w1) >> ((i & 7u) * 4u)) & 0xFu;
+                    texels[i].a = a | (a << 4u);
+                }
+            } else {
+                int alpha[16];
+                DecodeChannel(w0, w1, false, alpha);
+                for (uint i = 0; i < 16; ++i) {
+                    texels[i].a = uint(alpha[i]);
+                }
+            }
+        }
+        for (uint i = 0; i < 16; ++i) {
+            result[i] = vec4(texels[i]) / 255.0;
+        }
+    } else {
+        const bool is_signed = format == FORMAT_BC4_SNORM || format == FORMAT_BC5_SNORM;
+        int red[16];
+        DecodeChannel(w0, w1, is_signed, red);
+        if (format == FORMAT_BC4_UNORM || format == FORMAT_BC4_SNORM) {
+            for (uint i = 0; i < 16; ++i) {
+                result[i] = vec4(ToFloat(red[i], is_signed), 0.0, 0.0, 1.0);
+            }
+        } else {
+            int green[16];
+            DecodeChannel(bcn_data[word + 2u], bcn_data[word + 3u], is_signed, green);
+            for (uint i = 0; i < 16; ++i) {
+                result[i] = vec4(ToFloat(red[i], is_signed), ToFloat(green[i], is_signed), 0.0,
+                                 1.0);
+            }
+        }
+    }
+
+    for (uint i = 0; i < 16; ++i) {
+        const ivec3 coord = base + ivec3(i & 3u, i >> 2u, 0);
+        if (coord.x < size.x && coord.y < size.y) {
+            imageStore(dest_image, coord, result[i]);
+        }
+    }
+}

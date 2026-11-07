@@ -137,6 +137,21 @@ private:
     MemoryAllocator& memory_allocator;
 };
 
+class BCnDecoderPass final : public ComputePass {
+public:
+    explicit BCnDecoderPass(const Device& device_, Scheduler& scheduler_,
+                            DescriptorPool& descriptor_pool_,
+                            ComputePassDescriptorQueue& compute_pass_descriptor_queue_);
+    ~BCnDecoderPass();
+
+    void Assemble(Image& image, const StagingBufferRef& map,
+                  std::span<const VideoCommon::SwizzleParameters> swizzles);
+
+private:
+    Scheduler& scheduler;
+    ComputePassDescriptorQueue& compute_pass_descriptor_queue;
+};
+
 class BlockLinearUnswizzle3DPass final : public ComputePass {
 public:
     explicit BlockLinearUnswizzle3DPass(const Device& device_, Scheduler& scheduler_,
