@@ -732,6 +732,12 @@ Device::Device(VkInstance instance_, vk::PhysicalDevice physical_, VkSurfaceKHR 
                                VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME);
     }
 
+    // knob0: treat BCn as unsupported to exercise the fallback decode path
+    if (Settings::GetDebugKnobAt(0) && features.features.textureCompressionBC) {
+        LOG_WARNING(Render_Vulkan, "Native BCn textures disabled by debug knob0");
+        features.features.textureCompressionBC = false;
+    }
+
     logical = vk::Device::Create(physical, queue_cis, ExtensionListForVulkan(loaded_extensions), first_next, dld);
 
     graphics_queue = logical.GetQueue(graphics_family);
@@ -1063,6 +1069,13 @@ bool Device::GetSuitability(bool requires_swapchain) {
         extensions.robustness_2 = false;
     }
 
+    // VK_KHR_vertex_attribute_divisor uses the same structures as the EXT version
+    if (!extensions.vertex_attribute_divisor &&
+        supported_extensions.contains(VK_KHR_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME)) {
+        loaded_extensions.insert(VK_KHR_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME);
+        extensions.vertex_attribute_divisor = true;
+    }
+
 #undef FEATURE_EXTENSION
 #undef EXTENSION
 
@@ -1080,6 +1093,12 @@ bool Device::GetSuitability(bool requires_swapchain) {
 
     FOR_EACH_VK_RECOMMENDED_EXTENSION(LOG_EXTENSION);
     FOR_EACH_VK_MANDATORY_EXTENSION(CHECK_EXTENSION);
+    if (!extensions.vertex_attribute_divisor) {
+        LOG_ERROR(Render_Vulkan, "Missing required extension {} or {}",
+                  VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
+                  VK_KHR_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME);
+        suitable = false;
+    }
 
     if (requires_swapchain) {
         CHECK_EXTENSION(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
@@ -1714,6 +1733,8 @@ void Device::InitializeGPULogging() {
         detected_driver = GPU::Logging::DriverType::Turnip;
     } else if (driver_id == VK_DRIVER_ID_QUALCOMM_PROPRIETARY) {
         detected_driver = GPU::Logging::DriverType::Qualcomm;
+    } else if (driver_id == VK_DRIVER_ID_ARM_PROPRIETARY) {
+        detected_driver = GPU::Logging::DriverType::Mali;
     }
 
     // Initialize GPU logger

@@ -83,6 +83,9 @@ void GPULogger::Initialize(LogLevel level, DriverType driver) {
     case DriverType::Qualcomm:
         driver_name = "Qualcomm Proprietary";
         break;
+    case DriverType::Mali:
+        driver_name = "Arm Mali Proprietary";
+        break;
     default:
         driver_name = "Unknown";
         break;
@@ -598,6 +601,9 @@ void GPULogger::DumpStateToFile(const std::string& crash_reason) {
         break;
     case DriverType::Qualcomm:
         driver_name = "Qualcomm Proprietary";
+        break;
+    case DriverType::Mali:
+        driver_name = "Arm Mali Proprietary";
         break;
     default:
         driver_name = "Unknown";
