@@ -58,6 +58,8 @@ All other dependencies will be downloaded and built by CPM, but will always use 
 - [zstd](https://facebook.github.io/zstd/) 1.5+
 - [enet](http://enet.bespin.org/) 1.3+
 - [Opus](https://opus-codec.org/) 1.3+
+- [Jacinth](https://github.com/crueter/jacinth) 0.1.0+
+- [Hydrocarbon](https://github.com/crueter/hydrocarbon) 0.1.1+
 
 Vulkan 1.4.317+ is also needed:
 
@@ -75,7 +77,6 @@ System packages *can* be used for these libraries, but many are either not packa
 - [VulkanMemoryAllocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator)
 - [sirit](https://github.com/eden-emulator/sirit)
 - [cpp-jwt](https://github.com/arun11299/cpp-jwt) 1.4+ - if `ENABLE_WEB_SERVICE` is on
-- [Jacinth](https://github.com/crueter/jacinth)
 
 On amd64:
 
@@ -121,7 +122,7 @@ sudo emerge -a \
     media-libs/VulkanMemoryAllocator media-libs/libsdl3 media-libs/cubeb \
     net-libs/enet \
     sys-libs/zlib \
-    dev-cpp/simpleini dev-cpp/cpp-jwt dev-cpp/jacinth dev-cpp/cpr \
+    dev-cpp/simpleini dev-cpp/cpp-jwt dev-cpp/jacinth dev-cpp/hydrocarbon \
     games-util/gamemode \
     net-wireless/wireless-tools \
     dev-qt/qtbase:6 dev-libs/quazip \
