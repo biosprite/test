@@ -41,9 +41,6 @@ struct DynamicFeatures {
     bool has_provoking_vertex_tf_preserve;
 };
 
-/// A draw's depth clamp and depth clip. On Maxwell the clip mode decides clipping and the pixel
-/// min/max z bits the clamp; Vulkan ties clipping to the clamp unless VK_EXT_depth_clip_enable
-/// sets it apart. Without it, the clamp follows the clip mode as before.
 struct DepthClampClip {
     bool clamp;
     bool clip;

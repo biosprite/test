@@ -679,8 +679,6 @@ FN_MAX_LIMIT_LIST
         return extensions.depth_clip_control;
     }
 
-    /// Returns true if the device supports VK_EXT_depth_clip_enable (depth clipping set apart
-    /// from depth clamp).
     bool IsExtDepthClipEnableSupported() const {
         return extensions.depth_clip_enable;
     }

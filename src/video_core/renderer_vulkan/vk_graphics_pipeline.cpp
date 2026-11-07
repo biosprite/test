@@ -885,7 +885,6 @@ void GraphicsPipeline::MakePipeline(VkRenderPass render_pass) {
     if (device.IsExtProvokingVertexSupported()) {
         provoking_vertex.pNext = std::exchange(rasterization_ci.pNext, &provoking_vertex);
     }
-    // Depth clipping set apart from depth clamp (see MaxwellDepthClampClip)
     VkPipelineRasterizationDepthClipStateCreateInfoEXT depth_clip{
         .sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT,
         .pNext = nullptr,

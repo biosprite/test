@@ -1758,7 +1758,6 @@ void RasterizerVulkan::UpdateDepthClampEnable(Tegra::Engines::Maxwell3D::Regs& r
     if (!device.SupportsDynamicState3DepthClampEnable()) {
         return;
     }
-    // (The same per-draw clamp the pipeline bakes; its clipping is baked apart)
     const bool is_enabled =
         MaxwellDepthClampClip(regs, device.IsExtDepthClipEnableSupported()).clamp;
     scheduler.Record(
