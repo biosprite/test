@@ -220,6 +220,13 @@ GraphicsPipeline::GraphicsPipeline(const Device& device, TextureCache& texture_c
         writes_global_memory |= std::ranges::any_of(
             info.storage_buffers_descriptors, [](const auto& desc) { return desc.is_written; });
         uses_local_memory |= info.uses_local_memory;
+        has_side_effects |= info.stores_global_memory ||
+                            std::ranges::any_of(info.storage_buffers_descriptors,
+                                                [](const auto& desc) { return desc.is_written; }) ||
+                            std::ranges::any_of(info.image_buffer_descriptors,
+                                                [](const auto& desc) { return desc.is_written; }) ||
+                            std::ranges::any_of(info.image_descriptors,
+                                                [](const auto& desc) { return desc.is_written; });
     }
     ASSERT(num_textures <= MAX_TEXTURES);
     ASSERT(num_images <= MAX_IMAGES);

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
@@ -107,6 +107,11 @@ public:
 
     [[nodiscard]] bool IsBuilt() noexcept;
 
+    /// A stage writes memory (storage buffers, images, global memory)
+    [[nodiscard]] bool HasSideEffects() const noexcept {
+        return has_side_effects;
+    }
+
     template <typename Spec>
     static auto MakeConfigureSpecFunc() {
         return [](GraphicsPipeline* pipeline, bool is_indexed) {
@@ -154,6 +159,7 @@ private:
     bool use_storage_buffers{};
     bool writes_global_memory{};
     bool uses_local_memory{};
+    bool has_side_effects{};
 
     static constexpr std::size_t XFB_ENTRY_STRIDE = 3;
     GLsizei num_xfb_attribs{};

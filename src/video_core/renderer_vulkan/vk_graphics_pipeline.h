@@ -133,6 +133,11 @@ public:
         return is_built.load(std::memory_order::relaxed);
     }
 
+    /// A stage writes memory (storage buffers, images, global memory)
+    [[nodiscard]] bool HasSideEffects() const noexcept {
+        return has_side_effects;
+    }
+
     template <typename Spec>
     static auto MakeConfigureSpecFunc() {
         return [](GraphicsPipeline* pl, bool is_indexed) { return pl->ConfigureImpl<Spec>(is_indexed); };
@@ -180,6 +185,7 @@ private:
     u32 num_textures{};
     u32 attribute_handle{};
     bool uses_attribute_handle{};
+    bool has_side_effects{};
     bool fragment_has_color0_output{};
 
     vk::DescriptorSetLayout descriptor_set_layout;
