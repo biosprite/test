@@ -1822,6 +1822,7 @@ void MainWindow::RestoreUIState() {
         UISettings::values.show_perf_overlay.GetValue());
     ui->action_Show_Controller_Overlay->setChecked(
         Settings::values.console_debug_overlay.GetValue());
+    ui->action_Show_Controller_Hints->setChecked(Settings::values.console_hints.GetValue());
     if (perf_overlay)
         perf_overlay->setVisible(ui->action_Show_Performance_Overlay->isChecked());
     Debugger::ToggleConsole();
@@ -5152,8 +5153,9 @@ void MainWindow::ApplyConsoleControllerMode() {
         }
     }
 
-    // The overlay only exists in the automatic modes: so does its View menu toggle
+    // The overlay and hints only exist in the automatic modes: so do their View menu toggles
     ui->action_Show_Controller_Overlay->setVisible(handheld || console);
+    ui->action_Show_Controller_Hints->setVisible(handheld || console);
     if (!handheld && !console) {
         if (!overlay_rows.empty()) {
             overlay_rows.clear();
@@ -7176,6 +7178,8 @@ void MainWindow::ConnectMenuEvents() {
     connect_menu(ui->action_Show_Performance_Overlay, &MainWindow::OnTogglePerfOverlay);
     connect(ui->action_Show_Controller_Overlay, &QAction::toggled, this,
             [](bool shown) { Settings::values.console_debug_overlay.SetValue(shown); });
+    connect(ui->action_Show_Controller_Hints, &QAction::toggled, this,
+            [](bool shown) { Settings::values.console_hints.SetValue(shown); });
 #ifdef HAS_RESHADE
     connect_menu(ui->action_Post_Processing_Shaders, &MainWindow::OnPostProcessingShaders);
 #else
@@ -9155,6 +9159,7 @@ void MainWindow::OnConfigure() {
     MergeConsoleProfileEdits(players_before);
     ui->action_Show_Controller_Overlay->setChecked(
         Settings::values.console_debug_overlay.GetValue());
+    ui->action_Show_Controller_Hints->setChecked(Settings::values.console_hints.GetValue());
     InitializeHotkeys();
 
     if (UISettings::values.theme != old_theme) {
@@ -9418,6 +9423,7 @@ void MainWindow::OpenPerGameConfiguration(u64 title_id, const std::string& file_
         if (QtCommon::system->IsPoweredOn()) {
             ui->action_Show_Controller_Overlay->setChecked(
                 Settings::values.console_debug_overlay.GetValue());
+            ui->action_Show_Controller_Hints->setChecked(Settings::values.console_hints.GetValue());
         }
     }
 
