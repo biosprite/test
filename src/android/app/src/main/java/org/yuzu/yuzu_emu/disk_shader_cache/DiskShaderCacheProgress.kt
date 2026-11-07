@@ -32,14 +32,19 @@ object DiskShaderCacheProgress {
 
         emulationActivity.runOnUiThread {
             when (LoadCallbackStage.values()[stage]) {
-                LoadCallbackStage.Prepare -> prepareViewModel()
+                LoadCallbackStage.Prepare -> {
+                    prepareViewModel()
+                    emulationViewModel.setAreShadersBuilt(false)
+                }
                 LoadCallbackStage.Build -> emulationViewModel.updateProgress(
                     emulationActivity.getString(R.string.building_shaders),
                     progress,
                     max
                 )
 
-                LoadCallbackStage.Complete -> {}
+                LoadCallbackStage.Complete -> {
+                    emulationViewModel.setAreShadersBuilt(true)
+                }
             }
         }
     }

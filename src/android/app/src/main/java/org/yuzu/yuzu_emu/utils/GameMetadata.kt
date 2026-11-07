@@ -16,6 +16,10 @@ object GameMetadata {
 
     external fun getIcon(path: String): ByteArray
 
+    external fun getBanner(path: String): ByteArray
+
+    external fun getLogo(path: String): ByteArray
+
     external fun getIsHomebrew(path: String): Boolean
 
     external fun resetMetadata()

@@ -30,6 +30,9 @@ class EmulationViewModel : ViewModel() {
     val shaderMessage: StateFlow<String> get() = _shaderMessage
     private val _shaderMessage = MutableStateFlow("")
 
+    val areShadersBuilt: StateFlow<Boolean> get() = _areShadersBuilt
+    private val _areShadersBuilt = MutableStateFlow(false)
+
     private val _drawerOpen = MutableStateFlow(false)
     val drawerOpen = _drawerOpen.asStateFlow()
 
@@ -60,14 +63,18 @@ class EmulationViewModel : ViewModel() {
         _totalShaders.value = max
     }
 
-    fun setShaderMessage(msg: String) {
-        _shaderMessage.value = msg
+    fun setShaderMessage(msg: String, progress: Int, max: Int) {
+        _shaderMessage.value = "$msg ($progress/$max)"
     }
 
     fun updateProgress(msg: String, progress: Int, max: Int) {
-        setShaderMessage(msg)
+        setShaderMessage(msg, progress, max)
         setShaderProgress(progress)
         setTotalShaders(max)
+    }
+
+    fun setAreShadersBuilt(built: Boolean) {
+        _areShadersBuilt.value = built
     }
 
     fun setDrawerOpen(value: Boolean) {
