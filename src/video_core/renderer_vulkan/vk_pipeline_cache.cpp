@@ -11,6 +11,7 @@
 #include <iostream>
 #include <memory>
 #include <span>
+#include <string_view>
 #include <thread>
 #include <vector>
 #include <bit>
@@ -478,7 +479,9 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .max_per_stage_resources = device.GetMaxPerStageResources(),
         .max_descriptor_set_samplers = device.GetMaxDescriptorSetSamplers(),
         // Hosts other than NVIDIA interpolate the varyings of huge clipped primitives less
-        // precisely than the guest, see PositionVaryingPass
+        // precisely than the guest, see PositionVaryingPass. Barycentrics for quad draws without
+        // face culling only (Xenoblade 2's cloud quad and box): on most other draws they cost GPU
+        // time for nothing visible (Steam Deck: +4 points of GPU busy in TotK, ~+7 in BotW)
         .support_barycentric_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
                                         device.IsKhrFragmentShaderBarycentricSupported(),
         .support_position_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY,
@@ -551,7 +554,8 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
     dynamic_features.has_dynamic_state3_depth_clamp_enable =
         dynamic_features.has_extended_dynamic_state_3_enables &&
         device.SupportsDynamicState3DepthClampEnable();
-    dynamic_features.has_varying_geometry = host_info.support_geometry_varyings;
+    dynamic_features.has_per_vertex_varyings =
+        host_info.support_barycentric_varyings || host_info.support_geometry_varyings;
     dynamic_features.has_dynamic_state3_logic_op_enable =
         dynamic_features.has_extended_dynamic_state_3_enables &&
         device.SupportsDynamicState3LogicOpEnable();
@@ -898,10 +902,25 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
         }()};
         const bool is_fill{FixedPipelineState::UnpackPolygonMode(key.state.polygon_mode) ==
                            Maxwell::PolygonMode::Fill};
-        if (host_info.support_barycentric_varyings && is_triangle_list_or_strip && is_fill) {
-            Shader::Optimization::BarycentricVaryingPass(programs[1], programs[5]);
-        } else if (host_info.support_geometry_varyings && is_triangle_list_or_strip && is_fill &&
-                   key.state.xfb_enabled == 0 && key.state.varying_geometry != 0 &&
+        // The per-vertex passes cost GPU time on every draw they change, so only draws whose key
+        // bit is set take them (unculled quads: Xenoblade 2's cloud quad and box). Every other draw
+        // keeps the cheap position pass.
+        const bool per_vertex{is_triangle_list_or_strip && is_fill &&
+                              key.state.per_vertex_varyings != 0};
+        static std::atomic<u32> per_vertex_pipelines{0};
+        const auto count_per_vertex = [](std::string_view path) {
+            const u32 count{++per_vertex_pipelines};
+            if (count == 1 || count == 10 || count == 100 || count % 1000 == 0) {
+                LOG_INFO(Render_Vulkan, "Per-vertex varyings ({}): {} pipelines so far", path,
+                         count);
+            }
+        };
+        if (host_info.support_barycentric_varyings && per_vertex) {
+            if (Shader::Optimization::BarycentricVaryingPass(programs[1], programs[5])) {
+                count_per_vertex("barycentrics");
+            }
+        } else if (host_info.support_geometry_varyings && per_vertex &&
+                   key.state.xfb_enabled == 0 &&
                    Shader::Optimization::BarycentricVaryingPass(programs[1], programs[5], true)) {
             // No barycentrics: a generated geometry shader hands over the three vertices' values
             const auto copies{
@@ -911,12 +930,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
             }));
             programs[4] = GeneratePerVertexGeometry(pools.inst, pools.block, programs[1], copies);
             per_vertex_geometry = true;
-            static std::atomic<u32> per_vertex_pipelines{0};
-            const u32 count{++per_vertex_pipelines};
-            if (count == 1 || count == 10 || count == 100 || count % 1000 == 0) {
-                LOG_INFO(Render_Vulkan, "Varyings through a geometry shader: {} pipelines so far",
-                         count);
-            }
+            count_per_vertex("geometry shader");
         } else {
             Shader::Optimization::PositionVaryingPass(programs[1], programs[5]);
         }
