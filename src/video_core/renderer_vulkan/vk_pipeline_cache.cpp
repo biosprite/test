@@ -798,9 +798,18 @@ GraphicsPipeline* PipelineCache::BuiltPipeline(GraphicsPipeline* pipeline) const
             return pipeline;
         }
     }
+    // A draw that writes memory (vertex data computed in a vertex shader, transform feedback, a
+    // draw with the rasterizer off) is used by later draws: skipping it breaks them for the
+    // session, not one frame (Super Mario Party Jamboree's characters after a fresh shader cache).
+    const auto& regs = maxwell3d->regs;
+    const bool side_effects{pipeline->HasSideEffects() || regs.transform_feedback_enabled != 0 ||
+                            regs.rasterize_enable == 0};
+    if (side_effects) {
+        return pipeline;
+    }
     // If something is using depth, we can assume that games are not rendering anything which
     // will be used one time.
-    if (maxwell3d->regs.zeta_enable) {
+    if (regs.zeta_enable) {
         return nullptr;
     }
     // If games are using a small index count, we can assume these are full screen quads.
