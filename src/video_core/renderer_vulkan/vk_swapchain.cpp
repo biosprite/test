@@ -92,14 +92,17 @@ static VkPresentModeKHR ChooseSwapPresentMode(bool has_imm, bool has_mailbox,
 
 VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, u32 width, u32 height) {
     constexpr auto undefined_size{(std::numeric_limits<u32>::max)()};
-    if (capabilities.currentExtent.width != undefined_size) {
+    // MoltenVK reports a zero current extent while the layer has no size yet, and a zero sized
+    // swapchain is invalid, so fall back to the requested size in that case too.
+    if (capabilities.currentExtent.width != undefined_size &&
+        capabilities.currentExtent.width != 0 && capabilities.currentExtent.height != 0) {
         return capabilities.currentExtent;
     }
     VkExtent2D extent;
-    extent.width = (std::max)(capabilities.minImageExtent.width,
-                            (std::min)(capabilities.maxImageExtent.width, width));
-    extent.height = (std::max)(capabilities.minImageExtent.height,
-                             (std::min)(capabilities.maxImageExtent.height, height));
+    extent.width = (std::max)({1U, capabilities.minImageExtent.width,
+                               (std::min)(capabilities.maxImageExtent.width, width)});
+    extent.height = (std::max)({1U, capabilities.minImageExtent.height,
+                                (std::min)(capabilities.maxImageExtent.height, height)});
     return extent;
 }
 
@@ -132,30 +135,48 @@ Swapchain::Swapchain(
 
 Swapchain::~Swapchain() = default;
 
-void Swapchain::Create(
+bool Swapchain::Create(
     VkSurfaceKHR_T* surface_,
     u32 width_,
     u32 height_)
 {
-    is_outdated = false;
-    is_suboptimal = false;
     width = width_;
     height = height_;
     surface = surface_;
 
     const auto physical_device = device.GetPhysical();
     const auto capabilities{physical_device.GetSurfaceCapabilitiesKHR(VkSurfaceKHR(surface))};
-    if (capabilities.maxImageExtent.width == 0 || capabilities.maxImageExtent.height == 0) {
-        return;
+    const bool zero_max_extent =
+        capabilities.maxImageExtent.width == 0 || capabilities.maxImageExtent.height == 0;
+    const bool zero_current_extent =
+        capabilities.currentExtent.width == 0 || capabilities.currentExtent.height == 0;
+    if (zero_max_extent || (swapchain && zero_current_extent)) {
+        // The surface has no size (e.g. minimized or not laid out yet). Keep the current
+        // swapchain and retry on a later frame.
+        is_outdated = true;
+        return false;
     }
 
+    if (swapchain) {
+        // The swapchain images and semaphores may still be referenced by in-flight blits,
+        // presents and acquire signal operations, so wait for them before destroying anything.
+        std::scoped_lock lock{scheduler.submit_mutex};
+        void(device.GetLogical().WaitIdle());
+    }
+
+    // Stays outdated if creation throws, so the next frame retries instead of acquiring.
+    is_outdated = true;
     Destroy();
 
     CreateSwapchain(capabilities);
     CreateSemaphores();
 
+    is_outdated = false;
+    is_suboptimal = false;
+
     resource_ticks.clear();
     resource_ticks.resize(image_count);
+    return true;
 }
 
 bool Swapchain::AcquireNextImage() {
@@ -169,13 +190,20 @@ bool Swapchain::AcquireNextImage() {
         is_suboptimal = true;
         break;
     case VK_ERROR_OUT_OF_DATE_KHR:
+        // No image was acquired, so image_index is not valid.
         is_outdated = true;
-        break;
+        return true;
     case VK_ERROR_SURFACE_LOST_KHR:
+        vk::Check(result);
+        break;
+    case VK_ERROR_DEVICE_LOST:
+        device.ReportLoss();
         vk::Check(result);
         break;
     default:
         LOG_ERROR(Render_Vulkan, "vkAcquireNextImageKHR returned {}", string_VkResult(result));
+        // Continuing would wait on a present semaphore that is never signaled.
+        vk::Check(result);
         break;
     }
 

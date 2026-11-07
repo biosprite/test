@@ -31,7 +31,8 @@ public:
     ~Swapchain();
 
     /// Creates (or recreates) the swapchain with a given size.
-    void Create(
+    /// Returns false when the surface has no size and the swapchain was left untouched.
+    bool Create(
         VkSurfaceKHR_T* surface,
         u32 width,
         u32 height);
