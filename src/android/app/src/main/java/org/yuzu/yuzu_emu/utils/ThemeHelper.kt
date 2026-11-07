@@ -7,16 +7,11 @@ import android.content.SharedPreferences
 import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
-import android.os.Handler
-import android.os.Looper
 import androidx.annotation.ColorInt
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleOwner
 import kotlin.math.roundToInt
 import org.yuzu.yuzu_emu.R
 import org.yuzu.yuzu_emu.features.settings.model.BooleanSetting
@@ -25,52 +20,9 @@ import org.yuzu.yuzu_emu.ui.main.ThemeProvider
 import androidx.preference.PreferenceManager
 import org.yuzu.yuzu_emu.YuzuApplication
 import org.yuzu.yuzu_emu.features.settings.model.Settings
-import java.util.Collections
-import java.util.WeakHashMap
 
 object ThemeHelper {
     const val SYSTEM_BAR_ALPHA = 0.9f
-
-    @Volatile
-    private var themeConfigurationGeneration = 0
-
-    private val mainHandler = Handler(Looper.getMainLooper())
-    private val trackedActivities =
-        Collections.newSetFromMap(WeakHashMap<AppCompatActivity, Boolean>())
-    private val lastAppliedThemeGeneration = WeakHashMap<AppCompatActivity, Int>()
-
-    fun registerForThemeUpdates(activity: AppCompatActivity) {
-        trackedActivities.add(activity)
-        lastAppliedThemeGeneration.putIfAbsent(activity, themeConfigurationGeneration)
-        activity.lifecycle.addObserver(
-            object : DefaultLifecycleObserver {
-                override fun onDestroy(owner: LifecycleOwner) {
-                    trackedActivities.remove(activity)
-                    lastAppliedThemeGeneration.remove(activity)
-                }
-            }
-        )
-    }
-
-    fun markThemeConfigurationChanged() {
-        themeConfigurationGeneration++
-        dispatchThemeUpdates()
-    }
-
-    private fun dispatchThemeUpdates() {
-        mainHandler.post {
-            trackedActivities.toList().forEach { activity ->
-                if (!activity.isFinishing &&
-                    activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-                ) {
-                    applyThemeConfiguration(activity)
-                }
-            }
-        }
-    }
-
-    private fun hasThemeConfigurationChanged(lastSeenGeneration: Int): Boolean =
-        themeConfigurationGeneration != lastSeenGeneration
 
     // Listener that detects if the theme keys are being changed from the setting menu and recreates the activity
     private var listener: SharedPreferences.OnSharedPreferenceChangeListener? = null
@@ -134,50 +86,6 @@ object ThemeHelper {
         }
     }
 
-    fun safeRecreate(activity: AppCompatActivity) {
-        if (activity.isFinishing) {
-            return
-        }
-        if (activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            activity.recreate()
-        }
-    }
-
-    /**
-     * Re-applies theme resources when settings changed in native config. Returns true if the
-     * activity is being recreated and the caller should skip further resume work.
-     */
-    fun syncThemeConfiguration(activity: AppCompatActivity): Boolean {
-        if (activity.isFinishing) {
-            return false
-        }
-
-        val lastApplied = lastAppliedThemeGeneration[activity] ?: themeConfigurationGeneration
-        val configurationChanged = hasThemeConfigurationChanged(lastApplied)
-
-        val themeProvider = activity as? ThemeProvider
-        val previousThemeId = themeProvider?.themeId ?: 0
-        setTheme(activity)
-        val themeStyleChanged =
-            themeProvider != null && previousThemeId != themeProvider.themeId
-
-        if (!configurationChanged && !themeStyleChanged) {
-            return false
-        }
-
-        if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
-            return false
-        }
-
-        lastAppliedThemeGeneration[activity] = themeConfigurationGeneration
-        safeRecreate(activity)
-        return true
-    }
-
-    private fun applyThemeConfiguration(activity: AppCompatActivity) {
-        syncThemeConfiguration(activity)
-    }
-
     fun setThemeMode(activity: AppCompatActivity) {
         val themeMode = IntSetting.THEME_MODE.getInt()
         activity.delegate.localNightMode = themeMode
@@ -220,16 +128,11 @@ object ThemeHelper {
                 Settings.PREF_THEME_MODE,
                 Settings.PREF_BLACK_BACKGROUNDS
             )
-            if (key in relevantKeys && !activity.isFinishing) {
-                markThemeConfigurationChanged()
+            if (key in relevantKeys) {
+                activity.recreate()
             }
         }
         preferences.registerOnSharedPreferenceChangeListener(listener)
-    }
-
-    fun unregisterThemeChangeListener() {
-        listener?.let { preferences.unregisterOnSharedPreferenceChangeListener(it) }
-        listener = null
     }
 }
 
