@@ -91,9 +91,9 @@ private:
             return true;
         }
         const std::string_view name{IR::NameOf(opcode)};
-        for (const std::string_view prefix : {"GetAttribute", "Load", "Image", "Bound", "Bindless",
-                                              "Global", "Storage", "Shared", "Shuffle", "Vote",
-                                              "Subgroup", "Lane", "Undef"}) {
+        for (const std::string_view prefix :
+             {"GetAttribute", "Load", "Image", "Bound", "Bindless", "Global", "Storage", "Shared",
+              "Shuffle", "Vote", "Subgroup", "Lane", "Undef"}) {
             if (name.starts_with(prefix)) {
                 return true;
             }
@@ -226,7 +226,8 @@ void PositionVaryingPass(IR::Program& vertex, IR::Program& fragment) {
         return std::nullopt;
     };
     std::erase_if(candidates, [&](const Candidate& candidate) {
-        const bool needs_offset = std::ranges::any_of(candidate.has_offset, [](bool v) { return v; });
+        const bool needs_offset =
+            std::ranges::any_of(candidate.has_offset, [](bool v) { return v; });
         if (!needs_offset) {
             return false;
         }
@@ -465,7 +466,9 @@ bool BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment, bool for
                 GenericAttribute(*slot, RECONSTRUCTED_COMPONENTS[i]), ir.Imm32(vertex_index));
         }
     }
-    const auto sub = [&](const IR::F32& a, const IR::F32& b) { return IR::F32{ir.FPAdd(a, ir.FPNeg(b))}; };
+    const auto sub = [&](const IR::F32& a, const IR::F32& b) {
+        return IR::F32{ir.FPAdd(a, ir.FPNeg(b))};
+    };
     const auto mul = [&](const IR::F32& a, const IR::F32& b) { return IR::F32{ir.FPMul(a, b)}; };
     // b_i = dot(cross(v_j, v_k), (qx, qy, 1))
     const auto edge = [&](const std::array<IR::F32, 3>& a, const std::array<IR::F32, 3>& b) {

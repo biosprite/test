@@ -162,7 +162,8 @@ enum class Interpolation {
     Smooth,
     Flat,
     NoPerspective,
-    PerVertex, ///< Values of the three vertices of the triangle (SPV_KHR_fragment_shader_barycentric)
+    PerVertex, ///< Values of the three vertices of the triangle
+               ///< (SPV_KHR_fragment_shader_barycentric)
 };
 
 struct ConstantBufferDescriptor {

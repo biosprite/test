@@ -34,8 +34,7 @@ namespace Vulkan {
 
 /// Host viewport 0 (x, y, width, height) as recorded for the current Maxwell state
 std::array<f32, 4> GetHostViewport0(const Device& device,
-                                    const Tegra::Engines::Maxwell3D::Regs& regs,
-                                    bool is_rescaling);
+                                    const Tegra::Engines::Maxwell3D::Regs& regs, bool is_rescaling);
 
 struct GraphicsPipelineCacheKey {
     std::array<u64, 6> unique_hashes;

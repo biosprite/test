@@ -1362,11 +1362,6 @@ QueryCacheRuntime::QueryCacheRuntime(VideoCore::RasterizerInterface* rasterizer,
         staging_pool_, compute_pass_descriptor_queue, descriptor_pool, texture_cache_);
 }
 
-void QueryCacheRuntime::WriteKnownValue(DAddr address, std::span<const u8> data) {
-    std::scoped_lock lk(impl->buffer_cache.mutex);
-    impl->buffer_cache.InlineMemory(address, data.size(), data);
-}
-
 void QueryCacheRuntime::Bind3DEngine(Maxwell3D* maxwell3d) {
     impl->maxwell3d = maxwell3d;
 }

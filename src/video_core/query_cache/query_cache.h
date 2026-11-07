@@ -15,12 +15,12 @@
 
 #include "common/assert.h"
 #include "common/common_types.h"
+#include "common/logging.h"
 // The query cache calls Common::RangeSet::Add directly on the buffer cache's range
 // set; include the definitions so every translation unit instantiating these templates
 // emits them (range_sets.h carries declarations only, like buffer_cache.h does).
 #include "common/range_sets.h"
 #include "common/range_sets.inc"
-#include "common/logging.h"
 #include "common/scope_exit.h"
 #include "common/settings.h"
 #include "video_core/engines/maxwell_3d.h"
@@ -265,15 +265,6 @@ void QueryCacheBase<Traits>::CounterReport(GPUVAddr addr, QueryType counter_type
     };
     u8* pointer = impl->device_memory.template GetPointer<u8>(cpu_addr);
     u8* pointer_timestamp = impl->device_memory.template GetPointer<u8>(cpu_addr + 8);
-    if (True(query->flags & QueryFlagBits::IsValueKnown) && !is_fence && !has_timestamp &&
-        pointer != nullptr) {
-        // Shaders can read the report right after this; don't wait for the deferred write
-        std::array<u64, 2> known{query->value, impl->gpu.GetTicks()};
-        const size_t known_size = has_timestamp ? sizeof(known) : sizeof(u32);
-        std::memcpy(pointer, known.data(), known_size);
-        impl->runtime.WriteKnownValue(
-            cpu_addr, std::span<const u8>(reinterpret_cast<const u8*>(known.data()), known_size));
-    }
     bool is_synced = (Settings::IsGPUFenceBehaviorDefault() ? !Settings::IsGPULevelHigh() : !Settings::IsGPUFenceBehaviorBalanced() && !Settings::IsGPUFenceBehaviorAccurate()) && is_fence;
     std::function<void()> operation([this, is_synced, streamer, query_base = query, query_location,
                                      pointer, pointer_timestamp] {

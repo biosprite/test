@@ -175,7 +175,7 @@ public:
 
     /// Returns a view of a copy of the image when the draw also writes the sampled subresources
     /// as a color target, so that its fragments read the contents from before the draw (as the
-    /// guest GPU does). Only with color target snapshots on.
+    /// guest GPU does).
     [[nodiscard]] ImageViewId ResolveFeedbackLoop(ImageViewId view_id);
 
     /// Two fragments of the current draw can land on one pixel (culling off, several primitives):

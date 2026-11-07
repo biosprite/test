@@ -878,7 +878,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     }
     // Rebuild clip space position varyings in the fragment shader when the vertex shader feeds it
     // directly
-    const bool has_tessellation_or_geometry{key.unique_hashes[2] != 0 || key.unique_hashes[3] != 0 ||
+    const bool has_tessellation_or_geometry{key.unique_hashes[2] != 0 ||
+                                            key.unique_hashes[3] != 0 ||
                                             key.unique_hashes[4] != 0 || layer_source_program};
     if (host_info.support_position_varyings && !has_tessellation_or_geometry &&
         key.unique_hashes[1] != 0 && key.unique_hashes[5] != 0) {
@@ -897,8 +898,7 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
         }()};
         const bool is_fill{FixedPipelineState::UnpackPolygonMode(key.state.polygon_mode) ==
                            Maxwell::PolygonMode::Fill};
-        if (host_info.support_barycentric_varyings && is_triangle_list_or_strip &&
-            is_fill) {
+        if (host_info.support_barycentric_varyings && is_triangle_list_or_strip && is_fill) {
             Shader::Optimization::BarycentricVaryingPass(programs[1], programs[5]);
         } else if (host_info.support_geometry_varyings && is_triangle_list_or_strip && is_fill &&
                    key.state.xfb_enabled == 0 && key.state.varying_geometry != 0 &&
@@ -928,9 +928,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     Shader::Backend::Bindings binding;
     for (size_t index = uses_vertex_a && uses_vertex_b ? 1 : 0; index < Maxwell::MaxShaderProgram;
          ++index) {
-        const bool is_emulated_stage =
-            (layer_source_program != nullptr || per_vertex_geometry) &&
-            index == static_cast<u32>(Maxwell::ShaderType::Geometry);
+        const bool is_emulated_stage = (layer_source_program != nullptr || per_vertex_geometry) &&
+                                       index == static_cast<u32>(Maxwell::ShaderType::Geometry);
         if (key.unique_hashes[index] == 0 && !is_emulated_stage) {
             continue;
         }

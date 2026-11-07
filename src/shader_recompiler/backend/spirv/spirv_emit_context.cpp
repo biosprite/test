@@ -1610,11 +1610,11 @@ void EmitContext::DefineInputs(const IR::Program& program) {
             case Interpolation::NoPerspective:
                 Decorate(id, spv::Decoration::NoPerspective);
                 break;
-        case Interpolation::PerVertex:
-            AddExtension("SPV_KHR_fragment_shader_barycentric");
-            AddCapability(spv::Capability::FragmentBarycentricKHR);
-            Decorate(id, spv::Decoration::PerVertexKHR);
-            break;
+            case Interpolation::PerVertex:
+                AddExtension("SPV_KHR_fragment_shader_barycentric");
+                AddCapability(spv::Capability::FragmentBarycentricKHR);
+                Decorate(id, spv::Decoration::PerVertexKHR);
+                break;
             case Interpolation::Flat:
                 Decorate(id, spv::Decoration::Flat);
                 break;

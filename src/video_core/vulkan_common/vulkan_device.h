@@ -520,12 +520,12 @@ FN_MAX_LIMIT_LIST
         return features.features.shaderStorageImageReadWithoutFormat;
     }
 
-    /// Returns true if shader int64 is supported.
     /// Returns true if the device supports geometry shaders.
     bool SupportsGeometryShader() const {
         return features.features.geometryShader;
     }
 
+    /// Returns true if shader int64 is supported.
     bool IsShaderInt64Supported() const {
         return features.features.shaderInt64;
     }
@@ -590,12 +590,12 @@ FN_MAX_LIMIT_LIST
         return extensions.shader_float_controls;
     }
 
-    /// Returns true if the device supports VK_KHR_workgroup_memory_explicit_layout.
     /// Returns true if the device supports VK_KHR_fragment_shader_barycentric.
     bool IsKhrFragmentShaderBarycentricSupported() const {
         return extensions.fragment_shader_barycentric;
     }
 
+    /// Returns true if the device supports VK_KHR_workgroup_memory_explicit_layout.
     bool IsKhrWorkgroupMemoryExplicitLayoutSupported() const {
         return extensions.workgroup_memory_explicit_layout;
     }

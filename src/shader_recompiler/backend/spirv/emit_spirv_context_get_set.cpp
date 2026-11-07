@@ -312,11 +312,10 @@ Id EmitGetAttribute(EmitContext& ctx, IR::Attribute attr, Id vertex) {
             // Attribute is disabled or varying component is not written
             return ctx.Const(element == 3 ? 1.0f : 0.0f);
         }
-        const Id pointer{generic.per_vertex
-                             ? ctx.OpAccessChain(generic.pointer_type, generic.id, vertex,
-                                                 ctx.Const(element))
-                             : AttrPointer(ctx, generic.pointer_type, vertex, generic.id,
-                                           ctx.Const(element))};
+        const Id pointer{
+            generic.per_vertex
+                ? ctx.OpAccessChain(generic.pointer_type, generic.id, vertex, ctx.Const(element))
+                : AttrPointer(ctx, generic.pointer_type, vertex, generic.id, ctx.Const(element))};
         const Id value{ctx.OpLoad(generic.component_type, pointer)};
         return [&ctx, generic, value]() {
             switch (generic.load_op) {

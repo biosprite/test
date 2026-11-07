@@ -693,8 +693,8 @@ Id EmitImageFetch(EmitContext& ctx, IR::Inst* inst, const IR::Value& index, Id c
     }
     const ImageOperands operands(lod, ms);
     Id color{Emit(&EmitContext::OpImageSparseFetch, &EmitContext::OpImageFetch, ctx, inst,
-                  result_type, TextureImage(ctx, info, index), coords,
-                  operands.MaskOptional(), operands.Span())};
+                  result_type, TextureImage(ctx, info, index), coords, operands.MaskOptional(),
+                  operands.Span())};
     if (!is_integer && NeedsDepthQuantize(ctx, info)) {
         color = QuantizeDepthSample(ctx, color);
     }
