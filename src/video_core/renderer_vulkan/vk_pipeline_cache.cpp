@@ -483,9 +483,8 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
                                         device.IsKhrFragmentShaderBarycentricSupported(),
         .support_position_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY,
         // Without barycentrics (RDNA1 and older on RADV), a generated geometry shader stands in
-        // for them, for draws without face culling only: those include Xenoblade 2's cloud box,
-        // while culled 3D geometry, where a geometry shader costs the most, keeps the position
-        // pass
+        // for them, for quad draws without face culling only: Xenoblade 2's cloud quad and box,
+        // while other geometry, where a geometry shader costs the most, keeps the position pass
         .support_geometry_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
                                      !device.IsKhrFragmentShaderBarycentricSupported() &&
                                      device.SupportsGeometryShader(),

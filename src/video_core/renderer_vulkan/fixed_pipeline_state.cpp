@@ -114,9 +114,12 @@ void FixedPipelineState::Refresh(Tegra::Engines::Maxwell3D& maxwell3d, DynamicFe
     extended_dynamic_state_2_logic_op.Assign(features.has_extended_dynamic_state_2_logic_op ? 1 : 0);
     extended_dynamic_state_3_blend.Assign(features.has_extended_dynamic_state_3_blend ? 1 : 0);
     extended_dynamic_state_3_enables.Assign(features.has_extended_dynamic_state_3_enables ? 1 : 0);
-    // (Only draws without face culling take the varyings' geometry shader, see PipelineCache)
+    // (Only quad draws without face culling take the varyings' geometry shader, see
+    // PipelineCache. The game's topology, as the key's may be collapsed to its class)
+    const bool is_quads{topology_ == Maxwell::PrimitiveTopology::Quads ||
+                        topology_ == Maxwell::PrimitiveTopology::QuadStrip};
     varying_geometry.Assign(
-        features.has_varying_geometry && regs.gl_cull_test_enabled == 0 ? 1 : 0);
+        features.has_varying_geometry && regs.gl_cull_test_enabled == 0 && is_quads ? 1 : 0);
     color_write_enable_dynamic.Assign(features.has_color_write_enable ? 1 : 0);
     dynamic_vertex_input.Assign(features.has_dynamic_vertex_input ? 1 : 0);
     xfb_enabled.Assign(regs.transform_feedback_enabled != 0);
