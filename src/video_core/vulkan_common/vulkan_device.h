@@ -521,6 +521,11 @@ FN_MAX_LIMIT_LIST
     }
 
     /// Returns true if shader int64 is supported.
+    /// Returns true if the device supports geometry shaders.
+    bool SupportsGeometryShader() const {
+        return features.features.geometryShader;
+    }
+
     bool IsShaderInt64Supported() const {
         return features.features.shaderInt64;
     }

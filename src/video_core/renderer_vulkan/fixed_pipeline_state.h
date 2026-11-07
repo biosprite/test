@@ -30,6 +30,8 @@ struct DynamicFeatures {
     bool has_extended_dynamic_state_3_blend;
     bool has_extended_dynamic_state_3_enables;
     bool has_dynamic_state3_depth_clamp_enable;
+    /// Varyings through a generated geometry shader, for draws without face culling (key bit)
+    bool has_varying_geometry;
     bool has_dynamic_state3_logic_op_enable;
     bool has_dynamic_state3_line_stipple_enable;
     bool has_dynamic_vertex_input;
@@ -214,6 +216,7 @@ struct FixedPipelineState {
         BitField<20, 1, u32> color_write_enable_dynamic;
 
         BitField<21, 1, u32> attachment0_dual_source_blend;
+        BitField<22, 1, u32> varying_geometry; ///< No face culling, with has_varying_geometry
 
         BitField<24, 4, Maxwell::PrimitiveTopology> topology;
         BitField<28, 4, Tegra::Texture::MsaaMode> msaa_mode;

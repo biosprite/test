@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <fstream>
 #include <iostream>
@@ -56,6 +57,7 @@ namespace {
 using Shader::Backend::SPIRV::EmitSPIRV;
 using Shader::Maxwell::ConvertLegacyToGeneric;
 using Shader::Maxwell::GenerateGeometryPassthrough;
+using Shader::Maxwell::GeneratePerVertexGeometry;
 using Shader::Maxwell::MergeDualVertexPrograms;
 using Shader::Maxwell::TranslateProgram;
 using VideoCommon::ComputeEnvironment;
@@ -480,6 +482,13 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
         .support_barycentric_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
                                         device.IsKhrFragmentShaderBarycentricSupported(),
         .support_position_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY,
+        // Without barycentrics (RDNA1 and older on RADV), a generated geometry shader stands in
+        // for them, for draws without face culling only: those include Xenoblade 2's cloud box,
+        // while culled 3D geometry, where a geometry shader costs the most, keeps the position
+        // pass
+        .support_geometry_varyings = driver_id != VK_DRIVER_ID_NVIDIA_PROPRIETARY &&
+                                     !device.IsKhrFragmentShaderBarycentricSupported() &&
+                                     device.SupportsGeometryShader(),
         .max_descriptor_set_uniform_buffers = device.GetMaxDescriptorSetUniformBuffers(),
         .max_descriptor_set_uniform_buffers_dynamic = device.GetMaxDescriptorSetUniformBuffersDynamic(),
         .max_descriptor_set_storage_buffers = device.GetMaxDescriptorSetStorageBuffers(),
@@ -543,6 +552,7 @@ PipelineCache::PipelineCache(Tegra::MaxwellDeviceMemoryManager& device_memory_,
     dynamic_features.has_dynamic_state3_depth_clamp_enable =
         dynamic_features.has_extended_dynamic_state_3_enables &&
         device.SupportsDynamicState3DepthClampEnable();
+    dynamic_features.has_varying_geometry = host_info.support_geometry_varyings;
     dynamic_features.has_dynamic_state3_logic_op_enable =
         dynamic_features.has_extended_dynamic_state_3_enables &&
         device.SupportsDynamicState3LogicOpEnable();
@@ -824,6 +834,8 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
 
     // Layer passthrough generation for devices without VK_EXT_shader_viewport_index_layer
     Shader::IR::Program* layer_source_program{};
+    // A generated geometry shader stands in for fragment shader barycentrics
+    bool per_vertex_geometry{};
 
     for (size_t index = 0; index < Maxwell::MaxShaderProgram; ++index) {
         const bool is_emulated_stage = layer_source_program != nullptr &&
@@ -889,6 +901,23 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
         if (host_info.support_barycentric_varyings && is_triangle_list_or_strip &&
             is_fill) {
             Shader::Optimization::BarycentricVaryingPass(programs[1], programs[5]);
+        } else if (host_info.support_geometry_varyings && is_triangle_list_or_strip && is_fill &&
+                   key.state.xfb_enabled == 0 && key.state.varying_geometry != 0 &&
+                   Shader::Optimization::BarycentricVaryingPass(programs[1], programs[5], true)) {
+            // No barycentrics: a generated geometry shader hands over the three vertices' values
+            const auto copies{
+                Shader::Optimization::LowerPerVertexVaryings(programs[1], programs[5])};
+            ASSERT(std::ranges::none_of(programs[5].info.interpolation, [](auto mode) {
+                return mode == Shader::Interpolation::PerVertex;
+            }));
+            programs[4] = GeneratePerVertexGeometry(pools.inst, pools.block, programs[1], copies);
+            per_vertex_geometry = true;
+            static std::atomic<u32> per_vertex_pipelines{0};
+            const u32 count{++per_vertex_pipelines};
+            if (count == 1 || count == 10 || count == 100 || count % 1000 == 0) {
+                LOG_INFO(Render_Vulkan, "Varyings through a geometry shader: {} pipelines so far",
+                         count);
+            }
         } else {
             Shader::Optimization::PositionVaryingPass(programs[1], programs[5]);
         }
@@ -900,8 +929,9 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
     Shader::Backend::Bindings binding;
     for (size_t index = uses_vertex_a && uses_vertex_b ? 1 : 0; index < Maxwell::MaxShaderProgram;
          ++index) {
-        const bool is_emulated_stage = layer_source_program != nullptr &&
-                                       index == static_cast<u32>(Maxwell::ShaderType::Geometry);
+        const bool is_emulated_stage =
+            (layer_source_program != nullptr || per_vertex_geometry) &&
+            index == static_cast<u32>(Maxwell::ShaderType::Geometry);
         if (key.unique_hashes[index] == 0 && !is_emulated_stage) {
             continue;
         }
@@ -911,7 +941,12 @@ std::unique_ptr<GraphicsPipeline> PipelineCache::CreateGraphicsPipeline(
         const size_t stage_index{index - 1};
         infos[stage_index] = &program.info;
 
-        const auto runtime_info{MakeRuntimeInfo(programs, key, program, previous_stage, device)};
+        auto runtime_info{MakeRuntimeInfo(programs, key, program, previous_stage, device)};
+        if (per_vertex_geometry && program.stage == Shader::Stage::VertexB) {
+            // The generated geometry shader is the last stage before rasterization: it converts
+            // the depth, the vertex shader must not as well
+            runtime_info.convert_depth_mode = false;
+        }
         ConvertLegacyToGeneric(program, runtime_info);
         const std::vector<u32> code{EmitSPIRV(profile, runtime_info, program, binding)};
         device.SaveShader(code);

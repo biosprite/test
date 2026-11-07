@@ -324,13 +324,31 @@ void PositionVaryingPass(IR::Program& vertex, IR::Program& fragment) {
 // fragment shader reads the varyings of the three vertices and interpolates them with
 // barycentrics computed from the clip space positions of the vertices and gl_FragCoord. Unlike the
 // hardware barycentrics of clipped primitives these are exact for any varying.
-void BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment) {
+bool BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment, bool for_geometry) {
     Info& vs_info{vertex.info};
     Info& fs_info{fragment.info};
     if (vs_info.stores_indexed_attributes || fs_info.loads_indexed_attributes ||
         vs_info.stores[IR::Attribute::ViewportIndex] || vs_info.uses_render_area ||
         fs_info.uses_render_area || fragment.blocks.empty()) {
-        return;
+        return false;
+    }
+    if (for_geometry) {
+        // The generated geometry shader passes on the position and the generics only
+        for (size_t index = 0; index < vs_info.stores.mask.size(); ++index) {
+            if (!vs_info.stores.mask[index]) {
+                continue;
+            }
+            const IR::Attribute attribute{static_cast<IR::Attribute>(index)};
+            const bool position{attribute >= IR::Attribute::PositionX &&
+                                attribute <= IR::Attribute::PositionW};
+            if (!position && !IR::IsGeneric(attribute)) {
+                return false;
+            }
+        }
+        // (A fragment shader's primitive id needs a geometry shader that writes it)
+        if (fs_info.loads[IR::Attribute::PrimitiveId]) {
+            return false;
+        }
     }
     // Smooth varyings read by the fragment shader only as floats
     std::array<bool, 32> convert{};
@@ -341,7 +359,7 @@ void BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment) {
         any_convert |= convert[index];
     }
     if (!any_convert) {
-        return;
+        return false;
     }
     std::vector<std::pair<IR::Block*, IR::Inst*>> reads;
     for (IR::Block* const block : fragment.blocks) {
@@ -369,7 +387,7 @@ void BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment) {
         return !convert[IR::GenericAttributeIndex(read.second->Arg(0).Attribute())];
     });
     if (reads.empty()) {
-        return;
+        return false;
     }
     // Free varying for the clip space position
     std::optional<size_t> slot;
@@ -380,7 +398,25 @@ void BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment) {
         }
     }
     if (!slot) {
-        return;
+        return false;
+    }
+    if (for_geometry) {
+        // Every per-vertex varying (the position's included) needs two more free slots for the
+        // geometry shader's copies of the other two vertices: checked before anything changes, so
+        // no per-vertex read is ever left for a device without barycentrics
+        size_t per_vertex{1};
+        for (size_t index = 0; index < 32; ++index) {
+            per_vertex += convert[index] ? 1 : 0;
+        }
+        size_t free_slots{0};
+        for (size_t index = 0; index < 32; ++index) {
+            free_slots += !vs_info.stores.Generic(index) && !fs_info.loads.Generic(index) ? 1 : 0;
+        }
+        if (free_slots < 1 + 2 * per_vertex) {
+            LOG_DEBUG(Shader, "Not enough free varyings for the geometry shader ({} of {})",
+                      free_slots, 1 + 2 * per_vertex);
+            return false;
+        }
     }
     // Vertex shader: copy every store of the position to the free varying
     std::vector<std::pair<IR::Block*, IR::Inst*>> position_stores;
@@ -397,7 +433,7 @@ void BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment) {
         }
     }
     if (position_stores.empty()) {
-        return;
+        return false;
     }
     for (const auto& [block, inst] : position_stores) {
         const size_t component{static_cast<size_t>(inst->Arg(0).Attribute()) -
@@ -467,6 +503,71 @@ void BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment) {
     fs_info.loads.Set(IR::Attribute::PositionX);
     fs_info.loads.Set(IR::Attribute::PositionY);
     fs_info.uses_host_viewport = true;
+    return true;
+}
+
+std::vector<std::array<size_t, 3>> LowerPerVertexVaryings(IR::Program& vertex,
+                                                          IR::Program& fragment) {
+    Info& vs_info{vertex.info};
+    Info& fs_info{fragment.info};
+    // Each per-vertex varying keeps its own slot for vertex 0 and gets two free slots for vertices
+    // 1 and 2; the geometry shader writes all three as flat values of the triangle
+    std::vector<std::array<size_t, 3>> copies;
+    std::array<std::optional<size_t>, 32> copy_of{};
+    size_t next_free{0};
+    const auto take_free = [&]() -> size_t {
+        while (vs_info.stores.Generic(next_free) || fs_info.loads.Generic(next_free)) {
+            ++next_free;
+        }
+        ASSERT(next_free < 32);
+        return next_free++;
+    };
+    for (size_t index = 0; index < 32; ++index) {
+        if (fs_info.interpolation[index] != Interpolation::PerVertex) {
+            continue;
+        }
+        copy_of[index] = copies.size();
+        copies.push_back({index, 0, 0});
+    }
+    for (auto& copy : copies) {
+        copy[1] = take_free();
+        copy[2] = take_free();
+        // (Taken: the next take_free skips them)
+        for (size_t component = 0; component < 4; ++component) {
+            if (fs_info.loads.Generic(copy[0], component)) {
+                fs_info.loads.Set(GenericAttribute(copy[1], component));
+                fs_info.loads.Set(GenericAttribute(copy[2], component));
+            }
+        }
+    }
+    for (IR::Block* const block : fragment.blocks) {
+        for (IR::Inst& inst : block->Instructions()) {
+            if (inst.GetOpcode() != IR::Opcode::GetAttribute) {
+                continue;
+            }
+            const IR::Attribute attribute{inst.Arg(0).Attribute()};
+            if (!IR::IsGeneric(attribute)) {
+                continue;
+            }
+            const size_t index{IR::GenericAttributeIndex(attribute)};
+            if (!copy_of[index]) {
+                continue;
+            }
+            const u32 vertex_index{inst.Arg(1).IsImmediate() ? inst.Arg(1).U32() : 0};
+            ASSERT(vertex_index < 3);
+            const size_t component{static_cast<size_t>(attribute) -
+                                   static_cast<size_t>(GenericAttribute(index, 0))};
+            const size_t target{copies[*copy_of[index]][vertex_index]};
+            inst.SetArg(0, IR::Value{GenericAttribute(target, component)});
+            inst.SetArg(1, IR::Value{0u});
+        }
+    }
+    for (const auto& copy : copies) {
+        for (const size_t slot : copy) {
+            fs_info.interpolation[slot] = Interpolation::Flat;
+        }
+    }
+    return copies;
 }
 
 } // namespace Shader::Optimization

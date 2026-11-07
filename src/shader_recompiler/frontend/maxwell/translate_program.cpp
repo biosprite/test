@@ -547,4 +547,83 @@ IR::Program GenerateGeometryPassthrough(ObjectPool<IR::Inst>& inst_pool,
     return program;
 }
 
+IR::Program GeneratePerVertexGeometry(ObjectPool<IR::Inst>& inst_pool,
+                                      ObjectPool<IR::Block>& block_pool,
+                                      const IR::Program& vertex_program,
+                                      std::span<const std::array<size_t, 3>> copies) {
+    const VaryingState& vs_stores{vertex_program.info.stores};
+    IR::Program program;
+    program.stage = Stage::Geometry;
+    program.output_topology = OutputTopology::TriangleStrip;
+    program.output_vertices = 3;
+    program.is_geometry_passthrough = false;
+    program.info.loads.mask = vs_stores.mask;
+    program.info.stores.mask = vs_stores.mask;
+    std::array<bool, 32> per_vertex{};
+    for (const auto& copy : copies) {
+        per_vertex[copy[0]] = true;
+        for (size_t component = 0; component < 4; ++component) {
+            if (vs_stores.Generic(copy[0], component)) {
+                program.info.stores.Set(IR::Attribute::Generic0X + (copy[1] * 4 + component));
+                program.info.stores.Set(IR::Attribute::Generic0X + (copy[2] * 4 + component));
+            }
+        }
+    }
+
+    IR::Block* current_block = block_pool.Create(inst_pool);
+    auto& node{program.syntax_list.emplace_back()};
+    node.type = IR::AbstractSyntaxNode::Type::Block;
+    node.data.block = current_block;
+
+    IR::IREmitter ir{*current_block};
+    for (u32 vertex = 0; vertex < 3; ++vertex) {
+        for (size_t index = 0; index < 32; ++index) {
+            for (size_t component = 0; component < 4; ++component) {
+                if (!vs_stores.Generic(index, component)) {
+                    continue;
+                }
+                const IR::Attribute attr{IR::Attribute::Generic0X + (index * 4 + component)};
+                // A per-vertex varying's own slot holds vertex 0's value on the whole triangle
+                const u32 source{per_vertex[index] ? 0u : vertex};
+                ir.SetAttribute(attr, ir.GetAttribute(attr, ir.Imm32(source)), ir.Imm32(0));
+            }
+        }
+        for (const auto& copy : copies) {
+            for (size_t other = 1; other < 3; ++other) {
+                for (size_t component = 0; component < 4; ++component) {
+                    if (!vs_stores.Generic(copy[0], component)) {
+                        continue;
+                    }
+                    const IR::Attribute from{IR::Attribute::Generic0X + (copy[0] * 4 + component)};
+                    const IR::Attribute to{IR::Attribute::Generic0X +
+                                           (copy[other] * 4 + component)};
+                    ir.SetAttribute(to, ir.GetAttribute(from, ir.Imm32(static_cast<u32>(other))),
+                                    ir.Imm32(0));
+                }
+            }
+        }
+        for (u32 component = 0; component < 4; ++component) {
+            const IR::Attribute attr{IR::Attribute::PositionX + component};
+            ir.SetAttribute(attr, ir.GetAttribute(attr, ir.Imm32(vertex)), ir.Imm32(0));
+        }
+        ir.EmitVertex(ir.Imm32(0));
+    }
+    ir.EndPrimitive(ir.Imm32(0));
+
+    IR::Block* return_block{block_pool.Create(inst_pool)};
+    IR::IREmitter{*return_block}.Epilogue();
+    current_block->AddBranch(return_block);
+
+    auto& merge{program.syntax_list.emplace_back()};
+    merge.type = IR::AbstractSyntaxNode::Type::Block;
+    merge.data.block = return_block;
+    program.syntax_list.emplace_back().type = IR::AbstractSyntaxNode::Type::Return;
+
+    program.blocks = GenerateBlocks(program.syntax_list);
+    program.post_order_blocks = PostOrder(program.syntax_list.front());
+    Optimization::SsaRewritePass(program);
+
+    return program;
+}
+
 } // namespace Shader::Maxwell

@@ -6,6 +6,9 @@
 
 #pragma once
 
+#include <array>
+#include <vector>
+
 #include "shader_recompiler/environment.h"
 #include "shader_recompiler/frontend/ir/program.h"
 
@@ -23,7 +26,13 @@ void GeometryCompactionPass(IR::Program& program, const HostTranslateInfo& host_
 void GlobalMemoryToStorageBufferPass(IR::Program& program, const HostTranslateInfo& host_info);
 void IdentityRemovalPass(IR::Program& program);
 void PositionVaryingPass(IR::Program& vertex, IR::Program& fragment);
-void BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment);
+/// Returns true when the fragment shader now reads varyings per vertex. With for_geometry, only
+/// when LowerPerVertexVaryings can then hand them over through a generated geometry shader.
+bool BarycentricVaryingPass(IR::Program& vertex, IR::Program& fragment, bool for_geometry = false);
+/// For hosts without barycentrics: the fragment shader's per-vertex reads become flat reads of
+/// copies; returns, per varying, the slots holding vertices 0, 1 and 2 for the geometry shader
+std::vector<std::array<size_t, 3>> LowerPerVertexVaryings(IR::Program& vertex,
+                                                          IR::Program& fragment);
 void LowerFp64ToFp32(IR::Program& program);
 void LowerFp16ToFp32(IR::Program& program);
 void LowerInt64ToInt32(IR::Program& program);

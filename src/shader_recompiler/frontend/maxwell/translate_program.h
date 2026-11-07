@@ -1,7 +1,13 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
 #pragma once
+
+#include <array>
+#include <span>
 
 #include "shader_recompiler/environment.h"
 #include "shader_recompiler/frontend/ir/basic_block.h"
@@ -33,5 +39,13 @@ void ConvertLegacyToGeneric(IR::Program& program, const RuntimeInfo& runtime_inf
                                                       const HostTranslateInfo& host_info,
                                                       IR::Program& source_program,
                                                       Shader::OutputTopology output_topology);
+
+// For hosts without fragment shader barycentrics: a geometry shader that passes a triangle on and
+// writes, as flat values, each per-vertex varying of all three vertices into the slots
+// LowerPerVertexVaryings chose (vertex 0 in the varying's own slot)
+[[nodiscard]] IR::Program GeneratePerVertexGeometry(ObjectPool<IR::Inst>& inst_pool,
+                                                    ObjectPool<IR::Block>& block_pool,
+                                                    const IR::Program& vertex_program,
+                                                    std::span<const std::array<size_t, 3>> copies);
 
 } // namespace Shader::Maxwell

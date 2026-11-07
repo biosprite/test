@@ -23,6 +23,8 @@ struct HostTranslateInfo {
     u32 max_descriptor_set_samplers{};
     bool support_barycentric_varyings{}; ///< True when varyings may be interpolated in the shader
     bool support_position_varyings{}; ///< True when position varyings may be rebuilt from FragCoord
+    bool support_geometry_varyings{}; ///< True when a generated geometry shader may hand the
+                                      ///< fragment shader the vertices' varyings (no barycentrics)
     u32 max_descriptor_set_uniform_buffers{};
     u32 max_descriptor_set_uniform_buffers_dynamic{};
     u32 max_descriptor_set_storage_buffers{};
