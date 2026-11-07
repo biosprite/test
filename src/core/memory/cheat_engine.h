@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <vector>
@@ -44,6 +45,11 @@ public:
     void CommandLog(std::string_view data) override;
     [[nodiscard]] bool IsCommandLogEnabled() const override;
 
+    /// Puts back the game's code that cheats changed, so a cheat turned off stops working; the
+    /// cheats still on write theirs again on the same tick. Data (health, ammo) is never kept or
+    /// put back: the game owns it. On the cheat engine's tick, like every cheat write.
+    void RestoreOriginalCode();
+
 private:
     bool IsAddressInRange(VAddr address) const;
 
@@ -53,6 +59,8 @@ private:
     Core::System& system;
     mutable Kernel::KProcess* cached_process{};
     mutable u64 cached_process_id{};
+    /// Each code byte a cheat changed, as it was before the first change (address -> byte)
+    std::map<VAddr, u8> original_code;
 };
 
 // Intermediary class that parses a text file or other disk format for storing cheats into a
@@ -95,6 +103,8 @@ private:
     std::vector<CheatEntry> cheats;
     mutable std::mutex cheats_mutex;
     std::atomic_bool is_pending_reload{false};
+    /// A cheat was turned off (or the list reloaded): put back the code cheats changed
+    std::atomic_bool is_pending_restore{false};
 
     std::shared_ptr<Core::Timing::EventType> event;
     Core::Timing::CoreTiming& core_timing;
