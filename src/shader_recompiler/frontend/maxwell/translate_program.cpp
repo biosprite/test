@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <array>
 #include <bitset>
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
 #include <queue>
+#include <string_view>
 
 #include "common/settings.h"
 #include "shader_recompiler/exception.h"
@@ -545,6 +547,253 @@ IR::Program GenerateGeometryPassthrough(ObjectPool<IR::Inst>& inst_pool,
     Optimization::SsaRewritePass(program);
 
     return program;
+}
+
+std::optional<IR::Program> FoldGeometryPassthrough(
+    IR::Program& vertex, IR::Program& geometry, Environment& env_vertex,
+    std::vector<std::pair<u32, u32>>& cbuf_remap, std::string_view* failure_reason) {
+    const auto fail = [failure_reason](std::string_view reason) -> std::optional<IR::Program> {
+        if (failure_reason) {
+            *failure_reason = reason;
+        }
+        return std::nullopt;
+    };
+    const Info& gs_info{geometry.info};
+    if (geometry.stage != Stage::Geometry || !geometry.is_geometry_passthrough ||
+        geometry.invocations > 1) {
+        return fail("not a single invocation passthrough geometry shader");
+    }
+    if (geometry.local_memory_size != 0 || gs_info.uses_global_memory ||
+        gs_info.stores_global_memory || !gs_info.storage_buffers_descriptors.empty()) {
+        return fail("geometry shader uses local, global or storage memory");
+    }
+    if (!gs_info.texture_buffer_descriptors.empty() || !gs_info.image_buffer_descriptors.empty() ||
+        !gs_info.texture_descriptors.empty() || !gs_info.image_descriptors.empty()) {
+        return fail("geometry shader uses textures or images");
+    }
+    if (gs_info.uses_cbuf_indirect) {
+        return fail("geometry shader indexes constant buffers dynamically");
+    }
+    if (vertex.info.stores_indexed_attributes) {
+        return fail("vertex shader stores indexed attributes");
+    }
+
+    // The guest binds constant buffers per stage, so the same index may hold different data in
+    // the vertex and geometry stages. Geometry constant buffers move to vertex slots the vertex
+    // program doesn't read, the host binds the geometry buffers there.
+    std::array<std::optional<u32>, Info::MAX_CBUFS> cbuf_slots{};
+    std::vector<std::pair<u32, u32>> remap;
+    u32 used_vertex_slots{vertex.info.constant_buffer_mask};
+    if (vertex.info.uses_cbuf_indirect) {
+        used_vertex_slots |= (1U << Info::MAX_INDIRECT_CBUFS) - 1;
+    }
+    u32 next_slot{static_cast<u32>(Info::MAX_CBUFS)};
+    for (u32 gs_slot = 0; gs_slot < Info::MAX_CBUFS; ++gs_slot) {
+        if (((gs_info.constant_buffer_mask >> gs_slot) & 1) == 0) {
+            continue;
+        }
+        do {
+            if (next_slot == 0) {
+                return fail("no free vertex constant buffer slot for the geometry ones");
+            }
+            --next_slot;
+        } while (((used_vertex_slots >> next_slot) & 1) != 0);
+        cbuf_slots[gs_slot] = next_slot;
+        remap.emplace_back(gs_slot, next_slot);
+    }
+    const auto is_cbuf_read = [](IR::Opcode opcode) {
+        switch (opcode) {
+        case IR::Opcode::GetCbufU8:
+        case IR::Opcode::GetCbufS8:
+        case IR::Opcode::GetCbufU16:
+        case IR::Opcode::GetCbufS16:
+        case IR::Opcode::GetCbufU32:
+        case IR::Opcode::GetCbufF32:
+        case IR::Opcode::GetCbufU32x2:
+            return true;
+        default:
+            return false;
+        }
+    };
+
+    // Blocks outside of any If/Loop run on every path that reaches the end of the vertex
+    // program, so the values they store are available to the folded geometry code.
+    std::vector<const IR::Block*> top_level_blocks;
+    int depth = 0;
+    for (size_t index = 0; index < vertex.syntax_list.size(); ++index) {
+        const IR::AbstractSyntaxNode& node{vertex.syntax_list[index]};
+        switch (node.type) {
+        case IR::AbstractSyntaxNode::Type::Block:
+            if (depth == 0) {
+                top_level_blocks.push_back(node.data.block);
+            }
+            break;
+        case IR::AbstractSyntaxNode::Type::If:
+        case IR::AbstractSyntaxNode::Type::Loop:
+            ++depth;
+            break;
+        case IR::AbstractSyntaxNode::Type::EndIf:
+        case IR::AbstractSyntaxNode::Type::Repeat:
+            --depth;
+            break;
+        case IR::AbstractSyntaxNode::Type::Return:
+            if (index + 1 != vertex.syntax_list.size()) {
+                return fail("vertex shader returns early");
+            }
+            break;
+        default:
+            break;
+        }
+    }
+
+    struct VertexStore {
+        IR::Value value;
+        u32 count{};
+        bool top_level{};
+    };
+    std::map<IR::Attribute, VertexStore> vertex_stores;
+    for (IR::Block* const block : vertex.blocks) {
+        const bool top_level{std::ranges::find(top_level_blocks, block) != top_level_blocks.end()};
+        for (IR::Inst& inst : block->Instructions()) {
+            if (inst.GetOpcode() != IR::Opcode::SetAttribute) {
+                continue;
+            }
+            VertexStore& store{vertex_stores[inst.Arg(0).Attribute()]};
+            store.value = inst.Arg(1);
+            store.top_level = top_level;
+            ++store.count;
+        }
+    }
+    const auto stored_value = [&](IR::Attribute attr) -> std::optional<IR::Value> {
+        const auto it{vertex_stores.find(attr)};
+        if (it == vertex_stores.end()) {
+            if (IR::IsGeneric(attr)) {
+                // Generics the vertex stage never writes are undefined for the geometry stage.
+                return IR::Value{0.0f};
+            }
+            return std::nullopt;
+        }
+        if (it->second.count != 1 || !it->second.top_level) {
+            return std::nullopt;
+        }
+        return it->second.value;
+    };
+
+    // Validate everything before modifying either program.
+    for (IR::Block* const block : geometry.blocks) {
+        for (const IR::Inst& inst : block->Instructions()) {
+            switch (inst.GetOpcode()) {
+            case IR::Opcode::GetAttribute:
+                if (!stored_value(inst.Arg(0).Attribute())) {
+                    return fail("geometry shader reads an output the vertex shader doesn't "
+                                "write unconditionally");
+                }
+                break;
+            case IR::Opcode::SetAttribute:
+            case IR::Opcode::Prologue:
+            case IR::Opcode::Epilogue:
+            case IR::Opcode::Join:
+            case IR::Opcode::Reference:
+            case IR::Opcode::ConditionRef:
+                break;
+            case IR::Opcode::GetAttributeU32:
+            case IR::Opcode::GetAttributeIndexed:
+            case IR::Opcode::GetPatch:
+            case IR::Opcode::InvocationId:
+            case IR::Opcode::InvocationInfo:
+                return fail("geometry shader reads per primitive or per invocation inputs");
+            default:
+                if (is_cbuf_read(inst.GetOpcode())) {
+                    const IR::Value index{inst.Arg(0)};
+                    if (!index.IsImmediate() || index.U32() >= Info::MAX_CBUFS ||
+                        !cbuf_slots[index.U32()]) {
+                        return fail("geometry shader indexes constant buffers dynamically");
+                    }
+                } else if (inst.MayHaveSideEffects()) {
+                    return fail("geometry shader has side effects");
+                }
+                break;
+            }
+        }
+    }
+
+    constexpr std::array CULLED_POSITION{2.0f, 2.0f, 2.0f, 1.0f};
+    bool lowered_viewport_mask{};
+    for (IR::Block* const block : geometry.blocks) {
+        for (IR::Inst& inst : block->Instructions()) {
+            if (inst.GetOpcode() == IR::Opcode::GetAttribute) {
+                inst.ReplaceUsesWith(*stored_value(inst.Arg(0).Attribute()));
+                continue;
+            }
+            if (is_cbuf_read(inst.GetOpcode())) {
+                inst.SetArg(0, IR::Value{*cbuf_slots[inst.Arg(0).U32()]});
+                continue;
+            }
+            if (inst.GetOpcode() != IR::Opcode::SetAttribute ||
+                inst.Arg(0).Attribute() != IR::Attribute::ViewportMask) {
+                continue;
+            }
+            // Same lowering as LowerViewportMask: route the primitive to the lowest enabled
+            // viewport and move it outside of the clip volume when no viewport is enabled.
+            IR::IREmitter ir{*block, IR::Block::InstructionList::s_iterator_to(inst)};
+            const IR::U32 mask{ir.BitCast<IR::U32>(IR::F32{inst.Arg(1)})};
+            const IR::U32 lowest_bit{ir.BitwiseAnd(mask, IR::U32{ir.INeg(mask)})};
+            const IR::U1 culled{ir.IEqual(mask, ir.Imm32(0))};
+            const IR::U32 viewport{ir.Select(culled, ir.Imm32(0), ir.FindUMsb(lowest_bit))};
+            ir.SetAttribute(IR::Attribute::ViewportIndex, ir.BitCast<IR::F32>(viewport),
+                            ir.Imm32(0));
+            for (u32 component = 0; component < 4; ++component) {
+                const IR::Attribute attr{IR::Attribute::PositionX + component};
+                const std::optional<IR::Value> position{stored_value(attr)};
+                if (!position) {
+                    continue;
+                }
+                const IR::F32 value{
+                    ir.Select(culled, ir.Imm32(CULLED_POSITION[component]), *position)};
+                ir.SetAttribute(attr, value, ir.Imm32(0));
+            }
+            inst.Invalidate();
+            lowered_viewport_mask = true;
+        }
+    }
+
+    // The vertex outputs must not be reinitialized by the geometry prologue, and only the
+    // final epilogue applies the vertex stage fixups.
+    Optimization::VertexATransformPass(vertex);
+    Optimization::VertexBTransformPass(geometry);
+
+    IR::Program result{};
+    for (const auto& term : vertex.syntax_list) {
+        if (term.type != IR::AbstractSyntaxNode::Type::Return) {
+            result.syntax_list.push_back(term);
+        }
+    }
+    result.syntax_list.insert(result.syntax_list.end(), geometry.syntax_list.begin(),
+                              geometry.syntax_list.end());
+    result.blocks = GenerateBlocks(result.syntax_list);
+    result.post_order_blocks = geometry.post_order_blocks;
+    for (IR::Block* const block : vertex.post_order_blocks) {
+        result.post_order_blocks.push_back(block);
+    }
+    result.stage = Stage::VertexB;
+    result.info = vertex.info;
+    result.local_memory_size = vertex.local_memory_size;
+    result.info.stores.mask |= gs_info.stores.mask;
+    if (lowered_viewport_mask) {
+        result.info.stores.Set(IR::Attribute::ViewportMask, false);
+        result.info.stores.Set(IR::Attribute::ViewportIndex, true);
+    }
+
+    Optimization::IdentityRemovalPass(result);
+    Optimization::DeadCodeEliminationPass(result);
+    if (Settings::values.renderer_debug) {
+        Optimization::VerificationPass(result);
+    }
+    // Registers the remapped geometry constant buffers in the vertex descriptors, mask and used
+    // sizes, the same way they are collected for any vertex program.
+    Optimization::CollectShaderInfoPass(env_vertex, result);
+    cbuf_remap = std::move(remap);
+    return result;
 }
 
 } // namespace Shader::Maxwell

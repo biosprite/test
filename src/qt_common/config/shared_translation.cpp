@@ -448,6 +448,9 @@ std::unique_ptr<ComboboxTranslationMap> ComboboxEnumeration(QObject* parent) {
           PAIR(RendererBackend, OpenGL_GLASM, tr("OpenGL GLASM (Assembly Shaders, NVIDIA Only)")),
           PAIR(RendererBackend, OpenGL_SPIRV, tr("OpenGL SPIR-V (Experimental, AMD/Mesa Only)")),
 #endif
+#ifdef HAS_METAL
+          PAIR(RendererBackend, Metal, tr("Metal (Experimental)")),
+#endif
           PAIR(RendererBackend, Null, tr("Null"))}});
     translations->insert({Settings::EnumMetadata<Settings::GpuAccuracy>::Index(),
                           {

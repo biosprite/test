@@ -405,6 +405,77 @@ if (ENABLE_OPENGL)
     )
 endif()
 
+if (APPLE)
+    set(METAL_OBJCXX_SOURCES
+        renderer_metal/blit_screen.mm
+        renderer_metal/mtl_buffer_cache.mm
+        renderer_metal/mtl_device.mm
+        renderer_metal/mtl_pipeline_cache.mm
+        renderer_metal/mtl_rasterizer.mm
+        renderer_metal/mtl_shader.mm
+        renderer_metal/mtl_swapchain.mm
+        renderer_metal/mtl_texture_cache.mm
+        renderer_metal/renderer_metal.mm
+    )
+    target_sources(video_core PRIVATE
+        ${METAL_OBJCXX_SOURCES}
+        renderer_metal/blit_screen.h
+        renderer_metal/mtl_buffer_cache.h
+        renderer_metal/mtl_device.h
+        renderer_metal/mtl_pipeline_cache.h
+        renderer_metal/mtl_rasterizer.h
+        renderer_metal/mtl_shader.h
+        renderer_metal/mtl_swapchain.h
+        renderer_metal/mtl_texture_cache.h
+        renderer_metal/renderer_metal.h
+    )
+    # Built as CXX so that the project-wide C++ flags and warnings apply, but explicitly
+    # compiled as Objective-C++ with ARC, matching -fno-rtti, and disabling selector stubs
+    # that ld64.lld cannot resolve.
+    set_source_files_properties(${METAL_OBJCXX_SOURCES} PROPERTIES
+        COMPILE_OPTIONS "-x;objective-c++;-fobjc-arc;-fno-rtti;-fno-objc-msgsend-selector-stubs;-fno-objc-msgsend-class-selector-stubs"
+        SKIP_PRECOMPILE_HEADERS ON
+        SKIP_UNITY_BUILD_INCLUSION ON)
+
+    # SPIRV-Cross translates the SPIR-V emitted by the shader recompiler to MSL. The warning and
+    # RTTI options of src/ are dropped while it is configured, its sources are not ours to fix.
+    get_directory_property(METAL_SAVED_COMPILE_OPTIONS COMPILE_OPTIONS)
+    set(METAL_SPIRV_CROSS_COMPILE_OPTIONS ${METAL_SAVED_COMPILE_OPTIONS})
+    list(FILTER METAL_SPIRV_CROSS_COMPILE_OPTIONS EXCLUDE REGEX "-W|-fno-rtti")
+    set_directory_properties(PROPERTIES COMPILE_OPTIONS "${METAL_SPIRV_CROSS_COMPILE_OPTIONS}")
+    include(FetchContent)
+    set(SPIRV_CROSS_ENABLE_MSL ON CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_ENABLE_GLSL ON CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_ENABLE_HLSL OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_ENABLE_CPP OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_ENABLE_REFLECT OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_ENABLE_C_API OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_ENABLE_UTIL OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_CLI OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_SHARED OFF CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_STATIC ON CACHE BOOL "" FORCE)
+    set(SPIRV_CROSS_SKIP_INSTALL ON CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        SPIRV-Cross
+        GIT_REPOSITORY https://github.com/KhronosGroup/SPIRV-Cross.git
+        GIT_TAG vulkan-sdk-1.4.341.0
+        EXCLUDE_FROM_ALL
+        SYSTEM
+    )
+    FetchContent_MakeAvailable(SPIRV-Cross)
+    set_directory_properties(PROPERTIES COMPILE_OPTIONS "${METAL_SAVED_COMPILE_OPTIONS}")
+    target_link_libraries(video_core PRIVATE spirv-cross-msl spirv-cross-core)
+
+    foreach(fw Metal QuartzCore Foundation AppKit)
+        find_library(${fw}_LIBRARY ${fw} REQUIRED)
+        target_link_libraries(video_core PRIVATE ${${fw}_LIBRARY})
+    endforeach()
+    target_link_libraries(video_core PRIVATE "-lobjc")
+
+    target_compile_definitions(video_core PUBLIC HAS_METAL)
+endif()
+
 target_link_libraries(video_core PUBLIC common core)
 target_link_libraries(video_core PUBLIC shader_recompiler stb bc_decoder gpu_logging)
 if (ENABLE_OPENGL)

@@ -900,6 +900,8 @@ MainWindow::MainWindow(bool has_broken_vulkan)
                              tr("Vulkan initialization failed during boot."));
 #ifdef HAS_OPENGL
         Settings::values.renderer_backend = Settings::RendererBackend::OpenGL_GLSL;
+#elif defined(HAS_METAL)
+        Settings::values.renderer_backend = Settings::RendererBackend::Metal;
 #else
         Settings::values.renderer_backend = Settings::RendererBackend::Null;
 #endif

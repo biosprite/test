@@ -112,6 +112,14 @@ struct VulkanRenderWidget : public RenderWidget {
     }
 };
 
+#ifdef HAS_METAL
+struct MetalRenderWidget : public RenderWidget {
+    explicit MetalRenderWidget(GRenderWindow* parent) : RenderWidget(parent) {
+        windowHandle()->setSurfaceType(QWindow::MetalSurface);
+    }
+};
+#endif
+
 struct NullRenderWidget : public RenderWidget {
     explicit NullRenderWidget(GRenderWindow* parent) : RenderWidget(parent) {}
 };
@@ -759,6 +767,10 @@ bool GRenderWindow::InitRenderTarget() {
     case Settings::RendererBackend::Null:
         InitializeNull();
         break;
+    case Settings::RendererBackend::Metal:
+        if (!InitializeMetal())
+            return false;
+        break;
     }
 
     // Update the Window System information with the new render target
@@ -871,6 +883,19 @@ bool GRenderWindow::InitializeVulkan() {
     child_widget->windowHandle()->create();
     main_context = std::make_unique<DummyContext>();
     return true;
+}
+
+bool GRenderWindow::InitializeMetal() {
+#ifdef HAS_METAL
+    child_widget = new MetalRenderWidget(this);
+    child_widget->windowHandle()->create();
+    main_context = std::make_unique<DummyContext>();
+    return true;
+#else
+    QMessageBox::warning(this, tr("Metal not available!"),
+                         tr("Eden has not been compiled with Metal support."));
+    return false;
+#endif
 }
 
 void GRenderWindow::InitializeNull() {

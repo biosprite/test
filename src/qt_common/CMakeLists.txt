@@ -88,6 +88,10 @@ if (ENABLE_OPENGL)
     target_compile_definitions(qt_common PUBLIC HAS_OPENGL)
 endif()
 
+if (APPLE)
+    target_compile_definitions(qt_common PUBLIC HAS_METAL)
+endif()
+
 if (UNIX AND NOT APPLE)
     if (DEFINED Qt6Gui_PRIVATE_INCLUDE_DIRS)
         target_include_directories(qt_common PRIVATE ${Qt6Gui_PRIVATE_INCLUDE_DIRS})

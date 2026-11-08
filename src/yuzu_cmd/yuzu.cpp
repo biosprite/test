@@ -218,6 +218,12 @@ extern "C" SDL_AppResult SDL_AppInit(void **appstate, int argc, char **argv) {
     case Settings::RendererBackend::Vulkan:
         state->emu_window = std::make_unique<EmuWindow_SDL3_VK>(&input_subsystem, state->system, lp.fullscreen);
         break;
+#ifdef HAS_METAL
+    // On macOS this window exposes an SDL Metal view backed by a CAMetalLayer.
+    case Settings::RendererBackend::Metal:
+        state->emu_window = std::make_unique<EmuWindow_SDL3_VK>(&input_subsystem, state->system, lp.fullscreen);
+        break;
+#endif
     case Settings::RendererBackend::Null:
         state->emu_window = std::make_unique<EmuWindow_SDL3_Null>(&input_subsystem, state->system, lp.fullscreen);
         break;

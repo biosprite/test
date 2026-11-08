@@ -76,6 +76,7 @@ static const std::map<Settings::RendererBackend, QString> renderer_backend_texts
     {Settings::RendererBackend::OpenGL_GLASM,
      QStringLiteral(QT_TRANSLATE_NOOP("MainWindow", "OpenGL GLASM"))},
     {Settings::RendererBackend::Null, QStringLiteral(QT_TRANSLATE_NOOP("MainWindow", "Null"))},
+    {Settings::RendererBackend::Metal, QStringLiteral(QT_TRANSLATE_NOOP("MainWindow", "Metal"))},
 };
 
 } // namespace ConfigurationShared

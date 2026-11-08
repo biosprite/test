@@ -141,7 +141,10 @@ struct GPU::Impl {
 
     void WaitForSyncOperation(const u64 fence) {
         std::unique_lock lck{sync_request_mutex};
-        sync_request_cv.wait(lck, [this, fence] { return CurrentSyncRequestFence() >= fence; });
+        sync_request_cv.wait(lck, [this, fence] {
+            return CurrentSyncRequestFence() >= fence ||
+                   shutting_down.load(std::memory_order_relaxed);
+        });
     }
 
     void WaitForIdle() {
@@ -182,9 +185,16 @@ struct GPU::Impl {
     }
 
     void NotifyShutdown() {
+        // Sync operations still queued when the GPU thread stops never run: their waiters (the
+        // vsync thread inside a composite, holding the VI lock) must be released first, or the
+        // services can't terminate.
+        {
+            std::scoped_lock lk{sync_request_mutex};
+            shutting_down.store(true, std::memory_order::relaxed);
+        }
+        sync_request_cv.notify_all();
         gpu_thread.NotifyShutdown();
         std::unique_lock lk{sync_mutex};
-        shutting_down.store(true, std::memory_order::relaxed);
         sync_cv.notify_all();
     }
 

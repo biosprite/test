@@ -473,6 +473,7 @@ void ConfigureGraphics::ApplyConfiguration() {
         case Settings::RendererBackend::OpenGL_SPIRV:
         case Settings::RendererBackend::OpenGL_GLASM:
         case Settings::RendererBackend::Null:
+        case Settings::RendererBackend::Metal:
             break;
         }
     }
