@@ -351,8 +351,6 @@ class MainActivity : AppCompatActivity(), ThemeProvider {
         ThemeHelper.setCorrectTheme(this)
         super.onResume()
         applyFullscreenPreference()
-        // Run after the current resume / activity-result pass so a document-tree pick
-        // for the home add-folder flow is not interleaved with a library reload.
         binding.root.post {
             if (GameFolderOperations.consumeGameFoldersChanged()) {
                 gamesViewModel.syncFoldersFromNativeConfig()
