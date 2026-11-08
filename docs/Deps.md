@@ -1,6 +1,6 @@
 # Dependencies
 
-To build Eden, you MUST have a C++ compiler. Clang 19+ and GCC 15+ are supported.
+To build Eden, you MUST have a C++ compiler. Clang 19+ and GCC 16+ are supported.
 
 - On Linux, this is usually GCC or Clang. Install it through your distribution's package manager.
 - On Windows, you have two options:
@@ -10,7 +10,7 @@ To build Eden, you MUST have a C++ compiler. Clang 19+ and GCC 15+ are supported
   - Install [MSYS2](https://msys2.org) and use Clang or GCC. UCRT64 and CLANGARM64 are the only two supported environments for now.
 - On macOS, you must use [Homebrew](https://brew.sh)'s Clang (`brew install llvm`).
   - The default Apple Clang (`xcode-select --install`) is currently incompatible.
-  - This is because Apple Clang does not currently support C++20 modules. It's currently unknown when/if it will ever support modules, so for now stick to Homebrew.
+  - This is because Apple Clang does not currently support C++20 modules (specifically, it lacks `clang-scan-deps`). It's currently unknown when/if it will ever support modules, so for now stick to Homebrew.
 
 The following additional tools are also required:
 
@@ -23,7 +23,7 @@ The following additional tools are also required:
     - `tools/windows/install-vulkan-sdk.ps1` (for PowerShell 5+)
     - `tools/windows/install-vulkan-sdk.sh` (for Git Bash, etc)
 
-If you are on desktop and plan to use the Qt frontend, you *must* install Qt >=6.66, and optionally Qt Creator (the recommended IDE for building)
+If you are on desktop and plan to use the Qt frontend, you *must* install Qt >=6.6, and optionally Qt Creator (the recommended IDE for building)
 
 - On Linux, *BSD and macOS, this can be done by the package manager
   - If you wish to use Qt Creator, append `qtcreator` or `qt-creator` to the commands seen below.
@@ -35,8 +35,8 @@ If you are on desktop and plan to use the Qt frontend, you *must* install Qt >=6
 
 - If you're using clang-cl and want to still use MSVC
   - Check the option to add "C++ clang compiler for Windows" on Visual Studio installer and uncheck "x64/x86 build tool for MSVC" while selecting "C++ desktop developement tools" and change Visual Studio to 2026, from 2022.
-  - At qt creator section generator tab change Visual Studio 17 2022 to 2026.
-  - Finally, to use clang-cl: `cmake -S . -B build -G "Visual Studio 17 2026" -T ClangCL`
+  - For Qt Creator, ensure the generator is set to Ninja, and your selected kit uses clang-cl.
+  - Finally, to use clang-cl: `cmake -S . -B build -G Ninja -T ClangCL`
 
 If you are on **Windows** and building with **MSVC** or **clang-cl**, you may go [back home](Build.md) and continue.
 
@@ -137,7 +137,6 @@ sudo emerge -a \
 Required USE flags:
 
 - `dev-qt/qtbase network concurrent dbus gui widgets`
-- `dev-libs/quazip qt6`
 - `media-libs/libsdl3 haptic joystick sound video`
   - Adding `X vulkan udev opengl` is recommended but not required
 
@@ -154,7 +153,7 @@ sudo pacman -Syu --needed base-devel boost catch2 cmake enet ffmpeg fmt git glsl
 
 - Building with QT Web Engine requires `qt6-webengine` as well.
 - Proper Wayland support requires `qt6-wayland`
-- GCC 11 or later is required.
+- GCC 16 or later is required.
 
 </details>
 
@@ -195,8 +194,7 @@ sudo dnf install qt6-qtbase-private-devel
 For systems like OpenEuler or derivates, don't forget to also install: `SDL3-devel pkg-config fmt-dev`.
 
 - [RPM Fusion](https://rpmfusion.org/Configuration) is required for `ffmpeg-devel`
-- Fedora 32 or later is required.
-- Fedora 36+ users with GCC 12 need Clang and should configure CMake with: `cmake -DCMAKE_CXX_COMPILER=clang++ -DCMAKE_C_COMPILER=clang -B build`
+- Fedora 42 or later is required.
 
 </details>
 
@@ -256,10 +254,10 @@ brew install molten-vk
 As root run:
 
 ```sh
-pkg install devel/cmake devel/sdl3 devel/boost-libs devel/catch2 devel/libfmt devel/ninja devel/nasm devel/autoconf devel/pkgconf devel/qt6-base x11-toolkits/qt6-charts devel/simpleini net/enet multimedia/ffnvcodec-headers multimedia/ffmpeg audio/opus archivers/liblz4 lang/gcc12 graphics/glslang graphics/vulkan-utility-libraries graphics/spirv-tools graphics/vulkan-utility-libraries graphics/vulkan-headers graphics/spirv-headers quazip-qt6
+pkg install devel/cmake devel/sdl3 devel/boost-libs devel/catch2 devel/libfmt devel/ninja devel/nasm devel/autoconf devel/pkgconf devel/qt6-base x11-toolkits/qt6-charts devel/simpleini net/enet multimedia/ffnvcodec-headers multimedia/ffmpeg audio/opus archivers/liblz4 lang/gcc16 graphics/glslang graphics/vulkan-utility-libraries graphics/spirv-tools graphics/vulkan-utility-libraries graphics/vulkan-headers graphics/spirv-headers quazip-qt6
 ```
 
-If using FreeBSD 12 or prior, use `devel/pkg-config` instead.
+FreeBSD 15 or later is required.
 
 [Caveats](./Caveats.md#freebsd).
 
@@ -291,7 +289,7 @@ pkg_add cmake nasm git boost unzip--iconv autoconf-2.72p0 bash ffmpeg glslang gm
 <summary>DragonFlyBSD</summary>
 
 ```sh
-pkg install gcc14 git cmake unzip nasm autoconf bash pkgconf ffmpeg glslang gmake jq enet spirv-tools sdl3 vulkan-utility-libraries vulkan-headers catch2 libfmt openssl liblz4 boost-libs qt6-base qt6-charts quazip-qt6 libva-vdpau-driver libva-utils libva-intel-driver
+pkg install gcc16 git cmake unzip nasm autoconf bash pkgconf ffmpeg glslang gmake jq enet spirv-tools sdl3 vulkan-utility-libraries vulkan-headers catch2 libfmt openssl liblz4 boost-libs qt6-base qt6-charts quazip-qt6 libva-vdpau-driver libva-utils libva-intel-driver
 ```
 
 [Caveats](./Caveats.md#dragonflybsd).
@@ -300,8 +298,10 @@ pkg install gcc14 git cmake unzip nasm autoconf bash pkgconf ffmpeg glslang gmak
 <details>
 <summary>OpenIndiana</summary>
 
+OpenIndiana is currently unsupported due to its GCC version being too old. When GCC 16 gets added to the main repositories:
+
 ```sh
-sudo pkg install git cmake qt6 boost glslang libzip library/lz4 libusb-1 openssl opus sdl3 zlib compress/zstd unzip pkg-config nasm autoconf mesa library/libdrm header-drm developer/fmt
+sudo pkg install git cmake qt6 boost glslang libzip library/lz4 libusb-1 openssl opus sdl3 zlib compress/zstd unzip pkg-config nasm autoconf mesa library/libdrm header-drm developer/fmt gcc-16
 ```
 
 [Caveats](./Caveats.md#openindiana).
@@ -310,8 +310,10 @@ sudo pkg install git cmake qt6 boost glslang libzip library/lz4 libusb-1 openssl
 <details>
 <summary>OmniOS</summary>
 
+OmniOS is currently unsupported due to its GCC version being too old. When GCC 16 gets added to the main repositories:
+
 ```sh
-sudo pkgin install git cmake autoconf build-essential libusb-1 nasm gcc13
+sudo pkgin install git cmake autoconf build-essential libusb-1 nasm gcc16
 ```
 
 [Caveats](./Caveats.md#omnios).

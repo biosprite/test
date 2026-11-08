@@ -4,7 +4,7 @@
 
 * [Android Studio](https://developer.android.com/studio)
 * [NDK 30+ and CMake 3.31.6](https://developer.android.com/studio/projects/install-ndk#default-version)
-  * `$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6" "ndk;30.0.16138531"`
+  * `$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "cmake;3.31.6" "ndk;30.0.16138531"`
 * [Git](https://git-scm.com/download)
 
 ## WINDOWS ONLY - Additional Dependencies

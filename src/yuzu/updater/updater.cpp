@@ -21,7 +21,7 @@ static bool waitForPid(uint64_t pid) {
     if (!h) {
         // the eden process already exited, or the pid is invalid in some way.
         // Either way just go forth and pray it's actually been closed.
-        return GetLastError() == ERROR_INVALID_PARAMETER;
+        return GetLastError() == ERROR_INVALID_PARAMETER || GetLastError() == ERROR_FILE_NOT_FOUND;
     }
 
     // wait 1m for the process to exit
@@ -30,11 +30,10 @@ static bool waitForPid(uint64_t pid) {
     return result == WAIT_OBJECT_0;
 }
 
-// TODO: Preserve "user" directory.
-// TODO: Log file.
-int main(int argc, char** argv) {
+// TODO: On error, launch main exe with an arg that prints a warning.
+int wmain(int argc, wchar_t** argv) {
     namespace fs = std::filesystem;
-    std::vector<std::string> args{argv + 1, argv + argc};
+    std::vector<std::wstring> args{argv + 1, argv + argc};
 
     if (args.size() < 5) {
         std::println(stderr, "Usage: {} [pid] [app dir] [old app dir] [staging app dir] [keep old]", argv[0]);
@@ -43,11 +42,10 @@ int main(int argc, char** argv) {
 
     // pid
     uint64_t pid = 0;
-    const auto pid_str = args[0];
-    auto fres = std::from_chars(pid_str.data(), pid_str.data() + pid_str.size(), pid);
-
-    if (fres.ec != std::errc{}) {
-        std::println(stderr, "Invalid PID {}", pid_str);
+    try {
+        pid = std::stoull(args[0]);
+    } catch (...) {
+        std::println(stderr, "Invalid PID string.");
         return 2;
     }
 
@@ -70,6 +68,20 @@ int main(int argc, char** argv) {
         return 3;
     }
 
+    // Move an existing user directory to the staging dir
+    const auto old_user = fs::path(app_dir) / "user";
+    if (fs::exists(old_user)) {
+        std::error_code ec;
+
+        const auto new_user = fs::path(staging_dir) / "user";
+        fs::rename(old_user, new_user, ec);
+
+        if (ec) {
+            std::println(stderr, "Failed to copy old user directory: {}", ec.message());
+            return 4;
+        }
+    }
+
     // Remove or rename app dir
     if (keep_old) {
         std::error_code ec;
@@ -80,7 +92,7 @@ int main(int argc, char** argv) {
 
         if (ec) {
             std::println(stderr, "Failed to create old directory: {}", ec.message());
-            return 4;
+            return 5;
         }
     } else {
         std::error_code ec;
@@ -88,7 +100,7 @@ int main(int argc, char** argv) {
 
         if (ec) {
             std::println(stderr, "Failed to remove existing app directory: {}", ec.message());
-            return 5;
+            return 6;
         }
     }
 
@@ -99,7 +111,7 @@ int main(int argc, char** argv) {
 
         if (ec) {
             std::println(stderr, "Failed to move staging directory: {}", ec.message());
-            return 6;
+            return 7;
         }
     }
 
@@ -110,15 +122,16 @@ int main(int argc, char** argv) {
 
     if (!fs::exists(exe)) {
         std::println(stderr, "eden.exe does not exist in the new directory.");
-        return 7;
+        return 8;
     }
 
     try {
         boost::asio::io_context ctx;
-        bp::process child(ctx, exe.string(), {});
+        bp::process child(ctx, exe.wstring(), {});
         child.detach();
     } catch (std::exception &e) {
         std::println(stderr, "Failed to spawn child process: {}", e.what());
+        return 9;
     }
 
     return 0;

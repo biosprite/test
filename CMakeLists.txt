@@ -18,7 +18,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 # force cmdlines to use rsp files to avoid 8191 char limit on winblows
-if (CMAKE_GENERATOR STREQUAL "Ninja" AND WIN32)
+if (CMAKE_GENERATOR MATCHES "Ninja" AND WIN32)
     set(CMAKE_NINJA_FORCE_RESPONSE_FILE ON)
 endif()
 

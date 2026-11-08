@@ -144,14 +144,11 @@
         "version": "20250828"
     },
     "lz4": {
-        "hash": "35c21a5d9cfb5bbf314a5321d02b36819491d2ee3cf8007030ca09d13ca4dae672247b7aeab553e973093604fc48221cb03dc92197c6efe8fc3746891363fdab",
+        "hash": "5638a9ca76f333bea718b457588eadafd8dddbc4c8afcd8e21992805afff7af283283642558e52d1f1d4655dbe26f2aa85fa89dc365041ca621baf79c552f364",
         "name": "lz4",
-        "options": [
-            "LZ4_BUILD_CLI OFF"
-        ],
         "repo": "lz4/lz4",
         "source_subdir": "build/cmake",
-        "version": "ebb370ca83"
+        "version": "v1.11.0"
     },
     "moltenvk": {
         "artifact": "MoltenVK-macOS.tar",

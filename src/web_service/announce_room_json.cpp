@@ -12,32 +12,7 @@ import jacinth;
 
 namespace AnnounceMultiplayerRoom {
 
-static void to_json(jacinth::mutable_value json, const Member& member)
-{
-    if (!member.username.empty())
-        json["username"] = member.username;
-    json["nickname"] = member.nickname;
-    if (!member.avatar_url.empty())
-        json["avatarUrl"] = member.avatar_url;
-    json["gameName"] = member.game.name;
-    json["gameId"] = member.game.id;
-}
-
-static void from_json(const jacinth::value& json, Member& member)
-{
-    member.nickname = json.get("nickname");
-    member.game.name = json.get("gameName");
-    member.game.id = json.get("gameId");
-
-    if (json["username"].is_null()) {
-        member.username = member.avatar_url = "";
-        LOG_DEBUG(Network, "Member '{}' isn't authenticated", member.nickname);
-    } else {
-        member.username = json.get("username");
-        member.avatar_url = json.get("avatarUrl");
-    }
-}
-
+// TODO: rewrite this to use jacinth meta spec
 static void to_json(jacinth::mutable_value json, const Room& room)
 {
     json["port"] = room.information.port;
@@ -47,8 +22,8 @@ static void to_json(jacinth::mutable_value json, const Room& room)
     json["preferredGameName"] = room.information.preferred_game.name;
     json["preferredGameId"] = room.information.preferred_game.id;
     json["maxPlayers"] = room.information.member_slots;
-    json["netVersion"] = room.net_version;
-    json["hasPassword"] = room.has_password;
+    json["netVersion"] = room.netVersion;
+    json["hasPassword"] = room.hasPassword;
     if (!room.members.empty())
         json["players"] = room.members;
 }
@@ -71,8 +46,8 @@ static void from_json(const jacinth::value& json, Room& room)
     room.information.preferred_game.name = json.get("preferredGameName");
     room.information.preferred_game.id = json.get("preferredGameId");
     room.information.member_slots = json.get("maxPlayers");
-    room.net_version = json.get("netVersion");
-    room.has_password = json.get("hasPassword");
+    room.netVersion = json.get("netVersion");
+    room.hasPassword = json.get("hasPassword");
 
     if (json["players"].is_null())
         LOG_DEBUG(Network, "No players key");
@@ -92,8 +67,8 @@ void RoomJson::SetRoomInformation(const std::string& name, const std::string& de
     room.information.description = description;
     room.information.port = port;
     room.information.member_slots = max_player;
-    room.net_version = net_version;
-    room.has_password = has_password;
+    room.netVersion = net_version;
+    room.hasPassword = has_password;
     room.information.preferred_game = preferred_game;
 }
 void RoomJson::AddPlayer(const AnnounceMultiplayerRoom::Member& member) {

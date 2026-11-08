@@ -24,7 +24,7 @@ struct Member {
     std::string username;
     std::string nickname;
     std::string display_name;
-    std::string avatar_url;
+    std::string avatarUrl;
     Network::IPv4Address fake_ip;
     GameInfo game;
 };
@@ -44,8 +44,8 @@ struct Room {
     std::string id;
     std::string verify_uid; ///< UID used for verification
     std::string ip;
-    u32 net_version{};
-    bool has_password = false;
+    u32 netVersion{};
+    bool hasPassword = false;
 
     std::vector<Member> members;
 };

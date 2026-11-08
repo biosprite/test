@@ -118,15 +118,14 @@ void QtAmiiboSettingsDialog::LoadAmiiboApiInfo(std::string_view amiibo_id) {
         return;
     }
 
-    AmiiboData amiiboData = jacinth::doc::read(amiibo_json);
-    // TODO(crueter): error handling
+    auto amiiboData = jacinth::doc::try_read<AmiiboData>(amiibo_json);
 
-    // if (ec) {
-    //     LOG_WARNING(Frontend, "Failed to parse amiibo data:\n{}", glz::format_error(ec, amiibo_json));
-    //     return;
-    // }
+    if (!amiiboData) {
+        LOG_WARNING(Frontend, "Failed to parse amiibo data");
+        return;
+    }
 
-    auto amiibo = amiiboData.amiibo;
+    auto amiibo = amiiboData->amiibo;
 
     ui->amiiboSeriesValue->setText(QString::fromStdString(amiibo.amiiboSeries));
     ui->amiiboNameValue->setText(QString::fromStdString(amiibo.name));

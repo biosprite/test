@@ -24,18 +24,16 @@ bool VerifyLogin(const std::string& host, const std::string& username, const std
         return false;
     }
 
-    Reply reply_s = jacinth::doc::read(reply);
+    auto reply_s = jacinth::doc::try_read<Reply>(reply);
 
-    // TODO(crueter): error handling
+    if (!reply_s) {
+        LOG_WARNING(WebService, "Failed to parse verification profile");
+        return false;
+    }
 
-    // if (ec) {
-    //     LOG_WARNING(WebService, "Failed to parse verification profile:\n{}", glz::format_error(ec, reply));
-    //     return false;
-    // }
+    if (!reply_s->username) return username.empty();
 
-    if (!reply_s.username) return username.empty();
-
-    return reply_s.username == username;
+    return reply_s->username == username;
 }
 
 } // namespace WebService

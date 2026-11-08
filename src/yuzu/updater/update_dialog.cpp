@@ -272,8 +272,6 @@ void UpdateDialog::Download() {
         }
 
         // ...then run a small updater shim
-        // FIXME copy to cache dir, then run.
-        // TODO: error handling
         const auto updater = appDir / "eden-updater.exe";
         const auto cached_updater =
             Common::FS::GetEdenPath(Common::FS::EdenPath::CacheDir) / "eden-updater.exe";
