@@ -31,9 +31,10 @@ static bool waitForPid(uint64_t pid) {
 }
 
 // TODO: On error, launch main exe with an arg that prints a warning.
-int wmain(int argc, wchar_t** argv) {
+// TODO(crueter): unicode handling??? kys
+int main(int argc, char** argv) {
     namespace fs = std::filesystem;
-    std::vector<std::wstring> args{argv + 1, argv + argc};
+    std::vector<std::string> args{argv + 1, argv + argc};
 
     if (args.size() < 5) {
         std::println(stderr, "Usage: {} [pid] [app dir] [old app dir] [staging app dir] [keep old]", argv[0]);
@@ -127,7 +128,7 @@ int wmain(int argc, wchar_t** argv) {
 
     try {
         boost::asio::io_context ctx;
-        bp::process child(ctx, exe.wstring(), {});
+        bp::process child(ctx, exe.string(), {});
         child.detach();
     } catch (std::exception &e) {
         std::println(stderr, "Failed to spawn child process: {}", e.what());
