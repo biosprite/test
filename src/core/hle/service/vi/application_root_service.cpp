@@ -19,7 +19,7 @@ IApplicationRootService::IApplicationRootService(Core::System& system_,
     : ServiceFramework{system_, "vi:u"}, m_container{std::move(container)} {
     static const FunctionInfo functions[] = {
         {0, C<&IApplicationRootService::GetDisplayService>, "GetDisplayService"},
-        {1, nullptr, "GetDisplayServiceWithProxyNameExchange"},
+        {1, C<&IApplicationRootService::GetDisplayServiceWithProxyNameExchange>, "GetDisplayServiceWithProxyNameExchange"},
     };
     RegisterHandlers(functions);
 }
@@ -29,6 +29,15 @@ IApplicationRootService::~IApplicationRootService() = default;
 Result IApplicationRootService::GetDisplayService(
     Out<SharedPointer<IApplicationDisplayService>> out_application_display_service, Policy policy) {
     LOG_DEBUG(Service_VI, "called");
+    R_RETURN(GetApplicationDisplayService(out_application_display_service, system, m_container,
+                                          Permission::User, policy));
+}
+
+Result IApplicationRootService::GetDisplayServiceWithProxyNameExchange(
+    Out<SharedPointer<IApplicationDisplayService>> out_application_display_service, Policy policy) {
+    // Same input as GetDisplayService for vi:u (only the vi:m variant also takes a proxy name).
+    // Used by applications when vi:m and vi:s are denied by their service access control.
+    LOG_DEBUG(Service_VI, "called, policy={}", policy);
     R_RETURN(GetApplicationDisplayService(out_application_display_service, system, m_container,
                                           Permission::User, policy));
 }

@@ -79,9 +79,11 @@ private:
     boost::container::small_vector<IR::Inst*, 3> values; //24
 //non trivial
     // Block state, the total amount of uses for this particular arg
-    uint16_t total_uses = 0; //2
+    // Must be able to hold the use count of a single IR::Inst (unsigned): a value shared by a
+    // whole straight-line block of tens of thousands of guest instructions exceeds 16 bits.
+    uint32_t total_uses = 0; //4
     // Sometimes zeroed, accumulated (non referenced) uses
-    uint16_t accumulated_uses = 0; //2
+    uint32_t accumulated_uses = 0; //4
 //always zeroed
     // Current instruction state
     uint8_t current_references = 0; //1

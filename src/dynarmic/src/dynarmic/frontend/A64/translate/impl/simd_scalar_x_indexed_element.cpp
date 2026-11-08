@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: Copyright 2025 Eden Emulator Project
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 /* This file is part of the dynarmic project.
@@ -86,6 +86,28 @@ bool MultiplyByElementHalfPrecision(TranslatorVisitor& v, Imm<1> L, Imm<1> M, Im
     v.V_scalar(esize, Vd, result);
     return true;
 }
+
+// SQDMLAL/SQDMLSL (by element, scalar): Vd = SignedSat(Vd +/- SignedSat(2 * Vn * Vm[index]))
+bool SaturatingDoublingMultiplyLongByElement(TranslatorVisitor& v, Imm<2> size, Imm<1> L, Imm<1> M, Imm<4> Vmlo, Imm<1> H, Vec Vn, Vec Vd, ExtraBehavior extra_behavior) {
+    if (size == 0b00 || size == 0b11) {
+        return v.ReservedValue();
+    }
+
+    const size_t esize = 8 << size.ZeroExtend();
+    const auto [index, Vm] = CombineScalar(size, H, L, M, Vmlo);
+
+    // Only element 0 of the operands is populated, so every other lane is 0 +/- 0 and cannot saturate.
+    const IR::U128 operand1 = v.ir.ZeroExtendToQuad(v.ir.VectorGetElement(esize, v.V(128, Vn), 0));
+    const IR::U128 broadcast = v.ir.VectorBroadcastElement(esize, v.V(128, Vm), index);
+    const IR::U128 product = v.ir.VectorSignedSaturatedDoublingMultiplyLong(esize, operand1, broadcast);
+    const IR::U128 accumulator = v.ir.ZeroExtendToQuad(v.ir.VectorGetElement(2 * esize, v.V(128, Vd), 0));
+    const IR::U128 result = extra_behavior == ExtraBehavior::Subtract
+                              ? v.ir.VectorSignedSaturatedSub(2 * esize, accumulator, product)
+                              : v.ir.VectorSignedSaturatedAdd(2 * esize, accumulator, product);
+
+    v.V(128, Vd, result);
+    return true;
+}
 }  // Anonymous namespace
 
 bool TranslatorVisitor::FMLA_elt_1(Imm<1> L, Imm<1> M, Imm<4> Vmlo, Imm<1> H, Vec Vn, Vec Vd) {
@@ -142,6 +164,14 @@ bool TranslatorVisitor::SQRDMULH_elt_1(Imm<2> size, Imm<1> L, Imm<1> M, Imm<4> V
 
     V(128, Vd, result);
     return true;
+}
+
+bool TranslatorVisitor::SQDMLAL_elt_1(Imm<2> size, Imm<1> L, Imm<1> M, Imm<4> Vmlo, Imm<1> H, Vec Vn, Vec Vd) {
+    return SaturatingDoublingMultiplyLongByElement(*this, size, L, M, Vmlo, H, Vn, Vd, ExtraBehavior::Accumulate);
+}
+
+bool TranslatorVisitor::SQDMLSL_elt_1(Imm<2> size, Imm<1> L, Imm<1> M, Imm<4> Vmlo, Imm<1> H, Vec Vn, Vec Vd) {
+    return SaturatingDoublingMultiplyLongByElement(*this, size, L, M, Vmlo, H, Vn, Vd, ExtraBehavior::Subtract);
 }
 
 bool TranslatorVisitor::SQDMULL_elt_1(Imm<2> size, Imm<1> L, Imm<1> M, Imm<4> Vmlo, Imm<1> H, Vec Vn, Vec Vd) {

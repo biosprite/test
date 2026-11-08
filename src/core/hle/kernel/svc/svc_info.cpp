@@ -258,7 +258,10 @@ Result GetInfo(Core::System& system, u64* result, InfoType info_id_type, Handle 
         R_SUCCEED();
     }
     default:
-        LOG_ERROR(Kernel_SVC, "Unimplemented svcGetInfo id={:#016x}", info_id);
+        // Some titles probe the kernel with an invalid id (NBA 2K26 uses 0x55) and expect the
+        // error to leave the output register untouched, as the real kernel does. Do not fake a
+        // successful result here.
+        LOG_ERROR(Kernel_SVC, "Unimplemented svcGetInfo id={:#016x}, sub_id={:#016x}, handle={:#08x}", info_id, info_sub_id, handle);
         R_THROW(ResultInvalidEnumValue);
     }
 }

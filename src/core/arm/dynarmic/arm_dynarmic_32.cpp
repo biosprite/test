@@ -84,7 +84,10 @@ void DynarmicCallbacks32::ExceptionRaised(u32 pc, Dynarmic::A32::Exception excep
             return;
         }
 
-        m_parent.LogBacktrace(m_process);
+        // Only symbolicate a backtrace the first time a given PC faults, see arm_dynarmic_64.cpp
+        if (m_logged_exception_pcs.insert(pc).second) {
+            m_parent.LogBacktrace(m_process);
+        }
         LOG_CRITICAL(Core_ARM,
                         "ExceptionRaised(exception = {}, pc = {:08X}, code = {:08X}, thumb = {})",
                         exception, pc, m_memory.Read32(pc), m_parent.IsInThumbMode());

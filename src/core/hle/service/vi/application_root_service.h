@@ -28,6 +28,9 @@ private:
     Result GetDisplayService(
         Out<SharedPointer<IApplicationDisplayService>> out_application_display_service,
         Policy policy);
+    Result GetDisplayServiceWithProxyNameExchange(
+        Out<SharedPointer<IApplicationDisplayService>> out_application_display_service,
+        Policy policy);
 
 private:
     const std::shared_ptr<Container> m_container;

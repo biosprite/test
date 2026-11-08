@@ -7,6 +7,9 @@
 #pragma once
 
 #include <map>
+#include <string>
+#include <string_view>
+#include <vector>
 
 #include "core/arm/arm_interface.h"
 #include "core/file_sys/program_metadata.h"
@@ -129,6 +132,8 @@ private:
 
     s32 m_ideal_core_id{};
     u32 m_version{};
+    /// Names (possibly ending with a '*' wildcard) of the services the program may use.
+    std::vector<std::string> m_service_access_control;
 
     std::atomic<u16> m_num_running_threads{};
 
@@ -288,6 +293,10 @@ public:
     bool CanForceDebug() const {
         return m_capabilities.CanForceDebug();
     }
+
+    /// Whether the service access control of the program allows using the given service. Programs
+    /// loaded without an NPDM (homebrew, KIPs) have no access control and may use any service.
+    bool IsServiceAccessPermitted(std::string_view service_name) const;
 
     u32 GetAllocateOption() const {
         return m_page_table.GetAllocateOption();

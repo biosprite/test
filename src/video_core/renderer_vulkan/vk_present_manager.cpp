@@ -355,9 +355,12 @@ void PresentManager::PresentThread(std::stop_token token) {
     }
 }
 
-void PresentManager::RecreateSwapchain(Frame* frame) {
-    swapchain.Create(*surface, frame->width, frame->height); // Pass raw pointer
+bool PresentManager::RecreateSwapchain(Frame* frame) {
+    if (!swapchain.Create(*surface, frame->width, frame->height)) { // Pass raw pointer
+        return false;
+    }
     SetImageCount();
+    return true;
 }
 
 void PresentManager::SetImageCount() {
@@ -427,15 +430,21 @@ void PresentManager::CopyToSwapchainImpl(Frame* frame) {
 
     // If the size of the incoming frames has changed, recreate the swapchain
     // to account for that.
-    const bool is_suboptimal = swapchain.NeedsRecreation();
+    const bool needs_recreation = swapchain.NeedsRecreation() || swapchain.IsOutDated();
     const bool size_changed =
         swapchain.GetWidth() != frame->width || swapchain.GetHeight() != frame->height;
-    if (is_suboptimal || size_changed) {
-        RecreateSwapchain(frame);
+    if ((needs_recreation || size_changed) && !RecreateSwapchain(frame)) {
+        DiscardFrame(frame);
+        return;
     }
 
-    while (swapchain.AcquireNextImage()) {
-        RecreateSwapchain(frame);
+    // Only an out of date swapchain fails to acquire an image. A suboptimal acquire still
+    // returns an image and a pending semaphore signal, so present it and recreate next frame.
+    while (swapchain.AcquireNextImage() && swapchain.IsOutDated()) {
+        if (!RecreateSwapchain(frame)) {
+            DiscardFrame(frame);
+            return;
+        }
     }
 
     const vk::CommandBuffer cmdbuf{frame->cmdbuf};
