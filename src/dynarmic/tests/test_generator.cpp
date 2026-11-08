@@ -15,6 +15,7 @@
 #include <optional>
 #include <tuple>
 #include <vector>
+#include <print>
 
 #include "dynarmic/mcl/bit.hpp"
 #include "common/common_types.h"
@@ -413,7 +414,7 @@ void RunTestInstance(Dynarmic::A32::Jit& jit,
         auto current_pc = initial_pc;
         for (auto instruction : instructions) {
             if constexpr (sizeof(decltype(instruction)) == 2) {
-                std::print("{:04x} ?\n", instruction);
+                std::print("{:04x} ?\n", static_cast<unsigned>(instruction));
             } else {
                 std::print("{}", Dynarmic::Common::DisassembleAArch64(instruction, current_pc));
             }

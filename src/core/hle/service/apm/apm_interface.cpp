@@ -132,7 +132,7 @@ void APM_Sys::SetCpuBoostMode(HLERequestContext& ctx) {
     IPC::RequestParser rp{ctx};
     const auto mode = rp.PopEnum<CpuBoostMode>();
 
-    LOG_DEBUG(Service_APM, "called, mode={:08X}", std::to_underlying(mode));
+    LOG_DEBUG(Service_APM, "called, mode={:08X}", mode);
 
     controller.SetFromCpuBoostMode(mode);
 

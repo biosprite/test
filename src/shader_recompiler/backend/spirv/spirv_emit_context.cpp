@@ -457,8 +457,8 @@ void VectorTypes::Define(Sirit::Module& sirit_ctx, Id base_type, std::string_vie
     for (int i = 1; i < 4; ++i) {
         const std::string_view def_name_view(
             def_name.data(),
-            std::format_to_n(def_name.data(), def_name.size(), "{}x{}", name, i + 1).size);
-        defs[static_cast<size_t>(i)] =
+            std::size_t(std::format_to_n(def_name.data(), def_name.size(), "{}x{}", name, i + 1).size));
+        defs[std::size_t(i)] =
             sirit_ctx.Name(sirit_ctx.TypeVector(base_type, i + 1), def_name_view);
     }
 }

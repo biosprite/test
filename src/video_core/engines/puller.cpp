@@ -59,7 +59,7 @@ void Puller::ProcessBindMethod(DmaPusher& dma_pusher, const MethodCall& method_c
         dma_pusher.BindSubchannel(&dma_pusher.channel_state.payload->nv01_timer, method_call.subchannel, EngineTypes::Nv01Timer);
         break;
     default:
-        UNIMPLEMENTED_MSG("Unimplemented engine {:04X}", std::to_underlying(engine_id));
+        UNIMPLEMENTED_MSG("Unimplemented engine {:04X}", engine_id);
         break;
     }
 }
@@ -200,7 +200,7 @@ void Puller::CallPullerMethod(DmaPusher& dma_pusher, const MethodCall& method_ca
         break;
     }
     default:
-        LOG_ERROR(HW_GPU, "Special puller engine method {:X} not implemented", std::to_underlying(method));
+        LOG_ERROR(HW_GPU, "Special puller engine method {:X} not implemented", method);
         break;
     }
 }

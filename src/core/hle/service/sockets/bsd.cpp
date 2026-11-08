@@ -301,7 +301,7 @@ void BSD_USA::GetSockOpt(HLERequestContext& ctx) {
 
     std::vector<u8> optval(ctx.GetWriteBufferSize());
 
-    LOG_DEBUG(Service, "called. fd={} level={} optname={:#x} len={:#x}", fd, level, std::to_underlying(optname),
+    LOG_DEBUG(Service, "called. fd={} level={} optname={:#x} len={:#x}", fd, level, optname,
               optval.size());
 
     const Errno err = GetSockOptImpl(fd, level, optname, optval);

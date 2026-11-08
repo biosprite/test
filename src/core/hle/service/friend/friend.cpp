@@ -437,7 +437,7 @@ private:
         default:
             // HOS seems not have an error case for an unknown notification
             LOG_WARNING(Service_Friend, "Unknown notification {:08X}",
-                        std::to_underlying(notification.notification_type));
+                        notification.notification_type);
             break;
         }
 

@@ -16,7 +16,7 @@ namespace Kernel::Svc {
 Result SetThreadActivity(Core::System& system, Handle thread_handle,
                          ThreadActivity thread_activity) {
     LOG_DEBUG(Kernel_SVC, "called, handle={:#08x}, activity={:#08x}", thread_handle,
-              std::to_underlying(thread_activity));
+              thread_activity);
 
     // Validate the activity.
     static constexpr auto IsValidThreadActivity = [](ThreadActivity activity) {

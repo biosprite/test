@@ -16,6 +16,8 @@
 #include <QStandardPaths>
 #include <QUrl>
 
+#include <print>
+
 #ifdef _WIN32
 #include <shlobj.h>
 #include <windows.h>
@@ -104,7 +106,7 @@ bool CreateShortcutLink(const std::filesystem::path& shortcut_path, const std::s
         LOG_ERROR(Frontend, "Failed to create shortcut");
         return false;
     }
-    // TODO: Migrate std::print to std::print in futures STD C++ 23.
+
     std::print(shortcut_stream, "[Desktop Entry]\n");
     std::print(shortcut_stream, "Type=Application\n");
     std::print(shortcut_stream, "Version=1.0\n");

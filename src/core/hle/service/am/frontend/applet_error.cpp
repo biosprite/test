@@ -152,7 +152,7 @@ void Error::Initialize() {
         error_code = Decode64BitError(args->error_record.error_code_64);
         break;
     default:
-        UNIMPLEMENTED_MSG("Unimplemented LibAppletError mode={:02X}!", std::to_underlying(mode));
+        UNIMPLEMENTED_MSG("Unimplemented LibAppletError mode={:02X}!", mode);
         break;
     }
 }
@@ -204,7 +204,7 @@ void Error::Execute() {
             error_code, std::chrono::seconds{args->error_record.posix_time}, callback);
         break;
     default:
-        UNIMPLEMENTED_MSG("Unimplemented LibAppletError mode={:02X}!", std::to_underlying(mode));
+        UNIMPLEMENTED_MSG("Unimplemented LibAppletError mode={:02X}!", mode);
         DisplayCompleted();
     }
 }

@@ -73,7 +73,7 @@ private:
 
         LOG_DEBUG(Service_PREPO,
                   "called, type={:02X}, process_id={:016X}, data1_size={:016X}, data2_size={:016X}",
-                  std::to_underlying(Type), process_id, data1.size(), data2.size());
+                  Type, process_id, data1.size(), data2.size());
 
         const auto& reporter{system.GetReporter()};
         reporter.SavePlayReport(Type, system.ResolveCallerProgramId(process_id), {data1, data2},
@@ -95,7 +95,7 @@ private:
         LOG_DEBUG(Service_PREPO,
                   "called, type={:02X}, user_id={:016X}{:016X}, process_id={:016X}, "
                   "data1_size={:016X}, data2_size={:016X}",
-                  std::to_underlying(Type), user_id[1], user_id[0], process_id, data1.size(), data2.size());
+                  Type, user_id[1], user_id[0], process_id, data1.size(), data2.size());
 
         const auto& reporter{system.GetReporter()};
         reporter.SavePlayReport(Type, system.ResolveCallerProgramId(process_id), {data1, data2},

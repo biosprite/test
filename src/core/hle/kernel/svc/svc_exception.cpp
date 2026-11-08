@@ -90,7 +90,7 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
         LOG_WARNING(
             Debug_Emulated,
             "Signalling debugger, Unknown break reason {:#x}, info1={:#016x}, info2={:#016x}",
-            std::to_underlying(reason), info1, info2);
+            reason, info1, info2);
         handle_debug_buffer(info1, info2);
         break;
     }
@@ -103,7 +103,7 @@ void Break(Core::System& system, BreakReason reason, u64 info1, u64 info2) {
         LOG_CRITICAL(
             Debug_Emulated,
             "Emulated program broke execution! reason={:#016x}, info1={:#016x}, info2={:#016x}",
-            std::to_underlying(reason), info1, info2);
+            reason, info1, info2);
 
         handle_debug_buffer(info1, info2);
 

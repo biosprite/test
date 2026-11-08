@@ -80,7 +80,7 @@ Result MapUnmapMemorySanityChecks(const KProcessPageTable& manager, u64 dst_addr
 
 Result SetMemoryPermission(Core::System& system, u64 address, u64 size, MemoryPermission perm) {
     LOG_DEBUG(Kernel_SVC, "called, address={:#016x}, size={:#x}, perm={:#08x}", address, size,
-              std::to_underlying(perm));
+              perm);
 
     // Validate address / size.
     R_UNLESS(Common::IsAligned(address, PageSize), ResultInvalidAddress);

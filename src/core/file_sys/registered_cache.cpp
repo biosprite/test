@@ -339,7 +339,7 @@ ContentRecordType GetCRTypeFromNCAType(NCAContentType type) {
         // TODO(DarkLordZach): Peek at NCA contents to differentiate Manual and Legal.
         return ContentRecordType::HtmlDocument;
     default:
-        ASSERT_MSG(false, "Invalid NCAContentType={:02X}", std::to_underlying(type));
+        ASSERT_MSG(false, "Invalid NCAContentType={:02X}", type);
         return ContentRecordType{};
     }
 }

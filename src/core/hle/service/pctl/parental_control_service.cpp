@@ -201,7 +201,7 @@ Result IParentalControlService::Initialize() {
     LOG_DEBUG(Service_PCTL, "called");
 
     if (False(capability & (Capability::Application | Capability::System))) {
-        LOG_ERROR(Service_PCTL, "Invalid capability! capability={:X}", std::to_underlying(capability));
+        LOG_ERROR(Service_PCTL, "Invalid capability! capability={:X}", capability);
         R_THROW(PCTL::ResultNoCapability);
     }
 
