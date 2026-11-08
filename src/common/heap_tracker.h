@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 // SPDX-FileCopyrightText: Copyright 2023 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
@@ -82,11 +85,24 @@ private:
 
     AddrTree::iterator GetNearestHeapMapLocked(VAddr offset);
 
-    void RebuildSeparateHeapAddressSpace();
+    /// Evicts the oldest resident mappings. A forced call made after running out of host mappings
+    /// returns right away if another core evicted since evictions_seen. Returns whether room was made.
+    bool RebuildSeparateHeapAddressSpace(bool force, std::size_t evictions_seen);
+
+    /// Recounts the host mappings (every 5 s while the budget moves or the headroom is thin, every
+    /// 30 s otherwise) and adjusts the budget. Returns true only if it counted and the resident
+    /// mappings fit in the budget.
+    bool UpdateBudget();
 
 private:
     Common::HostMemory& m_buffer;
-    const s64 m_max_resident_map_count;
+    const s64 m_map_count_limit;
+    const s64 m_min_budget;
+    s64 m_max_resident_map_count;
+    s64 m_budget_ceiling;
+    bool m_out_of_mappings_logged{};
+    std::size_t m_evictions{};
+    std::atomic<s64> m_next_budget_update{};
 
     std::shared_mutex m_rebuild_lock{};
     std::mutex m_lock{};

@@ -48,6 +48,12 @@ public:
 
     void Unmap(size_t virtual_offset, size_t length, bool separate_heap);
 
+    /// Like Map and Unmap, but return false instead of asserting when the process is out of
+    /// memory mappings (ENOMEM). The range is then left as it was.
+    bool TryMap(size_t virtual_offset, size_t host_offset, size_t length, MemoryPermission perms,
+                bool separate_heap);
+    bool TryUnmap(size_t virtual_offset, size_t length, bool separate_heap);
+
     void Protect(size_t virtual_offset, size_t length, MemoryPermission perms);
 
     void EnableDirectMappedAddress();

@@ -51,6 +51,7 @@
 
 #endif // ^^^ POSIX ^^^
 
+#include <cerrno>
 #include <mutex>
 #include <random>
 
@@ -186,7 +187,7 @@ public:
         return ptr;
     }
 
-    void Map(size_t virtual_offset, size_t host_offset, size_t length, MemoryPermission perms) {
+    bool Map(size_t virtual_offset, size_t host_offset, size_t length, MemoryPermission perms) {
         std::unique_lock lock{placeholder_mutex};
         if (!IsNiechePlaceholder(virtual_offset, length)) {
             Split(virtual_offset, length);
@@ -195,14 +196,16 @@ public:
         TrackPlaceholder(virtual_offset, host_offset, length);
 
         MapView(virtual_offset, host_offset, length);
+        return true;
     }
 
-    void Unmap(size_t virtual_offset, size_t length) {
+    bool Unmap(size_t virtual_offset, size_t length) {
         std::scoped_lock lock{placeholder_mutex};
 
         // Unmap until there are no more placeholders
         while (UnmapOnePlaceholder(virtual_offset, length)) {
         }
+        return true;
     }
 
     void Protect(size_t virtual_offset, size_t length, bool read, bool write, bool execute) {
@@ -590,7 +593,9 @@ public:
         return ptr;
     }
 
-    void Map(size_t virtual_offset, size_t host_offset, size_t length, MemoryPermission perms) {
+    bool Map(size_t virtual_offset, size_t host_offset, size_t length, MemoryPermission perms) {
+        std::scoped_lock lock{map_mutex};
+
         // Intersect the range with our address space.
         AdjustMap(&virtual_offset, &length);
 
@@ -609,10 +614,18 @@ public:
 #endif
         int flags = (fd >= 0 ? MAP_SHARED : MAP_PRIVATE) | MAP_FIXED;
         void* ret = mmap(virtual_base + virtual_offset, length, prot_flags, flags, fd, host_offset);
+        if (ret == MAP_FAILED && errno == ENOMEM) {
+            // Out of memory mappings: the placeholder is still there.
+            free_manager.FreeBlock(virtual_base + virtual_offset, length);
+            return false;
+        }
         ASSERT_MSG(ret != MAP_FAILED, "mmap: {} {}", strerror(errno), fd);
+        return true;
     }
 
-    void Unmap(size_t virtual_offset, size_t length) {
+    bool Unmap(size_t virtual_offset, size_t length) {
+        std::scoped_lock lock{map_mutex};
+
         // The method name is wrong. We're still talking about the virtual range.
         // We don't want to unmap, we want to reserve this memory.
 
@@ -624,7 +637,13 @@ public:
             free_manager.FreeBlock(virtual_base + virtual_offset, length);
 
         void* ret = mmap(merged_pointer, merged_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+        if (ret == MAP_FAILED && errno == ENOMEM) {
+            // Out of memory mappings: the range is still mapped.
+            free_manager.AllocateBlock(virtual_base + virtual_offset, length);
+            return false;
+        }
         ASSERT_MSG(ret != MAP_FAILED, "mmap: {}", strerror(errno));
+        return true;
     }
 
     void Protect(size_t virtual_offset, size_t length, bool read, bool write, bool execute) {
@@ -700,6 +719,7 @@ private:
 
     int fd{-1}; // memfd file descriptor, -1 is the error value of memfd_create
     FreeRegionManager free_manager{};
+    std::mutex map_mutex{}; ///< Keeps the free list, mmap and rollback of Map/Unmap together
 };
 
 #endif // ^^^ POSIX ^^^
@@ -750,6 +770,16 @@ HostMemory::HostMemory(HostMemory&&) noexcept = default;
 HostMemory& HostMemory::operator=(HostMemory&&) noexcept = default;
 
 void HostMemory::Map(size_t virtual_offset, size_t host_offset, size_t length, MemoryPermission perms, bool separate_heap) {
+    const bool mapped = TryMap(virtual_offset, host_offset, length, perms, separate_heap);
+    ASSERT_MSG(mapped, "mmap: out of memory mappings");
+}
+
+void HostMemory::Unmap(size_t virtual_offset, size_t length, bool separate_heap) {
+    const bool unmapped = TryUnmap(virtual_offset, length, separate_heap);
+    ASSERT_MSG(unmapped, "mmap: out of memory mappings");
+}
+
+bool HostMemory::TryMap(size_t virtual_offset, size_t host_offset, size_t length, MemoryPermission perms, bool separate_heap) {
 #if !(defined(__OPENORBIS__) || defined(__managarm__))
     ASSERT(virtual_offset % PageAlignment == 0);
     ASSERT(host_offset % PageAlignment == 0);
@@ -757,21 +787,25 @@ void HostMemory::Map(size_t virtual_offset, size_t host_offset, size_t length, M
     ASSERT(virtual_offset + length <= virtual_size);
     ASSERT(host_offset + length <= backing_size);
     if (length == 0 || !virtual_base || !impl) {
-        return;
+        return true;
     }
-    impl->Map(virtual_offset + virtual_base_offset, host_offset, length, perms);
+    return impl->Map(virtual_offset + virtual_base_offset, host_offset, length, perms);
+#else
+    return true;
 #endif
 }
 
-void HostMemory::Unmap(size_t virtual_offset, size_t length, bool separate_heap) {
+bool HostMemory::TryUnmap(size_t virtual_offset, size_t length, bool separate_heap) {
 #if !(defined(__OPENORBIS__) || defined(__managarm__))
     ASSERT(virtual_offset % PageAlignment == 0);
     ASSERT(length % PageAlignment == 0);
     ASSERT(virtual_offset + length <= virtual_size);
     if (length == 0 || !virtual_base || !impl) {
-        return;
+        return true;
     }
-    impl->Unmap(virtual_offset + virtual_base_offset, length);
+    return impl->Unmap(virtual_offset + virtual_base_offset, length);
+#else
+    return true;
 #endif
 }
 
