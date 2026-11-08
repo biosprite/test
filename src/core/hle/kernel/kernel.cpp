@@ -7,6 +7,7 @@
 #include <array>
 #include <atomic>
 #include <bitset>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <thread>
@@ -136,6 +137,7 @@ struct KernelCore::Impl {
         };
 
         CloseServices();
+        CloseServiceThreads(kernel, false);
 
         if (application_process) {
             application_process->Close(system.Kernel());
@@ -164,11 +166,26 @@ struct KernelCore::Impl {
 
         for (u32 core_id = 0; core_id < Core::Hardware::NUM_CPU_CORES; core_id++) {
             if (shutdown_threads[core_id]) {
+                // ShutdownCores() ran this thread and it never exits, so drop the reference
+                // that Run() opened as well.
+                if (shutdown_threads[core_id]->GetState() == ThreadState::Runnable) {
+                    shutdown_threads[core_id]->Close(kernel);
+                }
                 shutdown_threads[core_id]->Close(kernel);
                 shutdown_threads[core_id] = nullptr;
             }
 
-            schedulers[core_id].reset();
+            // The schedulers don't own their main and idle threads, so they have to be closed here.
+            for (auto* threads : {&main_threads, &idle_threads}) {
+                if (KThread* thread = (*threads)[core_id]) {
+                    thread->Close(kernel);
+                    (*threads)[core_id] = nullptr;
+                }
+            }
+        }
+
+        for (auto& scheduler : schedulers) {
+            scheduler.reset();
         }
 
         // Next host thead ID to use, 0-3 IDs represent core threads, >3 represent others
@@ -211,6 +228,33 @@ struct KernelCore::Impl {
         server_managers.clear();
     }
 
+    void CloseServiceThreads(KernelCore& kernel, bool wait_for_exit) {
+        std::scoped_lock lk{service_threads_lock};
+
+        // The services have been stopped, but their threads still need the guest cores to
+        // finish exiting. Wait for that before the cores are shut down, otherwise they never
+        // finish terminating and are leaked along with their processes.
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        for (KThread* thread : service_threads) {
+            while (wait_for_exit) {
+                {
+                    KScopedSchedulerLock sl{kernel};
+                    if (thread->IsSignaled(kernel)) {
+                        break;
+                    }
+                }
+                if (std::chrono::steady_clock::now() >= deadline) {
+                    LOG_WARNING(Kernel, "Timed out waiting for service threads to exit");
+                    wait_for_exit = false;
+                    break;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
+            thread->Close(kernel);
+        }
+        service_threads.clear();
+    }
+
     void InitializePhysicalCores() {
         for (u32 i = 0; i < Core::Hardware::NUM_CPU_CORES; i++) {
             auto const core = s32(i);
@@ -228,6 +272,8 @@ struct KernelCore::Impl {
             KThread::Register(system.Kernel(), idle_thread);
 
             schedulers[i]->Initialize(system.Kernel(), main_thread, idle_thread, core);
+            main_threads[i] = main_thread;
+            idle_threads[i] = idle_thread;
         }
     }
 
@@ -833,6 +879,12 @@ struct KernelCore::Impl {
     std::optional<KMemoryLayout> memory_layout;
 
     std::array<KThread*, Core::Hardware::NUM_CPU_CORES> shutdown_threads{};
+
+    // Service threads running on the guest cores, see RunOnGuestCoreProcess.
+    std::mutex service_threads_lock;
+    std::vector<KThread*> service_threads;
+    std::array<KThread*, Core::Hardware::NUM_CPU_CORES> main_threads{};
+    std::array<KThread*, Core::Hardware::NUM_CPU_CORES> idle_threads{};
     std::array<std::optional<Kernel::KScheduler>, Core::Hardware::NUM_CPU_CORES> schedulers{};
 
     bool is_multicore{};
@@ -1135,6 +1187,10 @@ void KernelCore::RunOnGuestCoreProcess(std::string&& process_name, std::function
 
     // Begin running the thread.
     ASSERT(R_SUCCEEDED(thread->Run(*this)));
+
+    // Keep the creation reference, so that shutdown can wait for the thread to exit.
+    std::scoped_lock lk{impl->service_threads_lock};
+    impl->service_threads.push_back(thread);
 }
 
 u32 KernelCore::GetCurrentHostThreadID() const {
@@ -1255,6 +1311,7 @@ void KernelCore::SuspendEmulation(bool suspended) {
 }
 
 void KernelCore::ShutdownCores() {
+    impl->CloseServiceThreads(*this, true);
     impl->TerminateAllProcesses();
     KScopedSchedulerLock lk{*this};
     for (auto* thread : impl->shutdown_threads)
