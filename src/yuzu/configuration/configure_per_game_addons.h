@@ -63,6 +63,9 @@ private:
     void LoadConfiguration();
     void OnItemChanged(QStandardItem* item);
 
+    QStringList CopyMods(const QStringList& mods);
+    void ShowModInstallResult(const QStringList& failed);
+
     std::unique_ptr<Ui::ConfigurePerGameAddons> ui;
     FileSys::VirtualFile file;
     u64 title_id;

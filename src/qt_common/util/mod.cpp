@@ -9,7 +9,7 @@
 #include "qt_common/abstract/frontend.h"
 
 namespace QtCommon::Mod {
-QStringList GetModFolders(const QString& root, const QString& fallbackName) {
+QStringList GetModFolders(const QString& root, const QString& fallbackName, bool prompt) {
     namespace fs = std::filesystem;
 
     const auto std_root = root.toStdString();
@@ -35,17 +35,24 @@ QStringList GetModFolders(const QString& root, const QString& fallbackName) {
 
         QString default_name;
 
+        // A mod at the root of a zip would otherwise be named after the extraction directory
+        std::error_code root_ec;
+        const bool is_root = !paths.empty() && fs::equivalent(std_path, std_root, root_ec);
+
         // If this is an atmosphere-packed mod, the default name will end up as the game's title ID.
         // So in this case ignore it and use the zip name instead
-        if (!paths.empty() && std_path.string().find("atmosphere") == std::string::npos)
+        if (!paths.empty() && !is_root && std_path.string().find("atmosphere") == std::string::npos)
             default_name = QString::fromStdString(std_path.filename().string());
         else if (!fallbackName.isEmpty())
             default_name = fallbackName;
         else
             default_name = root.split(QLatin1Char('/')).last();
 
-        QString name = QtCommon::Frontend::GetTextInput(
-            tr("Mod Name"), tr("What should this mod be called?"), default_name);
+        QString name = default_name;
+        if (prompt) {
+            name = QtCommon::Frontend::GetTextInput(
+                tr("Mod Name"), tr("What should this mod be called?"), default_name);
+        }
 
         if (name.isEmpty())
             return {};
@@ -53,6 +60,9 @@ QStringList GetModFolders(const QString& root, const QString& fallbackName) {
         // if std_path is empty, frontend_common could not determine mod type and/or name.
         // so we have to prompt the user and set up the structure ourselves
         if (paths.empty()) {
+            if (!prompt)
+                return {};
+
             // TODO: Carboxyl impl.
             const QStringList choices = {
                 tr("RomFS"),
