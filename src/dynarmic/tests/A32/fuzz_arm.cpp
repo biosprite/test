@@ -37,7 +37,6 @@
 
 // Must be declared last for all necessary operator<< to be declared prior to this.
 #include <format>
-#include <format>
 
 namespace {
 using namespace Dynarmic;

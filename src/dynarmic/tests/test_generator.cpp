@@ -41,7 +41,6 @@
 
 // Must be declared last for all necessary operator<< to be declared prior to this.
 #include <format>
-#include <format>
 
 constexpr bool mask_fpsr_cum_bits = true;
 

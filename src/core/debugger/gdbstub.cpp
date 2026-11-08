@@ -12,6 +12,7 @@
 #include <numeric>
 #include <optional>
 #include <thread>
+#include <ranges>
 
 #include "common/hex_util.h"
 #include "common/logging.h"
@@ -433,7 +434,13 @@ void GDBStub::HandleQuery(std::string_view sv) {
         for (const auto& thread : threads)
             thread_ids.push_back(std::format("{:x}", thread.GetThreadId()));
 
-        auto joined = thread_ids | std::views::join_with(',');
+        std::string joined;
+        for (const auto& id : thread_ids) {
+            if (!joined.empty()) {
+                joined += ',';
+            }
+            joined += id;
+        }
         SendReply(std::format("m{}", joined));
     } else if (sv.starts_with("sThreadInfo")) {
         // end of list

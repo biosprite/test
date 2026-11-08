@@ -8,7 +8,7 @@
 
 #include "dynarmic/backend/arm64/verbose_debugging_output.h"
 
-#include <format>
+#include <print>
 #include <oaknut/oaknut.hpp>
 
 #include "dynarmic/backend/arm64/emit_context.h"

@@ -11,7 +11,6 @@
 #include <sstream>
 #include <stdexcept>
 #include <format>
-#include <format>
 
 #include "common/logging.h"
 #include "common/time_zone.h"

@@ -13,11 +13,11 @@
 #include <iostream>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <string>
 
 #include <format>
-#include <format>
-#include <format>
+#include <print>
 #include "dynarmic/frontend/A32/translate/translate_callbacks.h"
 #include "dynarmic/mcl/bit.hpp"
 #include "common/common_types.h"
@@ -194,10 +194,10 @@ void ExecuteA32Instruction(u32 instruction) {
     const std::map<std::string, u32*> name_map = [&regs, &ext_regs, &cpsr, &fpscr] {
         std::map<std::string, u32*> name_map;
         for (size_t i = 0; i < regs.size(); i++) {
-            name_map[fmt::format("r{}", i)] = &regs[i];
+            name_map[std::format("r{}", i)] = &regs[i];
         }
         for (size_t i = 0; i < ext_regs.size(); i++) {
-            name_map[fmt::format("s{}", i)] = &ext_regs[i];
+            name_map[std::format("s{}", i)] = &ext_regs[i];
         }
         name_map["sp"] = &regs[13];
         name_map["lr"] = &regs[14];
@@ -263,7 +263,7 @@ void ExecuteA32Instruction(u32 instruction) {
     env.MemoryWrite(initial_pc + 4, 0xEAFFFFFE, sizeof(u32));  // B +0
 
     cpu.Run();
-    std::print("{}", fmt::join(cpu.Disassemble(), "\n"));
+    std::print("{}", cpu.Disassemble());
 
     std::print("Registers modified:\n");
     for (size_t i = 0; i < regs.size(); ++i) {

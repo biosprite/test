@@ -13,7 +13,6 @@
 #include <utility>
 
 #include <format>
-#include <format>
 #include "common/assert.h"
 #include "dynarmic/mcl/bit.hpp"
 #include "common/common_types.h"

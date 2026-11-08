@@ -159,8 +159,13 @@ void InstallFirmware(const QString& location, bool recursive) {
                                                            VerifyFirmwareCallback, true);
 
     if (results.size() > 0) {
-        const auto failed_names =
-            results | std::views::join_with('\n') | std::ranges::to<std::string>();
+        std::string failed_names;
+        for (const auto& r : results) {
+            if (!failed_names.empty()) {
+                failed_names += '\n';
+            }
+            failed_names += r;
+        }
         progress->close();
         QtCommon::Frontend::Critical(
             tr("Firmware integrity verification failed!"),
@@ -282,8 +287,13 @@ void VerifyInstalledContents() {
         QtCommon::Frontend::Information(tr("Integrity verification succeeded!"),
                                         tr("The operation completed successfully."));
     } else {
-        const auto failed_names =
-            result | std::views::join_with('\n') | std::ranges::to<std::string>();
+        std::string failed_names;
+        for (const auto& r : result) {
+            if (!failed_names.empty()) {
+                failed_names += '\n';
+            }
+            failed_names += r;
+        }
 
         QtCommon::Frontend::Critical(
             tr("Integrity verification failed!"),

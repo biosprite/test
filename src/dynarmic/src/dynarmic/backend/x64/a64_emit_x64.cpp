@@ -9,7 +9,6 @@
 #include "dynarmic/backend/x64/a64_emit_x64.h"
 
 #include <format>
-#include <format>
 #include "common/assert.h"
 #include "common/common_types.h"
 #include "dynarmic/ir/terminal.h"
