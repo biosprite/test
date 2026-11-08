@@ -254,6 +254,10 @@ void EmulationSession::ConfigureFilesystemProviderFromGameFolder(const std::stri
     ConfigureFilesystemProvider(filepath);
 }
 
+// Whether the filesystem factories were built with keys available.
+// -1 forces a rebuild on the next check.
+static int s_factories_keys_state = -1;
+
 void EmulationSession::InitializeSystem(bool reload) {
     if (!reload) {
         // Initialize logging system
@@ -272,6 +276,7 @@ void EmulationSession::InitializeSystem(bool reload) {
     m_system.RegisterContentProvider(FileSys::ContentProviderUnionSlot::FrontendManual,
                                      m_manual_provider.get());
     m_system.GetFileSystemController().CreateFactories(*m_vfs);
+    s_factories_keys_state = ContentManager::AreKeysPresent() ? 1 : 0;
 }
 
 void EmulationSession::SetAppletId(int applet_id) {
@@ -924,6 +929,7 @@ jstring Java_org_yuzu_yuzu_1emu_utils_GpuDriverHelper_getGpuModel(JNIEnv *env, j
 
 jboolean Java_org_yuzu_yuzu_1emu_NativeLibrary_reloadKeys(JNIEnv* env, jclass clazz) {
     Core::Crypto::KeyManager::Instance().ReloadKeys();
+    s_factories_keys_state = -1;
     return static_cast<jboolean>(Core::Crypto::KeyManager::Instance().AreKeysLoaded());
 }
 
@@ -1530,7 +1536,9 @@ jint Java_org_yuzu_yuzu_1emu_NativeLibrary_installKeys(JNIEnv* env, jclass clazz
     const auto path = Common::Android::GetJString(env, jpath);
     const auto ext = Common::Android::GetJString(env, jext);
 
-    return static_cast<int>(FirmwareManager::InstallKeys(path, ext));
+    const auto result = FirmwareManager::InstallKeys(path, ext);
+    s_factories_keys_state = -1;
+    return static_cast<int>(result);
 }
 
 jstring Java_org_yuzu_yuzu_1emu_NativeLibrary_getLosslessDllPath(JNIEnv* env, jclass clazz) {
@@ -1717,9 +1725,15 @@ void Java_org_yuzu_yuzu_1emu_NativeLibrary_clearFilesystemProvider(JNIEnv* env, 
 }
 
 jboolean Java_org_yuzu_yuzu_1emu_NativeLibrary_areKeysPresent(JNIEnv* env, jobject jobj) {
-    auto& system = EmulationSession::GetInstance().System();
-    system.GetFileSystemController().CreateFactories(*system.GetFilesystem());
-    return ContentManager::AreKeysPresent();
+    // Recreating the factories rescans the whole NAND, so only do it when keys became
+    // available since they were last built. This is called from the UI thread.
+    const bool present = ContentManager::AreKeysPresent();
+    if (present && s_factories_keys_state != 1) {
+        auto& system = EmulationSession::GetInstance().System();
+        system.GetFileSystemController().CreateFactories(*system.GetFilesystem());
+        s_factories_keys_state = 1;
+    }
+    return present;
 }
 
 jint Java_org_yuzu_yuzu_1emu_NativeLibrary_getVirtualAmiiboState(JNIEnv* env, jobject jobj) {
