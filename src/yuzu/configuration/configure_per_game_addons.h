@@ -45,7 +45,7 @@ public:
     void SetTitleId(u64 id);
 
 public slots:
-    void InstallMods(const QStringList& mods);
+    void InstallMods(const QStringList& mods, const QStringList& names = {});
     void InstallModPath(const QString& path, const QString& fallbackName = {});
 
     void InstallModFolder();
@@ -63,7 +63,7 @@ private:
     void LoadConfiguration();
     void OnItemChanged(QStandardItem* item);
 
-    QStringList CopyMods(const QStringList& mods);
+    QStringList CopyMods(const QStringList& mods, const QStringList& names);
     void ShowModInstallResult(const QStringList& failed);
 
     std::unique_ptr<Ui::ConfigurePerGameAddons> ui;

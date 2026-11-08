@@ -140,16 +140,17 @@ void ConfigurePerGameAddons::SetTitleId(u64 id) {
     this->title_id = id;
 }
 
-void ConfigurePerGameAddons::InstallMods(const QStringList& mods) {
-    ShowModInstallResult(CopyMods(mods));
+void ConfigurePerGameAddons::InstallMods(const QStringList& mods, const QStringList& names) {
+    ShowModInstallResult(CopyMods(mods, names));
 }
 
-QStringList ConfigurePerGameAddons::CopyMods(const QStringList& mods) {
+QStringList ConfigurePerGameAddons::CopyMods(const QStringList& mods, const QStringList& names) {
     QStringList failed;
-    for (const auto& mod : mods) {
-        if (FrontendCommon::InstallMod(mod.toStdString(), title_id, true) ==
-            FrontendCommon::Failed) {
-            failed << QFileInfo(mod).baseName();
+    for (qsizetype i = 0; i < mods.size(); ++i) {
+        const QString name = names.value(i);
+        if (FrontendCommon::InstallMod(mods[i].toStdString(), title_id, true,
+                                       name.toStdString()) == FrontendCommon::Failed) {
+            failed << (name.isEmpty() ? QFileInfo(mods[i]).baseName() : name);
         }
     }
     return failed;
@@ -205,34 +206,39 @@ void ConfigurePerGameAddons::InstallModZip() {
         return;
     }
 
+    const QStringList extracted = QtCommon::Mod::ExtractMods(paths);
+
     if (paths.size() == 1) {
-        const QString extracted = QtCommon::Mod::ExtractMod(paths.first());
-        if (!extracted.isEmpty())
-            InstallModPath(extracted, QFileInfo(paths.first()).baseName());
+        if (!extracted.first().isEmpty())
+            InstallModPath(extracted.first(), QFileInfo(paths.first()).baseName());
         return;
     }
 
-    // Every ZIP is extracted to the same temporary directory, so each one has to be
-    // installed before the next is extracted.
+    // Collect the mods from every zip, so they can all be selected and named in one prompt
+    QStringList mods;
     QStringList failed;
-    for (const QString& path : paths) {
-        const QString name = QFileInfo(path).baseName();
-        const QString extracted = QtCommon::Mod::ExtractMod(path);
-        if (extracted.isEmpty()) {
-            failed << name;
-            continue;
-        }
+    for (qsizetype i = 0; i < paths.size(); ++i) {
+        const QString name = QFileInfo(paths[i]).baseName();
+        QStringList found;
+        if (!extracted[i].isEmpty())
+            found = QtCommon::Mod::GetModFolders(extracted[i], name, false);
 
-        const QStringList mods = QtCommon::Mod::GetModFolders(extracted, name, false);
-        if (mods.isEmpty()) {
+        if (found.isEmpty())
             failed << name;
-            continue;
-        }
-
-        failed << CopyMods(mods);
+        mods << found;
     }
 
-    ShowModInstallResult(failed);
+    if (mods.isEmpty()) {
+        ShowModInstallResult(failed);
+        return;
+    }
+
+    ModSelectDialog* dialog = new ModSelectDialog(mods, this);
+    connect(dialog, &ModSelectDialog::modsSelected, this,
+            [this, failed](const QStringList& selected, const QStringList& names) {
+                ShowModInstallResult(failed + CopyMods(selected, names));
+            });
+    dialog->show();
 }
 
 void ConfigurePerGameAddons::AddonDeleteRequested(QList<QModelIndex> selected) {

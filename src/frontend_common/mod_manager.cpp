@@ -39,9 +39,10 @@ std::vector<std::filesystem::path> GetModFolder(const std::string& root) {
     return paths;
 }
 
-ModInstallResult InstallMod(const std::filesystem::path& path, const u64 program_id, const bool copy) {
+ModInstallResult InstallMod(const std::filesystem::path& path, const u64 program_id, const bool copy,
+                            const std::string& name) {
     const auto program_id_string = fmt::format("{:016X}", program_id);
-    const auto mod_name = path.filename();
+    const auto mod_name = name.empty() ? path.filename() : std::filesystem::path{name};
     const auto mod_dir =
         DataManager::GetDataDir(DataManager::DataDir::Mods) / program_id_string / mod_name;
 

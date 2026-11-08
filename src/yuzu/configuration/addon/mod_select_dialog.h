@@ -18,9 +18,11 @@ public:
     ~ModSelectDialog();
 
 signals:
-    void modsSelected(const QStringList& mods);
+    void modsSelected(const QStringList& mods, const QStringList& names);
 
 private:
+    void UpdateOkButton();
+
     Ui::ModSelectDialog* ui;
 
     QStandardItemModel* item_model;

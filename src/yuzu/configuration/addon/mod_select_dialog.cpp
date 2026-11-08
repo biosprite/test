@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include <QFileInfo>
+#include <QPushButton>
+#include <QSet>
 #include <qnamespace.h>
 #include "mod_select_dialog.h"
 #include "ui_mod_select_dialog.h"
@@ -48,17 +50,44 @@ ModSelectDialog::ModSelectDialog(const QStringList& mods, QWidget* parent)
     ui->treeView->setMinimumWidth(qMax(width, 540));
     adjustSize();
 
+    connect(item_model, &QStandardItemModel::itemChanged, this, &ModSelectDialog::UpdateOkButton);
+    UpdateOkButton();
+
     connect(this, &QDialog::accepted, this, [this]() {
         QStringList selected_mods;
+        QStringList names;
 
         for (qsizetype i = 0; i < item_model->rowCount(); ++i) {
             auto* const item = item_model->item(i);
-            if (item->checkState() == Qt::Checked)
+            if (item->checkState() == Qt::Checked) {
                 selected_mods << item->data().toString();
+                names << item->text().trimmed();
+            }
         }
 
-        emit modsSelected(selected_mods);
+        emit modsSelected(selected_mods, names);
     });
+}
+
+void ModSelectDialog::UpdateOkButton() {
+    // Mods with the same name would overwrite each other
+    QSet<QString> names;
+    bool valid = true;
+
+    for (qsizetype i = 0; i < item_model->rowCount(); ++i) {
+        auto* const item = item_model->item(i);
+        if (item->checkState() != Qt::Checked)
+            continue;
+
+        const QString name = item->text().trimmed().toLower();
+        if (name.isEmpty() || names.contains(name)) {
+            valid = false;
+            break;
+        }
+        names.insert(name);
+    }
+
+    ui->buttonBox->button(QDialogButtonBox::Ok)->setEnabled(valid);
 }
 
 ModSelectDialog::~ModSelectDialog() {

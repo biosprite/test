@@ -9,7 +9,7 @@
 #include "qt_common/abstract/frontend.h"
 
 namespace QtCommon::Mod {
-QStringList GetModFolders(const QString& root, const QString& fallbackName, bool prompt) {
+QStringList GetModFolders(const QString& root, const QString& fallbackName, bool prompt_name) {
     namespace fs = std::filesystem;
 
     const auto std_root = root.toStdString();
@@ -49,7 +49,7 @@ QStringList GetModFolders(const QString& root, const QString& fallbackName, bool
             default_name = root.split(QLatin1Char('/')).last();
 
         QString name = default_name;
-        if (prompt) {
+        if (prompt_name) {
             name = QtCommon::Frontend::GetTextInput(
                 tr("Mod Name"), tr("What should this mod be called?"), default_name);
         }
@@ -60,9 +60,6 @@ QStringList GetModFolders(const QString& root, const QString& fallbackName, bool
         // if std_path is empty, frontend_common could not determine mod type and/or name.
         // so we have to prompt the user and set up the structure ourselves
         if (paths.empty()) {
-            if (!prompt)
-                return {};
-
             // TODO: Carboxyl impl.
             const QStringList choices = {
                 tr("RomFS"),
@@ -70,8 +67,9 @@ QStringList GetModFolders(const QString& root, const QString& fallbackName, bool
                 tr("Cheat"),
             };
 
+            // Without the name prompt, the user wouldn't know which mod this is about
             int choice = QtCommon::Frontend::Choice(
-                tr("Mod Type"),
+                prompt_name ? tr("Mod Type") : tr("Mod Type: %1").arg(name),
                 tr("Could not detect mod type automatically. Please manually "
                    "specify the type of mod you downloaded.\n\nMost mods are RomFS mods, but "
                    "patches "
@@ -128,31 +126,40 @@ QStringList GetModFolders(const QString& root, const QString& fallbackName, bool
 }
 
 // TODO(crueter): Make this a common extract_to_tmp func
-const QString ExtractMod(const QString& path) {
+QStringList ExtractMods(const QStringList& paths) {
     namespace fs = std::filesystem;
-    fs::path tmp{fs::temp_directory_path() / "eden" / "unzip_mod"};
+    const fs::path root{fs::temp_directory_path() / "eden" / "unzip_mod"};
     std::error_code ec;
-    fs::remove_all(tmp, ec);
-    if (!fs::create_directories(tmp, ec)) {
-        QtCommon::Frontend::Critical(tr("Mod Extract Failed"),
-                                    tr("Failed to create temporary directory %1")
-                                        .arg(QString::fromStdString(tmp.string())));
-        return QString();
+    fs::remove_all(root, ec);
+
+    QStringList extracted;
+    for (qsizetype i = 0; i < paths.size(); ++i) {
+        // GetModFolders may rename a mod at the root of the zip, so give it a parent of its own.
+        const fs::path tmp{root / std::to_string(i) / "mod"};
+        if (!fs::create_directories(tmp, ec)) {
+            QtCommon::Frontend::Critical(tr("Mod Extract Failed"),
+                                         tr("Failed to create temporary directory %1")
+                                             .arg(QString::fromStdString(tmp.string())));
+            extracted << QString();
+            continue;
+        }
+
+        QString qCacheDir = QString::fromStdString(tmp.string());
+
+        QFile zip{paths[i]};
+
+        // TODO(crueter): use QtCompress
+        QStringList result = JlCompress::extractDir(&zip, qCacheDir);
+        if (result.isEmpty()) {
+            QtCommon::Frontend::Critical(tr("Mod Extract Failed"),
+                                         tr("Zip file %1 is empty").arg(paths[i]));
+            qCacheDir.clear();
+        }
+
+        extracted << qCacheDir;
     }
 
-    QString qCacheDir = QString::fromStdString(tmp.string());
-
-    QFile zip{path};
-
-    // TODO(crueter): use QtCompress
-    QStringList result = JlCompress::extractDir(&zip, qCacheDir);
-    if (result.isEmpty()) {
-        QtCommon::Frontend::Critical(tr("Mod Extract Failed"),
-                                     tr("Zip file %1 is empty").arg(path));
-        return QString();
-    }
-
-    return qCacheDir;
+    return extracted;
 }
 
 } // namespace QtCommon::Mod

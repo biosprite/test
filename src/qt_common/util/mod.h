@@ -7,8 +7,9 @@
 
 namespace QtCommon::Mod {
 
-QStringList GetModFolders(const QString& root, const QString& fallbackName, bool prompt = true);
+QStringList GetModFolders(const QString& root, const QString& fallbackName, bool prompt_name = true);
 
-const QString ExtractMod(const QString& path);
+// Extracts each zip to its own temporary directory. Zips that fail to extract get an empty string.
+QStringList ExtractMods(const QStringList& paths);
 
 } // namespace QtCommon::Mod
