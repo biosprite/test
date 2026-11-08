@@ -298,11 +298,23 @@ struct Memory::Impl {
         });
     }
 
-    [[nodiscard]] inline const u8* GetSpan(const VAddr addr, const std::size_t size) const noexcept {
-        return (current_page_table->entries[addr >> YUZU_PAGEBITS].Block() == current_page_table->entries[(addr + size) >> YUZU_PAGEBITS].Block()) ? GetPointerSilent(addr) : nullptr;
-    }
-    [[nodiscard]] inline u8* GetSpan(const VAddr addr, const std::size_t size) noexcept {
-        return (current_page_table->entries[addr >> YUZU_PAGEBITS].Block() == current_page_table->entries[(addr + size) >> YUZU_PAGEBITS].Block()) ? GetPointerSilent(addr) : nullptr;
+    /// Returns a host pointer to [addr, addr + size) if the whole range is backed by one linear
+    /// host range, nullptr otherwise.
+    [[nodiscard]] u8* GetSpan(const VAddr addr, const std::size_t size) const noexcept {
+        if (!AddressSpaceContains(*current_page_table, addr, size)) {
+            return nullptr;
+        }
+        // Every page of a host-linear range stores the same offset. Block ids can't be used for
+        // this, the 16-bit counter wraps around.
+        const u64 first_page = addr >> YUZU_PAGEBITS;
+        const u64 last_page = (addr + (size != 0 ? size - 1 : 0)) >> YUZU_PAGEBITS;
+        const uintptr_t offset = current_page_table->entries[first_page].Pointer(true);
+        for (u64 page = first_page + 1; page <= last_page; ++page) {
+            if (current_page_table->entries[page].Pointer(true) != offset) {
+                return nullptr;
+            }
+        }
+        return GetPointerSilent(addr);
     }
 
     bool WriteBlockImpl(const Common::ProcessAddress addr, const void* buffer, const std::size_t size, bool unsafe) {
@@ -548,7 +560,6 @@ struct Memory::Impl {
             page_table.entries.ZeroRegion(base, end);
         } else {
             auto current_block = block_count.fetch_add(1, std::memory_order_relaxed);
-            ASSERT(current_block != 65535);
 
             page_table.entries.CommitRegion(base, end);
             while (base != end) {
