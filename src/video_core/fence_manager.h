@@ -7,6 +7,7 @@
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <condition_variable>
 #include <cstring>
 #include <deque>
@@ -72,11 +73,17 @@ public:
     }
 
     void SignalFence(std::function<void()>&& func) {
-        const bool delay_fence = Settings::IsGPUFenceBehaviorDefault() ? Settings::IsGPULevelHigh() : Settings::IsGPUFenceBehaviorBalanced() || Settings::IsGPUFenceBehaviorAccurate();
+        const bool always_delay = Settings::IsGPUFenceBehaviorDefault() ? Settings::IsGPULevelHigh() : Settings::IsGPUFenceBehaviorBalanced() || Settings::IsGPUFenceBehaviorAccurate();
         const bool should_flush = ShouldFlush();
         if constexpr (!can_async_check) {
             TryReleasePendingFences<false>();
         }
+        // The guest reads image downloads back as soon as the fence signals, so their fences wait
+        // for the GPU at any accuracy. Later fences wait behind them to keep operations in order.
+        const bool delay_fence =
+            always_delay || (Settings::IsGPUFenceBehaviorDefault() &&
+                             (HasPendingImageDownloads() ||
+                              delayed_fences.load(std::memory_order_acquire) != 0));
         CommitAsyncFlushes();
         TFence new_fence = CreateFence(!should_flush);
         if constexpr (can_async_check) {
@@ -84,6 +91,11 @@ public:
         }
         if (delay_fence) {
             uncommitted_operations.emplace_back(std::move(func));
+            if (!always_delay) {
+                delayed_fences.fetch_add(1, std::memory_order_relaxed);
+                uncommitted_operations.emplace_back(
+                    [this] { delayed_fences.fetch_sub(1, std::memory_order_release); });
+            }
         }
         pending_operations.emplace_back(std::move(uncommitted_operations));
         QueueFence(new_fence);
@@ -97,6 +109,9 @@ public:
         if constexpr (can_async_check) {
             guard.unlock();
             cv.notify_all();
+        } else if (delay_fence && !always_delay) {
+            // Without a fence thread only this thread releases fences, and it may wait on this one.
+            TryReleasePendingFences<true>();
         }
         rasterizer.InvalidateGPUCache();
     }
@@ -231,6 +246,11 @@ private:
                query_cache.ShouldWaitAsyncFlushes();
     }
 
+    bool HasPendingImageDownloads() const {
+        std::scoped_lock lock{texture_cache.mutex};
+        return texture_cache.HasUncommittedFlushes();
+    }
+
     bool ShouldFlush() const {
         std::scoped_lock lock{buffer_cache.mutex, texture_cache.mutex};
         return texture_cache.HasUncommittedFlushes() || buffer_cache.HasUncommittedFlushes() ||
@@ -256,6 +276,7 @@ private:
     }
 
     std::queue<TFence> fences;
+    std::atomic<size_t> delayed_fences{}; ///< Fences delayed at low accuracy, not released yet
     std::deque<std::function<void()>> uncommitted_operations;
     std::deque<std::deque<std::function<void()>>> pending_operations;
 
