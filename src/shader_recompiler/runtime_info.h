@@ -11,7 +11,6 @@
 #include <optional>
 #include <vector>
 
-#include "common/util_format.h"
 #include "common/common_types.h"
 #include "shader_recompiler/varying_state.h"
 

@@ -14,7 +14,6 @@
 #include "common/common_funcs.h"
 #include "common/common_types.h"
 #include "common/socket_types.h"
-#include "common/util_format.h"
 
 #ifdef _WIN32
 #include <winsock2.h>

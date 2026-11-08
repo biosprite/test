@@ -6,7 +6,6 @@
 
 #include "common/bit_field.h"
 #include "common/common_types.h"
-#include "common/util_format.h"
 #include "shader_recompiler/frontend/maxwell/translate/impl/common_encoding.h"
 #include "shader_recompiler/frontend/maxwell/translate/impl/impl.h"
 

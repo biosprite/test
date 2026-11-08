@@ -7,7 +7,6 @@
 #pragma once
 
 #include "core/hle/service/am/frontend/applets.h"
-#include "common/util_format.h"
 
 namespace Core {
 class System;

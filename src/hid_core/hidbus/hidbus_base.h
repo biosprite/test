@@ -10,7 +10,6 @@
 #include <span>
 #include "common/typed_address.h"
 #include "core/hle/result.h"
-#include "common/util_format.h"
 
 namespace Core {
 class System;

@@ -13,7 +13,6 @@
 #include "audio_core/renderer/effect/effect_info_base.h"
 #include "common/common_types.h"
 #include "common/fixed_point.h"
-#include "common/util_format.h"
 
 namespace AudioCore::Renderer {
 

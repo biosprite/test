@@ -8,7 +8,6 @@
 
 #include <map>
 #include "common/common_types.h"
-#include "common/util_format.h"
 
 namespace Core::Timing {
 class CoreTiming;

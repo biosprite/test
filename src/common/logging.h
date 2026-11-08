@@ -14,7 +14,6 @@
 
 // adapted from https://github.com/fmtlib/fmt/issues/2704
 // a generic formatter for enum classes
-#if FMT_VERSION >= 80100
 template <typename T>
 struct std::formatter<T, std::enable_if_t<std::is_enum_v<T>, char>>
     : formatter<std::underlying_type_t<T>> {
@@ -24,7 +23,6 @@ struct std::formatter<T, std::enable_if_t<std::is_enum_v<T>, char>>
             static_cast<std::underlying_type_t<T>>(value), ctx);
     }
 };
-#endif
 
 template <typename T, typename U>
 struct std::formatter<SwapStructT<T, U>> {

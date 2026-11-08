@@ -15,7 +15,6 @@
 #include "common/logging.h"
 #include "common/param_package.h"
 #include "common/uuid.h"
-#include "common/util_format.h"
 
 namespace Common::Input {
 

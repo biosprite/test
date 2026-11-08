@@ -7,7 +7,6 @@
 #pragma once
 
 #include "common/common_types.h"
-#include "common/util_format.h"
 
 namespace Shader::IR {
 

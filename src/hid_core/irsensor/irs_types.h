@@ -8,7 +8,6 @@
 
 #include "common/common_funcs.h"
 #include "common/common_types.h"
-#include "common/util_format.h"
 #include "hid_core/hid_types.h"
 
 namespace Core::IrSensor {

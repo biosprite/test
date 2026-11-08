@@ -12,7 +12,6 @@
 #include <vector>
 
 #include <format>
-#include "common/util_format.h"
 
 #include <boost/intrusive/list.hpp>
 
