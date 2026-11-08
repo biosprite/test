@@ -593,7 +593,7 @@ struct SixAxisSensorIcInformation {
 };
 static_assert(sizeof(SixAxisSensorIcInformation) == 0xC8,
               "SixAxisSensorIcInformation is an invalid size");
-static_assert(std::is_trivial_v<SixAxisSensorIcInformation>,
+static_assert(std::is_trivially_default_constructible_v<SixAxisSensorIcInformation> && std::is_trivially_copyable_v<SixAxisSensorIcInformation>,
               "SixAxisSensorIcInformation must be trivial.");
 
 // This is nn::hid::SixAxisSensorAttribute

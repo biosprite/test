@@ -42,7 +42,7 @@ struct SteadyClockTimePoint {
     ClockSourceId clock_source_id;
 };
 static_assert(sizeof(SteadyClockTimePoint) == 0x18, "SteadyClockTimePoint has the wrong size!");
-static_assert(std::is_trivial_v<ClockSourceId>);
+static_assert(std::is_trivially_default_constructible_v<ClockSourceId> && std::is_trivially_copyable_v<ClockSourceId>);
 
 struct SystemClockContext {
     bool operator==(const SystemClockContext& other) const = default;
@@ -51,7 +51,7 @@ struct SystemClockContext {
     SteadyClockTimePoint steady_time_point;
 };
 static_assert(sizeof(SystemClockContext) == 0x20, "SystemClockContext has the wrong size!");
-static_assert(std::is_trivial_v<SystemClockContext>);
+static_assert(std::is_trivially_default_constructible_v<SystemClockContext> && std::is_trivially_copyable_v<SystemClockContext>);
 
 struct CalendarTime {
     s16 year;
@@ -94,7 +94,7 @@ struct ClockSnapshot {
     u16 unk_CE;
 };
 static_assert(sizeof(ClockSnapshot) == 0xD0, "ClockSnapshot has the wrong size!");
-static_assert(std::is_trivial_v<ClockSnapshot>);
+static_assert(std::is_trivially_default_constructible_v<ClockSnapshot> && std::is_trivially_copyable_v<ClockSnapshot>);
 
 struct ContinuousAdjustmentTimePoint {
     s64 rtc_offset;
@@ -106,7 +106,7 @@ struct ContinuousAdjustmentTimePoint {
 };
 static_assert(sizeof(ContinuousAdjustmentTimePoint) == 0x38,
               "ContinuousAdjustmentTimePoint has the wrong size!");
-static_assert(std::is_trivial_v<ContinuousAdjustmentTimePoint>);
+static_assert(std::is_trivially_default_constructible_v<ContinuousAdjustmentTimePoint> && std::is_trivially_copyable_v<ContinuousAdjustmentTimePoint>);
 
 struct AlarmInfo {
     s64 alert_time;
