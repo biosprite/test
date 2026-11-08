@@ -7,6 +7,7 @@
 #include <atomic>
 #include <chrono>
 #include <climits>
+#include <cstdio>
 #include <cstdlib>
 #include <format>
 #include <regex>
@@ -87,15 +88,15 @@ const char* GetLevelName(Level log_level) {
 // Some IDEs prefer <file>:<line> instead, so let's just do that :)
 std::string FormatLogMessage(const Entry& entry) noexcept {
     if (!entry.filename) return "";
-    // if (!entry.message) return "";
 
     auto const time_seconds = uint32_t(entry.timestamp.count() / 1000000);
     auto const time_fractional = uint32_t(entry.timestamp.count() % 1000000);
     auto const class_name = GetLogClassName(entry.log_class);
     auto const level_name = GetLevelName(entry.log_level);
     return std::format("[{:4d}.{:06d}] {} <{}> {}:{}:{}: {}\n", time_seconds, time_fractional,
-                       class_name, level_name, entry.filename, entry.line_num, entry.function,
-                       entry.message);
+                       class_name, level_name, entry.filename, entry.line_num,
+                       entry.function ? entry.function : "",
+                       entry.message ? entry.message : "");
 }
 
 template <typename It>
@@ -204,7 +205,9 @@ struct ColorConsoleBackend final : public Backend {
             }());
             SetConsoleTextAttribute(console_handle, color);
             auto const df = GetDirectFormatArgs(entry);
-            std::fprintf(stdout, CCB_PRINTF_FMT "\n", df.time_seconds, df.time_fractional, df.class_name, df.level_name, entry.filename, entry.line_num, entry.function, entry.message);
+            std::fprintf(stdout, CCB_PRINTF_FMT "\n", df.time_seconds, df.time_fractional, df.class_name,
+                         df.level_name, entry.filename ? entry.filename : "", entry.line_num,
+                         entry.function ? entry.function : "", entry.message ? entry.message : "");
         }
     }
     void Flush() noexcept override {}
@@ -230,9 +233,13 @@ struct ColorConsoleBackend final : public Backend {
             // more restrictive, because take for example this simple prelude:
             // [  50.872256] Config <Info> common/settings.cpp:142:LogSettings:
 
-            auto result = std::format("\x1b{}[{:4d}.{:06d}] {} <{}> {}:{}:{}: ", color_str, df.time_seconds, df.time_fractional, df.class_name, df.level_name, entry.filename, entry.line_num, entry.function, entry.message);
+            auto result = std::format("\x1b{}[{:4d}.{:06d}] {} <{}> {}:{}:{}: ", color_str, df.time_seconds,
+                                      df.time_fractional, df.class_name, df.level_name,
+                                      entry.filename ? entry.filename : "", entry.line_num,
+                                      entry.function ? entry.function : "");
             std::fwrite(result.data(), 1, result.size(), stdout);
-            std::fwrite(entry.message, 1, entry.message_len, stdout);
+            if (entry.message && entry.message_len)
+                std::fwrite(entry.message, 1, entry.message_len, stdout);
             std::fwrite("\x1b[0m\n", 1, sizeof("\x1b[0m\n"), stdout);
         }
     }
@@ -449,7 +456,7 @@ void FmtLogMessageImpl(Class log_class, Level log_level, const char* filename, u
             .line_num = line_num,
         };
 
-        logging_instance->ForEachBackend([=](Backend& backend) {
+        logging_instance->ForEachBackend([&](Backend& backend) {
             backend.Write(e);
             if (flush) backend.Flush();
         });

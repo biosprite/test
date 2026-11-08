@@ -250,13 +250,13 @@ constexpr size_t NUM_FIXEDFNCTEXTURE = 10;
 
 [[nodiscard]] inline u32 GenericAttributeIndex(Attribute attribute) {
     if (!IsGeneric(attribute))
-        throw InvalidArgument("Attribute is not generic {}", u64(attribute));
+        throw InvalidArgument("Attribute is not generic {}", attribute);
     return (u32(attribute) - u32(Attribute::Generic0X)) / 4u;
 }
 
 [[nodiscard]] inline u32 GenericAttributeElement(Attribute attribute) {
     if (!IsGeneric(attribute))
-        throw InvalidArgument("Attribute is not generic {}", u64(attribute));
+        throw InvalidArgument("Attribute is not generic {}", attribute);
     return u32(attribute) % 4;
 }
 

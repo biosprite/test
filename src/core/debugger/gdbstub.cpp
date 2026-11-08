@@ -435,11 +435,13 @@ void GDBStub::HandleQuery(std::string_view sv) {
             thread_ids.push_back(std::format("{:x}", thread.GetThreadId()));
 
         std::string joined;
+        bool first = true;
         for (const auto& id : thread_ids) {
-            if (!joined.empty()) {
+            if (!first) {
                 joined += ',';
             }
             joined += id;
+            first = false;
         }
         SendReply(std::format("m{}", joined));
     } else if (sv.starts_with("sThreadInfo")) {

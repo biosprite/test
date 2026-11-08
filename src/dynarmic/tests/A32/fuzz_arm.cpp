@@ -13,6 +13,7 @@
 #include <tuple>
 #include <type_traits>
 #include <vector>
+#include <print>
 
 #include <catch2/catch_test_macros.hpp>
 #include "dynarmic/mcl/bit.hpp"

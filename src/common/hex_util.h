@@ -9,6 +9,7 @@
 
 #include <array>
 #include <cstddef>
+#include <iterator>
 #include <string>
 #include <vector>
 #include <format>
@@ -58,9 +59,11 @@ template <typename ContiguousContainer>
     std::string out;
     out.reserve(std::size(data) * pad_width);
 
-    const auto format_str = upper ? "{:02X}" : "{:02x}";
     for (const u8 c : data) {
-        out += std::vformat(format_str, std::make_format_args(c));
+        if (upper)
+            std::format_to(std::back_inserter(out), "{:02X}", c);
+        else
+            std::format_to(std::back_inserter(out), "{:02x}", c);
     }
 
     return out;

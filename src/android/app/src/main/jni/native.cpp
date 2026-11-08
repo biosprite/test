@@ -10,6 +10,7 @@
 #include <codecvt>
 #include <cstdio>
 #include <cstring>
+#include <format>
 #include <locale>
 #include <map>
 #include <set>

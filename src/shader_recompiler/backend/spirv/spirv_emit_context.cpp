@@ -264,10 +264,9 @@ std::string_view StageName(Stage stage) {
 template <typename... Args>
 void Name(EmitContext& ctx, Id object, std::string_view format_str, Args&&... args) {
     const auto stage_name = StageName(ctx.stage);
+    const auto name = std::vformat(format_str, std::make_format_args(stage_name, args...));
 
-    ctx.Name(
-        object,
-        std::vformat(format_str, std::make_format_args(stage_name, args...)).c_str());
+    ctx.Name(object, name);
 }
 
 void DefineConstBuffers(EmitContext& ctx, const Info& info, Id UniformDefinitions::*member_type,

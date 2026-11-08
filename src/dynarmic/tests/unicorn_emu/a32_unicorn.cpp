@@ -13,6 +13,8 @@
 #include "common/assert.h"
 #include "dynarmic/tests/A32/testenv.h"
 
+#include <print>
+
 #define CHECKED(expr) do if ((expr)) ASSERT(false && "Call " #expr " failed with error\n"); while (0)
 
 constexpr u32 BEGIN_ADDRESS = 0;

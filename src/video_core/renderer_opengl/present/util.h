@@ -6,6 +6,7 @@
 
 #pragma once
 
+#include <format>
 #include <string>
 
 #include "common/assert.h"

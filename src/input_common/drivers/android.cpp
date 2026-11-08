@@ -4,6 +4,7 @@
 // SPDX-FileCopyrightText: Copyright 2024 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <format>
 #include <set>
 #include <common/settings_input.h>
 #include <common/thread.h>

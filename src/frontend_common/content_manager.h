@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <format>
+
 #include <boost/algorithm/string.hpp>
 #include "common/common_types.h"
 #include "common/literals.h"

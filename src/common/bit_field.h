@@ -173,7 +173,10 @@ using BitFieldBE = BitField<Position, Bits, T, BETag>;
 
 template <std::size_t Position, std::size_t Bits, typename T, typename EndianTag>
 struct std::formatter<BitField<Position, Bits, T, EndianTag>> : std::formatter<T> {
-    auto format(const BitField<Position, Bits, T, EndianTag>& bitfield, auto& ctx) const {
+    using std::formatter<T>::parse;
+    template <typename FormatContext>
+    auto format(const BitField<Position, Bits, T, EndianTag>& bitfield, FormatContext& ctx) const
+        -> decltype(ctx.out()) {
         return std::formatter<T>::format(bitfield.Value(), ctx);
     }
 };

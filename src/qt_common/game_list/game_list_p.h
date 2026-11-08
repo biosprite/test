@@ -7,6 +7,7 @@
 #pragma once
 
 #include <array>
+#include <format>
 #include <map>
 #include <string>
 #include <utility>
