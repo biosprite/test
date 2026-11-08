@@ -102,7 +102,6 @@ endif()
 if (NOT Boost_FOUND)
     find_package(Boost 1.57 REQUIRED)
 endif()
-find_package(fmt 8 CONFIG)
 
 if (ARCHITECTURE_arm64)
     find_package(oaknut 2.0.1 CONFIG)

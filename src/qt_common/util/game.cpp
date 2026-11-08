@@ -24,7 +24,6 @@
 #include "common/fs/file.h"
 #else
 #include <fstream>
-#include "fmt/ostream.h"
 #endif
 
 namespace QtCommon::Game {
