@@ -41,12 +41,12 @@ static void ApplyLinearEnvelopeGain(std::span<s32> output, std::span<const s32> 
 void VolumeRampCommand::Dump(const AudioRenderer::CommandListProcessor& processor,
                              std::string& string) {
     const auto ramp{(volume - prev_volume) / static_cast<f32>(processor.sample_count)};
-    string += fmt::format("VolumeRampCommand");
-    string += fmt::format("\n\tinput {:02X}", input_index);
-    string += fmt::format("\n\toutput {:02X}", output_index);
-    string += fmt::format("\n\tvolume {:.8f}", volume);
-    string += fmt::format("\n\tprev_volume {:.8f}", prev_volume);
-    string += fmt::format("\n\tramp {:.8f}", ramp);
+    string += std::format("VolumeRampCommand");
+    string += std::format("\n\tinput {:02X}", input_index);
+    string += std::format("\n\toutput {:02X}", output_index);
+    string += std::format("\n\tvolume {:.8f}", volume);
+    string += std::format("\n\tprev_volume {:.8f}", prev_volume);
+    string += std::format("\n\tramp {:.8f}", ramp);
     string += "\n";
 }
 

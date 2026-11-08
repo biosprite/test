@@ -7,7 +7,7 @@
 #pragma once
 
 #include <string>
-#include <fmt/ranges.h>
+#include <format>
 
 #include "common/common_types.h"
 #include "shader_recompiler/exception.h"
@@ -59,19 +59,19 @@ enum class FlowTest : u64 {
     SRIR_FLOW_TEST_LIST
 #undef SRIR_FLOW_TEST_ELEM
     default:
-        return fmt::format("<invalid flow test {}>", int(flow_test));
+        return std::format("<invalid flow test {}>", int(flow_test));
     }
 }
 
 } // namespace Shader::IR
 
 template <>
-struct fmt::formatter<Shader::IR::FlowTest> {
+struct std::formatter<Shader::IR::FlowTest> {
     constexpr auto parse(format_parse_context& ctx) {
         return ctx.begin();
     }
     template <typename FormatContext>
     auto format(const Shader::IR::FlowTest& flow_test, FormatContext& ctx) const {
-        return fmt::format_to(ctx.out(), "{}", Shader::IR::NameOf(flow_test));
+        return std::format_to(ctx.out(), "{}", Shader::IR::NameOf(flow_test));
     }
 };

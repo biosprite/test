@@ -7,7 +7,7 @@
  */
 
 #include <type_traits>
-#include <fmt/format.h>
+#include <format>
 #include "dynarmic/mcl/bit.hpp"
 #include "dynarmic/tests/unicorn_emu/a32_unicorn.h"
 #include "common/assert.h"

@@ -7,7 +7,7 @@
 #pragma once
 
 #include <type_traits>
-#include <fmt/ranges.h>
+#include <format>
 
 #include "common/common_funcs.h"
 #include "common/common_types.h"

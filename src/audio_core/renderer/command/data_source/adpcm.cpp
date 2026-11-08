@@ -11,7 +11,7 @@ namespace AudioCore::Renderer {
 
 void AdpcmDataSourceVersion1Command::Dump(const AudioRenderer::CommandListProcessor& processor,
                                           std::string& string) {
-    string += fmt::format("AdpcmDataSourceVersion1Command\n\toutput_index {:02X} source sample "
+    string += std::format("AdpcmDataSourceVersion1Command\n\toutput_index {:02X} source sample "
                           "rate {} target sample rate {} src quality {}\n",
                           output_index, sample_rate, processor.target_sample_rate, src_quality);
 }
@@ -53,7 +53,7 @@ bool AdpcmDataSourceVersion1Command::Verify(const AudioRenderer::CommandListProc
 
 void AdpcmDataSourceVersion2Command::Dump(const AudioRenderer::CommandListProcessor& processor,
                                           std::string& string) {
-    string += fmt::format("AdpcmDataSourceVersion2Command\n\toutput_index {:02X} source sample "
+    string += std::format("AdpcmDataSourceVersion2Command\n\toutput_index {:02X} source sample "
                           "rate {} target sample rate {} src quality {}\n",
                           output_index, sample_rate, processor.target_sample_rate, src_quality);
 }

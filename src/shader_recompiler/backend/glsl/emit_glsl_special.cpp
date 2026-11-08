@@ -29,7 +29,7 @@ void InitializeOutputVaryings(EmitContext& ctx) {
         size_t element{};
         while (element < info_array.size()) {
             const auto& info{info_array.at(element)};
-            const auto varying_name{fmt::format("{}{}", info.name, output_decorator)};
+            const auto varying_name{std::format("{}{}", info.name, output_decorator)};
             switch (info.num_components) {
             case 1: {
                 const char value{element == 3 ? '1' : '0'};

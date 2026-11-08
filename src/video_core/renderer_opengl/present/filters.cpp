@@ -71,7 +71,7 @@ std::unique_ptr<WindowAdaptPass> MakeLanczos(const Device& device) {
 std::unique_ptr<WindowAdaptPass> MakeScaleForce(const Device& device) {
     return std::make_unique<WindowAdaptPass>(
         device, CreateBilinearSampler(),
-        fmt::format("#version 460\n{}", HostShaders::OPENGL_PRESENT_SCALEFORCE_FRAG));
+        std::format("#version 460\n{}", HostShaders::OPENGL_PRESENT_SCALEFORCE_FRAG));
 }
 
 std::unique_ptr<WindowAdaptPass> MakeArea(const Device& device) {

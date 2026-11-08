@@ -14,8 +14,8 @@ void CompositeConstruct(EmitContext& ctx, IR::Inst& inst, Values&&... elements) 
                             [](const IR::Value& value) { return value.IsImmediate(); })) {
         using Type = std::invoke_result_t<decltype(read_imm), IR::Value>;
         const std::array<Type, 4> values{(elements.IsImmediate() ? (elements.*read_imm)() : 0)...};
-        ctx.Add("MOV.{} {},{{{},{},{},{}}};", type, ret, fmt::to_string(values[0]),
-                fmt::to_string(values[1]), fmt::to_string(values[2]), fmt::to_string(values[3]));
+        ctx.Add("MOV.{} {},{{{},{},{},{}}};", type, ret, std::to_string(values[0]),
+                std::to_string(values[1]), std::to_string(values[2]), std::to_string(values[3]));
     }
     size_t index{};
     for (const IR::Value& element : {elements...}) {

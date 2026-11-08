@@ -12,7 +12,7 @@ namespace AudioCore::Renderer {
 
 void MultiTapBiquadFilterCommand::Dump(
     [[maybe_unused]] const AudioRenderer::CommandListProcessor& processor, std::string& string) {
-    string += fmt::format(
+    string += std::format(
         "MultiTapBiquadFilterCommand\n\tinput {:02X}\n\toutput {:02X}\n\tneeds_init ({}, {})\n",
         input, output, needs_init[0], needs_init[1]);
 }

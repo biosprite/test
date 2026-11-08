@@ -4,7 +4,7 @@
 // SPDX-FileCopyrightText: Copyright 2021 yuzu Emulator Project
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include <fmt/ranges.h>
+#include <format>
 #include <bit>
 #include "shader_recompiler/backend/glasm/reg_alloc.h"
 #include "shader_recompiler/exception.h"

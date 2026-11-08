@@ -399,13 +399,13 @@ static void ApplyI3dl2ReverbEffect(const I3dl2ReverbInfo::ParameterVersion1& par
 
 void I3dl2ReverbCommand::Dump([[maybe_unused]] const AudioRenderer::CommandListProcessor& processor,
                               std::string& string) {
-    string += fmt::format("I3dl2ReverbCommand\n\tenabled {} \n\tinputs: ", effect_enabled);
+    string += std::format("I3dl2ReverbCommand\n\tenabled {} \n\tinputs: ", effect_enabled);
     for (u32 i = 0; i < parameter.channel_count; i++) {
-        string += fmt::format("{:02X}, ", inputs[i]);
+        string += std::format("{:02X}, ", inputs[i]);
     }
     string += "\n\toutputs: ";
     for (u32 i = 0; i < parameter.channel_count; i++) {
-        string += fmt::format("{:02X}, ", outputs[i]);
+        string += std::format("{:02X}, ", outputs[i]);
     }
     string += "\n";
 }

@@ -15,14 +15,14 @@ constexpr char cas_loop[]{
 void SharedCasFunction(EmitContext& ctx, IR::Inst& inst, std::string_view offset,
                        std::string_view value, std::string_view function) {
     const auto ret{ctx.var_alloc.Define(inst, GlslVarType::U32)};
-    const std::string smem{fmt::format("smem[{}>>2]", offset)};
+    const std::string smem{std::format("smem[{}>>2]", offset)};
     ctx.Add(cas_loop, smem, ret, smem, function, smem, value, ret);
 }
 
 void SsboCasFunction(EmitContext& ctx, IR::Inst& inst, const IR::Value& binding,
                      const IR::Value& offset, std::string_view value, std::string_view function) {
     const auto ret{ctx.var_alloc.Define(inst, GlslVarType::U32)};
-    const std::string ssbo{fmt::format("{}_ssbo{}[{}>>2]", ctx.stage_name, binding.U32(),
+    const std::string ssbo{std::format("{}_ssbo{}[{}>>2]", ctx.stage_name, binding.U32(),
                                        ctx.var_alloc.Consume(offset))};
     ctx.Add(cas_loop, ssbo, ret, ssbo, function, ssbo, value, ret);
 }
@@ -30,7 +30,7 @@ void SsboCasFunction(EmitContext& ctx, IR::Inst& inst, const IR::Value& binding,
 void SsboCasFunctionF32(EmitContext& ctx, IR::Inst& inst, const IR::Value& binding,
                         const IR::Value& offset, std::string_view value,
                         std::string_view function) {
-    const std::string ssbo{fmt::format("{}_ssbo{}[{}>>2]", ctx.stage_name, binding.U32(),
+    const std::string ssbo{std::format("{}_ssbo{}[{}>>2]", ctx.stage_name, binding.U32(),
                                        ctx.var_alloc.Consume(offset))};
     const auto ret{ctx.var_alloc.Define(inst, GlslVarType::U32)};
     ctx.Add(cas_loop, ssbo, ret, ssbo, function, ssbo, value, ret);
@@ -45,7 +45,7 @@ void EmitSharedAtomicIAdd32(EmitContext& ctx, IR::Inst& inst, std::string_view p
 
 void EmitSharedAtomicSMin32(EmitContext& ctx, IR::Inst& inst, std::string_view pointer_offset,
                             std::string_view value) {
-    const std::string u32_value{fmt::format("uint({})", value)};
+    const std::string u32_value{std::format("uint({})", value)};
     SharedCasFunction(ctx, inst, pointer_offset, u32_value, "CasMinS32");
 }
 
@@ -56,7 +56,7 @@ void EmitSharedAtomicUMin32(EmitContext& ctx, IR::Inst& inst, std::string_view p
 
 void EmitSharedAtomicSMax32(EmitContext& ctx, IR::Inst& inst, std::string_view pointer_offset,
                             std::string_view value) {
-    const std::string u32_value{fmt::format("uint({})", value)};
+    const std::string u32_value{std::format("uint({})", value)};
     SharedCasFunction(ctx, inst, pointer_offset, u32_value, "CasMaxS32");
 }
 
@@ -119,7 +119,7 @@ void EmitStorageAtomicIAdd32(EmitContext& ctx, IR::Inst& inst, const IR::Value& 
 
 void EmitStorageAtomicSMin32(EmitContext& ctx, IR::Inst& inst, const IR::Value& binding,
                              const IR::Value& offset, std::string_view value) {
-    const std::string u32_value{fmt::format("uint({})", value)};
+    const std::string u32_value{std::format("uint({})", value)};
     SsboCasFunction(ctx, inst, binding, offset, u32_value, "CasMinS32");
 }
 
@@ -131,7 +131,7 @@ void EmitStorageAtomicUMin32(EmitContext& ctx, IR::Inst& inst, const IR::Value& 
 
 void EmitStorageAtomicSMax32(EmitContext& ctx, IR::Inst& inst, const IR::Value& binding,
                              const IR::Value& offset, std::string_view value) {
-    const std::string u32_value{fmt::format("uint({})", value)};
+    const std::string u32_value{std::format("uint({})", value)};
     SsboCasFunction(ctx, inst, binding, offset, u32_value, "CasMaxS32");
 }
 

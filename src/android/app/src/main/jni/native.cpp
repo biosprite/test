@@ -1075,7 +1075,7 @@ jstring Java_org_yuzu_yuzu_1emu_NativeLibrary_getCpuSummary(JNIEnv* env, jobject
         u32 threads = pretty_cpus.first;
         std::string cpus = pretty_cpus.second;
 
-        fmt::format_to(std::back_inserter(result), "CPUs: {}\n{} Threads",
+        std::format_to(std::back_inserter(result), "CPUs: {}\n{} Threads",
                        cpus, threads);
 
         FILE* f = std::fopen(CPUINFO_PATH, "r");
@@ -1163,7 +1163,7 @@ jstring Java_org_yuzu_yuzu_1emu_NativeLibrary_getCpuSummary(JNIEnv* env, jobject
             }
         }
 
-        fmt::format_to(std::back_inserter(result), "\nLLVM CPU: {}", fallback_cpu_detection());
+        std::format_to(std::back_inserter(result), "\nLLVM CPU: {}", fallback_cpu_detection());
 
         return Common::Android::ToJString(env, result);
     } catch (...) {

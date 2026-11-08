@@ -17,7 +17,7 @@
 #pragma warning(pop)
 #endif
 
-#include <fmt/ranges.h>
+#include <format>
 
 #include "common/fs/file.h"
 #include "common/fs/fs.h"
@@ -1266,7 +1266,7 @@ Result NfcDevice::HasBackup(const UniqueSerialNumber& uid, std::size_t uuid_size
     constexpr auto backup_dir = "backup";
     const auto yuzu_amiibo_dir = Common::FS::GetEdenPath(Common::FS::EdenPath::AmiiboDir);
     const auto file_name =
-        fmt::format("{0:02x}.bin", fmt::join(uid.begin(), uid.begin() + uuid_size, ""));
+        std::format("{0:02x}.bin", fmt::join(uid.begin(), uid.begin() + uuid_size, ""));
 
     if (!Common::FS::Exists(yuzu_amiibo_dir / backup_dir / file_name)) {
         return ResultUnableToAccessBackupFile;
@@ -1287,7 +1287,7 @@ Result NfcDevice::ReadBackupData(const UniqueSerialNumber& uid, std::size_t uuid
     constexpr auto backup_dir = "backup";
     const auto yuzu_amiibo_dir = Common::FS::GetEdenPath(Common::FS::EdenPath::AmiiboDir);
     const auto file_name =
-        fmt::format("{0:02x}.bin", fmt::join(uid.begin(), uid.begin() + uuid_size, ""));
+        std::format("{0:02x}.bin", fmt::join(uid.begin(), uid.begin() + uuid_size, ""));
 
     const Common::FS::IOFile keys_file{yuzu_amiibo_dir / backup_dir / file_name,
                                        Common::FS::FileAccessMode::Read,
@@ -1318,7 +1318,7 @@ Result NfcDevice::WriteBackupData(const UniqueSerialNumber& uid, std::size_t uui
     constexpr auto backup_dir = "backup";
     const auto yuzu_amiibo_dir = Common::FS::GetEdenPath(Common::FS::EdenPath::AmiiboDir);
     const auto file_name =
-        fmt::format("{0:02x}.bin", fmt::join(uid.begin(), uid.begin() + uuid_size, ""));
+        std::format("{0:02x}.bin", fmt::join(uid.begin(), uid.begin() + uuid_size, ""));
 
     if (HasBackup(uid, uuid_size).IsError()) {
         if (!Common::FS::CreateDir(yuzu_amiibo_dir / backup_dir)) {

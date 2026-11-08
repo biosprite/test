@@ -10,7 +10,7 @@ namespace AudioCore::Renderer {
 
 void ClearMixBufferCommand::Dump(
     [[maybe_unused]] const AudioRenderer::CommandListProcessor& processor, std::string& string) {
-    string += fmt::format("ClearMixBufferCommand\n");
+    string += std::format("ClearMixBufferCommand\n");
 }
 
 void ClearMixBufferCommand::Process(const AudioRenderer::CommandListProcessor& processor) {

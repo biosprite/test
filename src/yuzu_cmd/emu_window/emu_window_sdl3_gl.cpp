@@ -11,7 +11,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL3/SDL.h>
 
-#include <fmt/ranges.h>
+#include <format>
 #include <glad/glad.h>
 #include "common/logging.h"
 #include "common/scm_rev.h"
@@ -95,7 +95,7 @@ EmuWindow_SDL3_GL::EmuWindow_SDL3_GL(InputCommon::InputSubsystem* input_subsyste
     }
     SDL_GL_SetSwapInterval(0);
 
-    std::string window_title = fmt::format("{} | {}-{}", Common::g_build_fullname,
+    std::string window_title = std::format("{} | {}-{}", Common::g_build_fullname,
                                            Common::g_scm_branch, Common::g_scm_desc);
     render_window =
         SDL_CreateWindow(window_title.c_str(), Layout::ScreenUndocked::Width,

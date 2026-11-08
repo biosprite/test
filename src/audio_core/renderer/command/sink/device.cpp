@@ -14,10 +14,10 @@ namespace AudioCore::Renderer {
 
 void DeviceSinkCommand::Dump([[maybe_unused]] const AudioRenderer::CommandListProcessor& processor,
                              std::string& string) {
-    string += fmt::format("DeviceSinkCommand\n\t{} session {} input_count {}\n\tinputs: ",
+    string += std::format("DeviceSinkCommand\n\t{} session {} input_count {}\n\tinputs: ",
                           std::string_view(name), session_id, input_count);
     for (u32 i = 0; i < input_count; i++) {
-        string += fmt::format("{:02X}, ", inputs[i]);
+        string += std::format("{:02X}, ", inputs[i]);
     }
     string += "\n";
 }

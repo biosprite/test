@@ -34,7 +34,7 @@ QString FormatUserEntryText(const QString& username, Common::UUID uuid) {
 QString GetImagePath(Common::UUID uuid) {
     const auto path =
         Common::FS::GetEdenPath(Common::FS::EdenPath::NANDDir) /
-        fmt::format("system/save/8000000000000010/su/avators/{}.jpg", uuid.FormattedString());
+        std::format("system/save/8000000000000010/su/avators/{}.jpg", uuid.FormattedString());
     return QString::fromStdString(Common::FS::PathToUTF8String(path));
 }
 

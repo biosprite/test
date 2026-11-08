@@ -3,8 +3,6 @@
 
 #include <string>
 
-#include <fmt/ranges.h>
-
 #include "shader_recompiler/frontend/ir/condition.h"
 
 namespace Shader::IR {
@@ -12,7 +10,7 @@ namespace Shader::IR {
 std::string NameOf(Condition condition) {
     std::string ret;
     if (condition.GetFlowTest() != FlowTest::T) {
-        ret = fmt::to_string(condition.GetFlowTest());
+        ret = std::to_string(std::to_underlying(condition.GetFlowTest()));
     }
     const auto [pred, negated]{condition.GetPred()};
     if (!ret.empty()) {
@@ -21,7 +19,7 @@ std::string NameOf(Condition condition) {
     if (negated) {
         ret += '!';
     }
-    ret += fmt::to_string(pred);
+    ret += std::to_string(std::to_underlying(pred));
     return ret;
 }
 

@@ -434,15 +434,15 @@ static void ApplyReverbEffect(const ReverbInfo::ParameterVersion2& params, Rever
 
 void ReverbCommand::Dump([[maybe_unused]] const AudioRenderer::CommandListProcessor& processor,
                          std::string& string) {
-    string += fmt::format(
+    string += std::format(
         "ReverbCommand\n\tenabled {} long_size_pre_delay_supported {}\n\tinputs: ", effect_enabled,
         long_size_pre_delay_supported);
     for (u32 i = 0; i < MaxChannels; i++) {
-        string += fmt::format("{:02X}, ", inputs[i]);
+        string += std::format("{:02X}, ", inputs[i]);
     }
     string += "\n\toutputs: ";
     for (u32 i = 0; i < MaxChannels; i++) {
-        string += fmt::format("{:02X}, ", outputs[i]);
+        string += std::format("{:02X}, ", outputs[i]);
     }
     string += "\n";
 }

@@ -180,7 +180,7 @@ static u32 ReadAuxBufferDsp(Core::Memory::Memory& memory, CpuAddr return_info_,
 
 void AuxCommand::Dump([[maybe_unused]] const AudioRenderer::CommandListProcessor& processor,
                       std::string& string) {
-    string += fmt::format("AuxCommand\n\tenabled {} input {:02X} output {:02X}\n", effect_enabled,
+    string += std::format("AuxCommand\n\tenabled {} input {:02X} output {:02X}\n", effect_enabled,
                           input, output);
 }
 

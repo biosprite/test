@@ -7,7 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include <fmt/ranges.h>
+#include <format>
 
 #include "shader_recompiler/backend/glsl/var_alloc.h"
 #include "shader_recompiler/stage.h"
@@ -50,9 +50,9 @@ public:
         const auto var_def{var_alloc.AddDefine(inst, type)};
         if (var_def.empty()) {
             // skip assignment.
-            code += fmt::format(fmt::runtime(format_str + 3), std::forward<Args>(args)...);
+            code += std::vformat(format_str + 3, std::make_format_args(args...));
         } else {
-            code += fmt::format(fmt::runtime(format_str), var_def, std::forward<Args>(args)...);
+            code += std::vformat(format_str, std::make_format_args(var_def, args...));
         }
         // TODO: Remove this
         code += '\n';
@@ -130,7 +130,7 @@ public:
 
     template <typename... Args>
     void Add(const char* format_str, Args&&... args) {
-        code += fmt::format(fmt::runtime(format_str), std::forward<Args>(args)...);
+        code += std::vformat(format_str, std::make_format_args(args...));
         // TODO: Remove this
         code += '\n';
     }

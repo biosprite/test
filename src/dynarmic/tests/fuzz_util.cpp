@@ -10,8 +10,8 @@
 
 #include <cstring>
 
-#include <fmt/format.h>
-#include <fmt/ostream.h>
+#include <format>
+#include <format>
 #include "common/assert.h"
 
 #include "dynarmic/tests/rand_int.h"

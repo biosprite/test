@@ -15,9 +15,9 @@
 #include <optional>
 #include <string>
 
-#include <fmt/format.h>
-#include <fmt/ostream.h>
-#include <fmt/ranges.h>
+#include <format>
+#include <format>
+#include <format>
 #include "dynarmic/frontend/A32/translate/translate_callbacks.h"
 #include "dynarmic/mcl/bit.hpp"
 #include "common/common_types.h"

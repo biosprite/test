@@ -12,7 +12,7 @@
 #include <string_view>
 #include <vector>
 
-#include <fmt/format.h>
+#include <format>
 #include "common/common_types.h"
 
 #include "./A32/testenv.h"

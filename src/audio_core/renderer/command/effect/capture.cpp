@@ -123,7 +123,7 @@ static u32 WriteAuxBufferDsp(Core::Memory::Memory& memory, const CpuAddr send_in
 
 void CaptureCommand::Dump([[maybe_unused]] const AudioRenderer::CommandListProcessor& processor,
                           std::string& string) {
-    string += fmt::format("CaptureCommand\n\tenabled {} input {:02X} output {:02X}", effect_enabled,
+    string += std::format("CaptureCommand\n\tenabled {} input {:02X} output {:02X}", effect_enabled,
                           input, output);
 }
 

@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <fmt/ranges.h>
+#include <format>
 
 namespace Shader::IR {
 
@@ -28,16 +28,16 @@ constexpr size_t NUM_PREDS = 8;
 } // namespace Shader::IR
 
 template <>
-struct fmt::formatter<Shader::IR::Pred> {
+struct std::formatter<Shader::IR::Pred> {
     constexpr auto parse(format_parse_context& ctx) {
         return ctx.begin();
     }
     template <typename FormatContext>
     auto format(const Shader::IR::Pred& pred, FormatContext& ctx) const {
         if (pred == Shader::IR::Pred::PT) {
-            return fmt::format_to(ctx.out(), "PT");
+            return std::format_to(ctx.out(), "PT");
         } else {
-            return fmt::format_to(ctx.out(), "P{}", static_cast<int>(pred));
+            return std::format_to(ctx.out(), "P{}", static_cast<int>(pred));
         }
     }
 };

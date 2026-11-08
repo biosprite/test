@@ -36,8 +36,8 @@
 #include "dynarmic/ir/opcodes.h"
 
 // Must be declared last for all necessary operator<< to be declared prior to this.
-#include <fmt/format.h>
-#include <fmt/ostream.h>
+#include <format>
+#include <format>
 
 namespace {
 using namespace Dynarmic;

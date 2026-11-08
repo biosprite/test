@@ -135,7 +135,7 @@ bool IsUnderRosetta() {
     size_t result_size = sizeof(result);
     if (sysctlbyname("sysctl.proc_translated", &result, &result_size, nullptr, 0) == -1) {
         if (errno != ENOENT)
-            fmt::print("IsUnderRosetta: Failed to detect Rosetta state, assuming not under Rosetta");
+            std::print("IsUnderRosetta: Failed to detect Rosetta state, assuming not under Rosetta");
         return false;
     }
     return result != 0;

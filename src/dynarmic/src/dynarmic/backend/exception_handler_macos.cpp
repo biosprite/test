@@ -18,7 +18,7 @@
 #include <vector>
 #include <bit>
 
-#include <fmt/format.h>
+#include <format>
 #include "common/assert.h"
 #include "common/common_types.h"
 

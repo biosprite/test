@@ -5,7 +5,7 @@
 #include "data_manager.h"
 #include "common/assert.h"
 #include "common/fs/path_util.h"
-#include <fmt/format.h>
+#include <format>
 
 namespace FrontendCommon::DataManager {
 
@@ -59,7 +59,7 @@ std::string ReadableBytesSize(u64 size) noexcept {
     if (size == 0)
         return "0 B";
     auto const digit_groups = std::min<u64>(u64(std::log10(size) / std::log10(base)), u64(units.size()));
-    return fmt::format("{:.1f} {}", size / std::pow(base, digit_groups), units[digit_groups]);
+    return std::format("{:.1f} {}", size / std::pow(base, digit_groups), units[digit_groups]);
 }
 
 u64 DataDirSize(DataDir dir)

@@ -4,7 +4,7 @@
 #include "symlink.h"
 
 #ifdef _WIN32
-#include <fmt/format.h>
+#include <format>
 #include <windows.h>
 #endif
 
@@ -38,7 +38,7 @@ bool CreateSymlink(fs::path from, fs::path to)
     fs::create_directory_symlink(from, to, ec);
 #ifdef _WIN32
     if (ec) {
-        const std::string command = fmt::format("mklink /J \"{}\" \"{}\"",
+        const std::string command = std::format("mklink /J \"{}\" \"{}\"",
                                                 to.string(),
                                                 from.string());
         return system(command.c_str()) == 0;

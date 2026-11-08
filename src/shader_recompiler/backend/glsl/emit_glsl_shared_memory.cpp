@@ -13,7 +13,7 @@ constexpr char cas_loop[]{"for(;;){{uint old_value={};uint "
 
 void SharedWriteCas(EmitContext& ctx, std::string_view offset, std::string_view value,
                     std::string_view bit_offset, u32 num_bits) {
-    const auto smem{fmt::format("smem[{}>>2]", offset)};
+    const auto smem{std::format("smem[{}>>2]", offset)};
     ctx.Add(cas_loop, smem, smem, smem, value, bit_offset, num_bits);
 }
 } // Anonymous namespace
@@ -48,12 +48,12 @@ void EmitLoadSharedU128(EmitContext& ctx, IR::Inst& inst, std::string_view offse
 }
 
 void EmitWriteSharedU8(EmitContext& ctx, std::string_view offset, std::string_view value) {
-    const auto bit_offset{fmt::format("int({}%4)*8", offset)};
+    const auto bit_offset{std::format("int({}%4)*8", offset)};
     SharedWriteCas(ctx, offset, value, bit_offset, 8);
 }
 
 void EmitWriteSharedU16(EmitContext& ctx, std::string_view offset, std::string_view value) {
-    const auto bit_offset{fmt::format("int(({}>>1)%2)*16", offset)};
+    const auto bit_offset{std::format("int(({}>>1)%2)*16", offset)};
     SharedWriteCas(ctx, offset, value, bit_offset, 16);
 }
 

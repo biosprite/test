@@ -159,7 +159,7 @@ void InstallFirmware(const QString& location, bool recursive) {
 
     if (results.size() > 0) {
         const auto failed_names =
-            QString::fromStdString(fmt::format("{}", fmt::join(results, "\n")));
+            QString::fromStdString(std::format("{}", fmt::join(results, "\n")));
         progress->close();
         QtCommon::Frontend::Critical(
             tr("Firmware integrity verification failed!"),
@@ -282,7 +282,7 @@ void VerifyInstalledContents() {
                                         tr("The operation completed successfully."));
     } else {
         const auto failed_names =
-            QString::fromStdString(fmt::format("{}", fmt::join(result, "\n")));
+            QString::fromStdString(std::format("{}", fmt::join(result, "\n")));
         QtCommon::Frontend::Critical(
             tr("Integrity verification failed!"),
             tr("Verification failed for the following files:\n\n%1").arg(failed_names));

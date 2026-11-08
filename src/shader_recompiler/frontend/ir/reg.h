@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <fmt/ranges.h>
+#include <format>
 
 #include "common/common_types.h"
 #include "shader_recompiler/exception.h"
@@ -314,16 +314,16 @@ constexpr Reg operator++(Reg& reg, int) {
 } // namespace Shader::IR
 
 template <>
-struct fmt::formatter<Shader::IR::Reg> {
+struct std::formatter<Shader::IR::Reg> {
     constexpr auto parse(format_parse_context& ctx) {
         return ctx.begin();
     }
     template <typename FormatContext>
     auto format(const Shader::IR::Reg& reg, FormatContext& ctx) const {
         if (reg == Shader::IR::Reg::RZ) {
-            return fmt::format_to(ctx.out(), "RZ");
+            return std::format_to(ctx.out(), "RZ");
         } else if (static_cast<int>(reg) >= 0 && static_cast<int>(reg) < 255) {
-            return fmt::format_to(ctx.out(), "R{}", static_cast<int>(reg));
+            return std::format_to(ctx.out(), "R{}", static_cast<int>(reg));
         } else {
             throw Shader::LogicError("Invalid register with raw value {}", static_cast<int>(reg));
         }

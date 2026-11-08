@@ -12,7 +12,7 @@ namespace OpenGL {
 
 static inline void ReplaceInclude(std::string& shader_source, std::string_view include_name,
                                   std::string_view include_content) {
-    const std::string include_string = fmt::format("#include \"{}\"", include_name);
+    const std::string include_string = std::format("#include \"{}\"", include_name);
     const std::size_t pos = shader_source.find(include_string);
     ASSERT(pos != std::string::npos);
     shader_source.replace(pos, include_string.size(), include_content);

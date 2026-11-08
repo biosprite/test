@@ -53,7 +53,7 @@ u64 CommandListProcessor::Process(u32 session_id) {
         current_processing_time = 0;
     }
 
-    std::string dump{fmt::format("\nSession {}\n", session_id)};
+    std::string dump{std::format("\nSession {}\n", session_id)};
 
     for (u32 index = 0; index < command_count; index++) {
         auto& command{*reinterpret_cast<Renderer::ICommand*>(commands)};
@@ -85,7 +85,7 @@ u64 CommandListProcessor::Process(u32 session_id) {
         if (command.enabled) {
             command.Process(*this);
         } else {
-            dump += fmt::format("\tDisabled!\n");
+            dump += std::format("\tDisabled!\n");
         }
 
         processed_command_count++;

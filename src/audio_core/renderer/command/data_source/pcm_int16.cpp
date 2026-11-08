@@ -12,7 +12,7 @@ namespace AudioCore::Renderer {
 void PcmInt16DataSourceVersion1Command::Dump(const AudioRenderer::CommandListProcessor& processor,
                                              std::string& string) {
     string +=
-        fmt::format("PcmInt16DataSourceVersion1Command\n\toutput_index {:02X} channel {} "
+        std::format("PcmInt16DataSourceVersion1Command\n\toutput_index {:02X} channel {} "
                     "channel count {} source sample rate {} target sample rate {} src quality {}\n",
                     output_index, channel_index, channel_count, sample_rate,
                     processor.target_sample_rate, src_quality);
@@ -58,7 +58,7 @@ bool PcmInt16DataSourceVersion1Command::Verify(
 void PcmInt16DataSourceVersion2Command::Dump(const AudioRenderer::CommandListProcessor& processor,
                                              std::string& string) {
     string +=
-        fmt::format("PcmInt16DataSourceVersion2Command\n\toutput_index {:02X} channel {} "
+        std::format("PcmInt16DataSourceVersion2Command\n\toutput_index {:02X} channel {} "
                     "channel count {} source sample rate {} target sample rate {} src quality {}\n",
                     output_index, channel_index, channel_count, sample_rate,
                     processor.target_sample_rate, src_quality);

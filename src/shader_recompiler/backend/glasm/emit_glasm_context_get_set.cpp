@@ -51,7 +51,7 @@ bool IsInputArray(Stage stage) {
 }
 
 std::string VertexIndex(EmitContext& ctx, ScalarU32 vertex) {
-    return IsInputArray(ctx.stage) ? fmt::format("[{}]", vertex) : "";
+    return IsInputArray(ctx.stage) ? std::format("[{}]", vertex) : "";
 }
 
 u32 TexCoordIndex(IR::Attribute attr) {
@@ -311,23 +311,23 @@ void EmitGetAttributeIndexed(EmitContext& ctx, IR::Inst& inst, ScalarS32 offset,
                 compare_index, ret, values[0], ret, values[1], ret, values[2], ret, values[3]);
     }};
     const auto read_swizzled{[&](u32 compare_index, std::string_view value) {
-        const std::array values{fmt::format("{}.x", value), fmt::format("{}.y", value),
-                                fmt::format("{}.z", value), fmt::format("{}.w", value)};
+        const std::array values{std::format("{}.x", value), std::format("{}.y", value),
+                                std::format("{}.z", value), std::format("{}.w", value)};
         read(compare_index, values);
     }};
     if (ctx.info.loads.AnyComponent(IR::Attribute::PositionX)) {
         const u32 index{static_cast<u32>(IR::Attribute::PositionX)};
         if (IsInputArray(ctx.stage)) {
-            read_swizzled(index, fmt::format("vertex_position{}", VertexIndex(ctx, vertex)));
+            read_swizzled(index, std::format("vertex_position{}", VertexIndex(ctx, vertex)));
         } else {
-            read_swizzled(index, fmt::format("{}.position", ctx.attrib_name));
+            read_swizzled(index, std::format("{}.position", ctx.attrib_name));
         }
     }
     for (u32 index = 0; index < static_cast<u32>(IR::NUM_GENERICS); ++index) {
         if (!ctx.info.loads.Generic(index)) {
             continue;
         }
-        read_swizzled(index, fmt::format("in_attr{}{}[0]", index, VertexIndex(ctx, vertex)));
+        read_swizzled(index, std::format("in_attr{}{}[0]", index, VertexIndex(ctx, vertex)));
     }
     for (u32 i = 0; i < num_endifs; ++i) {
         ctx.Add("ENDIF;");

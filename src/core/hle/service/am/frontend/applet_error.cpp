@@ -198,7 +198,7 @@ void Error::Execute() {
     case ErrorAppletMode::ShowErrorPctl:
     case ErrorAppletMode::ShowErrorRecord:
         reporter.SaveErrorReport(title_id, error_code,
-                                 fmt::format("{:016X}", args->error_record.posix_time));
+                                 std::format("{:016X}", args->error_record.posix_time));
         frontend.ShowErrorWithTimestamp(
             error_code, std::chrono::seconds{args->error_record.posix_time}, callback);
         break;

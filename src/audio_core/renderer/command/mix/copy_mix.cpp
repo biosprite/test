@@ -8,7 +8,7 @@ namespace AudioCore::Renderer {
 
 void CopyMixBufferCommand::Dump(
     [[maybe_unused]] const AudioRenderer::CommandListProcessor& processor, std::string& string) {
-    string += fmt::format("CopyMixBufferCommand\n\tinput {:02X} output {:02X}\n", input_index,
+    string += std::format("CopyMixBufferCommand\n\tinput {:02X} output {:02X}\n", input_index,
                           output_index);
 }
 

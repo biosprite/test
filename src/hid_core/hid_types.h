@@ -576,7 +576,8 @@ struct SixAxisSensorCalibrationParameter {
 };
 static_assert(sizeof(SixAxisSensorCalibrationParameter) == 0x744,
               "SixAxisSensorCalibrationParameter is an invalid size");
-static_assert(std::is_trivial_v<SixAxisSensorCalibrationParameter>,
+static_assert(std::is_trivially_default_constructible_v<SixAxisSensorCalibrationParameter> &&
+                  std::is_trivially_copyable_v<SixAxisSensorCalibrationParameter>,
               "SixAxisSensorCalibrationParameter must be trivial.");
 
 // This is nn::hid::SixAxisSensorIcInformation

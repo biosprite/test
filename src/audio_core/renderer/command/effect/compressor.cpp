@@ -112,13 +112,13 @@ static void ApplyCompressorEffect(const CompressorInfo::ParameterVersion2& param
 
 void CompressorCommand::Dump([[maybe_unused]] const AudioRenderer::CommandListProcessor& processor,
                              std::string& string) {
-    string += fmt::format("CompressorCommand\n\tenabled {} \n\tinputs: ", effect_enabled);
+    string += std::format("CompressorCommand\n\tenabled {} \n\tinputs: ", effect_enabled);
     for (s16 i = 0; i < parameter.channel_count; i++) {
-        string += fmt::format("{:02X}, ", inputs[i]);
+        string += std::format("{:02X}, ", inputs[i]);
     }
     string += "\n\toutputs: ";
     for (s16 i = 0; i < parameter.channel_count; i++) {
-        string += fmt::format("{:02X}, ", outputs[i]);
+        string += std::format("{:02X}, ", outputs[i]);
     }
     string += "\n";
 }

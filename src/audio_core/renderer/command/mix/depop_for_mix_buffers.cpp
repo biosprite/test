@@ -41,7 +41,7 @@ static s32 ApplyDepopMix(std::span<s32> output, const s32 depop_sample,
 
 void DepopForMixBuffersCommand::Dump(
     [[maybe_unused]] const AudioRenderer::CommandListProcessor& processor, std::string& string) {
-    string += fmt::format("DepopForMixBuffersCommand\n\tinput {:02X} count {} decay {}\n", input,
+    string += std::format("DepopForMixBuffersCommand\n\tinput {:02X} count {} decay {}\n", input,
                           count, decay.to_float());
 }
 

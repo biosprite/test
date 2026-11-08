@@ -10,7 +10,7 @@ namespace AudioCore::Renderer {
 
 void PerformanceCommand::Dump([[maybe_unused]] const AudioRenderer::CommandListProcessor& processor,
                               std::string& string) {
-    string += fmt::format("PerformanceCommand\n\tstate {}\n", static_cast<u32>(state));
+    string += std::format("PerformanceCommand\n\tstate {}\n", static_cast<u32>(state));
 }
 
 void PerformanceCommand::Process(const AudioRenderer::CommandListProcessor& processor) {

@@ -10,9 +10,9 @@ namespace AudioCore::Renderer {
 
 void DepopPrepareCommand::Dump(
     [[maybe_unused]] const AudioRenderer::CommandListProcessor& processor, std::string& string) {
-    string += fmt::format("DepopPrepareCommand\n\tinputs: ");
+    string += std::format("DepopPrepareCommand\n\tinputs: ");
     for (u32 i = 0; i < buffer_count; i++) {
-        string += fmt::format("{:02X}, ", inputs[i]);
+        string += std::format("{:02X}, ", inputs[i]);
     }
     string += "\n";
 }

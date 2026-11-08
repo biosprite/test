@@ -6,7 +6,7 @@
  * SPDX-License-Identifier: 0BSD
  */
 
-#include <fmt/format.h>
+#include <format>
 #include "dynarmic/tests/unicorn_emu/a64_unicorn.h"
 #include "common/assert.h"
 
