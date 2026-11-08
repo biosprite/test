@@ -75,7 +75,7 @@ static void GenerateErrorReport(Core::System& system, Result error_code, const F
         "Set flags:                       {:#16X}\n"
         "Program entry point:             {:#16X}\n"
         "\n",
-        Common::g_scm_branch, Common::g_scm_desc, title_id, error_code.raw,
+        std::string_view{Common::g_scm_branch}, std::string_view{Common::g_scm_desc}, title_id, error_code.raw,
         2000 + static_cast<u32>(error_code.GetModule()),
         static_cast<u32>(error_code.GetDescription()), info.set_flags, info.program_entry_point);
     if (info.backtrace_size != 0x0) {

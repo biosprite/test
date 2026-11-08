@@ -95,7 +95,7 @@ Result GetProcessList(Core::System& system, s32* out_num_processes, u64 out_proc
 
 Result GetProcessInfo(Core::System& system, s64* out, Handle process_handle,
                       ProcessInfoType info_type) {
-    LOG_DEBUG(Kernel_SVC, "called, handle={:#08x}, type={:#x}", process_handle, info_type);
+    LOG_DEBUG(Kernel_SVC, "called, handle={:#08x}, type={:#x}", process_handle, std::to_underlying(info_type));
 
     const auto& handle_table = GetCurrentProcess(system.Kernel()).GetHandleTable();
     KScopedAutoObject process = handle_table.GetObject<KProcess>(system.Kernel(), process_handle);

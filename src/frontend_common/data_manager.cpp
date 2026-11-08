@@ -6,6 +6,7 @@
 #include "common/assert.h"
 #include "common/fs/path_util.h"
 #include <format>
+#include <cmath>
 
 namespace FrontendCommon::DataManager {
 

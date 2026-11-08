@@ -432,7 +432,9 @@ void GDBStub::HandleQuery(std::string_view sv) {
         std::vector<std::string> thread_ids;
         for (const auto& thread : threads)
             thread_ids.push_back(std::format("{:x}", thread.GetThreadId()));
-        SendReply(std::format("m{}", fmt::join(thread_ids, ",")));
+
+        auto joined = thread_ids | std::views::join_with(',');
+        SendReply(std::format("m{}", joined));
     } else if (sv.starts_with("sThreadInfo")) {
         // end of list
         SendReply("l");

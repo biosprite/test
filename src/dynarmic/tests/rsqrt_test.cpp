@@ -46,7 +46,7 @@ void Test(u32 value) {
     const u32 hack = rsqrt_hack(value);
 
     if (expect != full || expect != full_gpr || expect != newton || expect != hack) {
-        fmt::print("{:08x} = {:08x} : {:08x} : {:08x} : {:08x} : {:08x}\n", value, expect, full, full_gpr, newton, hack);
+        std::print("{:08x} = {:08x} : {:08x} : {:08x} : {:08x} : {:08x}\n", value, expect, full, full_gpr, newton, hack);
 
         REQUIRE(expect == full);
         REQUIRE(expect == full_gpr);

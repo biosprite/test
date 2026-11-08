@@ -511,7 +511,7 @@ Result FSP_SRV::OpenDataStorageByCurrentProcess(OutInterface<IStorage> out_inter
 Result FSP_SRV::OpenDataStorageByDataId(OutInterface<IStorage> out_interface,
                                         FileSys::StorageId storage_id, u32 unknown, u64 title_id) {
     LOG_DEBUG(Service_FS, "called with storage_id={:02X}, unknown={:08X}, title_id={:016X}",
-              storage_id, unknown, title_id);
+              std::to_underlying(storage_id), unknown, title_id);
 
     auto data = romfs_controller->OpenRomFS(title_id, storage_id, FileSys::ContentRecordType::Data);
 
@@ -526,7 +526,7 @@ Result FSP_SRV::OpenDataStorageByDataId(OutInterface<IStorage> out_interface,
         // TODO(DarkLordZach): Find the right error code to use here
         LOG_ERROR(Service_FS,
                   "Could not open data storage with title_id={:016X}, storage_id={:02X}", title_id,
-                  storage_id);
+                  std::to_underlying(storage_id));
         R_RETURN(ResultUnknown);
     }
 
@@ -543,7 +543,7 @@ Result FSP_SRV::OpenDataStorageByDataId(OutInterface<IStorage> out_interface,
 
 Result FSP_SRV::OpenPatchDataStorageByCurrentProcess(OutInterface<IStorage> out_interface,
                                                      FileSys::StorageId storage_id, u64 title_id) {
-    LOG_WARNING(Service_FS, "(STUBBED) called with storage_id={:02X}, title_id={:016X}", storage_id,
+    LOG_WARNING(Service_FS, "(STUBBED) called with storage_id={:02X}, title_id={:016X}", std::to_underlying(storage_id),
                 title_id);
 
     R_RETURN(FileSys::ResultTargetNotFound);

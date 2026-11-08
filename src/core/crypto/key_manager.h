@@ -17,6 +17,7 @@
 #include <format>
 #include "common/common_funcs.h"
 #include "common/common_types.h"
+#include "common/util_format.h"
 #include "core/crypto/partition_data_manager.h"
 
 namespace Common::FS {

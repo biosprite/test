@@ -358,7 +358,7 @@ FakeCall AddressSpace::FastmemCallback(u64 host_pc) {
     }
 
 fail:
-    fmt::print("dynarmic: Segfault happened within JITted code at host_pc = {:016x}\n"
+    std::print("dynarmic: Segfault happened within JITted code at host_pc = {:016x}\n"
         "Segfault wasn't at a fastmem patch location!\n", host_pc);
     UNREACHABLE();
 }

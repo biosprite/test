@@ -11,6 +11,7 @@
 
 #include "common/common_types.h"
 #include "common/scratch_buffer.h"
+#include "common/util_format.h"
 #include "video_core/cdma_pusher.h"
 #include "video_core/host1x/ffmpeg.h"
 

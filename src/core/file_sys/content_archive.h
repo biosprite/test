@@ -15,6 +15,7 @@
 #include "common/common_funcs.h"
 #include "common/common_types.h"
 #include "common/swap.h"
+#include "common/util_format.h"
 #include "core/crypto/key_manager.h"
 #include "core/file_sys/vfs/vfs.h"
 

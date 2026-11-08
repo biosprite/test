@@ -104,7 +104,18 @@ std::string GetDriverVersion(const Device& device) {
 
 std::string BuildCommaSeparatedExtensions(
     const std::set<std::string, std::less<>>& available_extensions) {
-    return std::format("{}", fmt::join(available_extensions, ","));
+    std::string joined;
+
+    std::size_t i = 0;
+    for (const auto &s : available_extensions) {
+        if (i > 0) {
+            joined += ',';
+        }
+
+        joined += s;
+        ++i;
+    }
+    return std::format("{}", joined);
 }
 
 } // Anonymous namespace

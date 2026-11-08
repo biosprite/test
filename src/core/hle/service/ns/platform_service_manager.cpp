@@ -130,18 +130,18 @@ IPlatformServiceManager::IPlatformServiceManager(Core::System& system_, const ch
         }
 
         if (!romfs) {
-            LOG_ERROR(Service_NS, "Failed to find or synthesize {:016X}! Skipping", font.first);
+            LOG_ERROR(Service_NS, "Failed to find or synthesize {:016X}! Skipping", std::to_underlying(font.first));
             continue;
         }
 
         const auto extracted_romfs = FileSys::ExtractRomFS(romfs);
         if (!extracted_romfs) {
-            LOG_ERROR(Service_NS, "Failed to extract RomFS for {:016X}! Skipping", font.first);
+            LOG_ERROR(Service_NS, "Failed to extract RomFS for {:016X}! Skipping", std::to_underlying(font.first));
             continue;
         }
         const auto font_fp = extracted_romfs->GetFile(font.second);
         if (!font_fp) {
-            LOG_ERROR(Service_NS, "{:016X} has no file \"{}\"! Skipping", font.first, font.second);
+            LOG_ERROR(Service_NS, "{:016X} has no file \"{}\"! Skipping", std::to_underlying(font.first), font.second);
             continue;
         }
         std::vector<u32> font_data_u32(font_fp->GetSize() / sizeof(u32));
@@ -200,7 +200,7 @@ Result IPlatformServiceManager::GetSharedFontInOrderOfPriority(
     OutArray<u32, BufferAttr_HipcMapAlias> out_font_offsets,
     OutArray<u32, BufferAttr_HipcMapAlias> out_font_sizes, Out<bool> out_fonts_are_loaded,
     Out<u32> out_font_count, Set::LanguageCode language_code) {
-    LOG_DEBUG(Service_NS, "called, language_code={:#x}", language_code);
+    LOG_DEBUG(Service_NS, "called, language_code={:#x}", std::to_underlying(language_code));
 
     // The maximum number of elements that can be returned is 6. Regardless of the available fonts
     // or buffer size.

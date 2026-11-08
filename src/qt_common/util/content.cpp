@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright 2026 Eden Emulator Project
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include <ranges>
 #include "core/file_sys/card_image.h"
 #include "qt_common/util/content.h"
 #include "qt_common/util/game.h"
@@ -159,11 +160,11 @@ void InstallFirmware(const QString& location, bool recursive) {
 
     if (results.size() > 0) {
         const auto failed_names =
-            QString::fromStdString(std::format("{}", fmt::join(results, "\n")));
+            results | std::views::join_with('\n') | std::ranges::to<std::string>();
         progress->close();
         QtCommon::Frontend::Critical(
             tr("Firmware integrity verification failed!"),
-            tr("Verification failed for the following files:\n\n%1").arg(failed_names));
+            tr("Verification failed for the following files:\n\n%1").arg(QString::fromStdString(failed_names)));
         return;
     }
 
@@ -282,10 +283,11 @@ void VerifyInstalledContents() {
                                         tr("The operation completed successfully."));
     } else {
         const auto failed_names =
-            QString::fromStdString(std::format("{}", fmt::join(result, "\n")));
+            result | std::views::join_with('\n') | std::ranges::to<std::string>();
+
         QtCommon::Frontend::Critical(
             tr("Integrity verification failed!"),
-            tr("Verification failed for the following files:\n\n%1").arg(failed_names));
+            tr("Verification failed for the following files:\n\n%1").arg(QString::fromStdString(failed_names)));
     }
 }
 

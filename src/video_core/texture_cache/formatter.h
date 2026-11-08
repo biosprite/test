@@ -59,7 +59,7 @@ struct std::formatter<VideoCommon::ImageType> : std::formatter<std::string_view>
 
 template <>
 struct std::formatter<VideoCommon::Extent3D> {
-    constexpr auto parse(fmt::format_parse_context& ctx) {
+    constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();
     }
 

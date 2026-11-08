@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstring>
+#include <utility>
 #include "common/assert.h"
 #include "common/logging.h"
 #include "common/string_util.h"
@@ -151,7 +152,7 @@ void Error::Initialize() {
         error_code = Decode64BitError(args->error_record.error_code_64);
         break;
     default:
-        UNIMPLEMENTED_MSG("Unimplemented LibAppletError mode={:02X}!", mode);
+        UNIMPLEMENTED_MSG("Unimplemented LibAppletError mode={:02X}!", std::to_underlying(mode));
         break;
     }
 }
@@ -203,7 +204,7 @@ void Error::Execute() {
             error_code, std::chrono::seconds{args->error_record.posix_time}, callback);
         break;
     default:
-        UNIMPLEMENTED_MSG("Unimplemented LibAppletError mode={:02X}!", mode);
+        UNIMPLEMENTED_MSG("Unimplemented LibAppletError mode={:02X}!", std::to_underlying(mode));
         DisplayCompleted();
     }
 }

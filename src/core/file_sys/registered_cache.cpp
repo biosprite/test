@@ -8,6 +8,7 @@
 #include <limits>
 #include <random>
 #include <regex>
+#include <utility>
 #include <openssl/evp.h>
 #include "common/assert.h"
 #include "common/fs/path_util.h"
@@ -338,7 +339,7 @@ ContentRecordType GetCRTypeFromNCAType(NCAContentType type) {
         // TODO(DarkLordZach): Peek at NCA contents to differentiate Manual and Legal.
         return ContentRecordType::HtmlDocument;
     default:
-        ASSERT_MSG(false, "Invalid NCAContentType={:02X}", type);
+        ASSERT_MSG(false, "Invalid NCAContentType={:02X}", std::to_underlying(type));
         return ContentRecordType{};
     }
 }

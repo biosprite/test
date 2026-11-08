@@ -12,6 +12,7 @@
 #include "common/assert.h"
 #include "common/common_funcs.h"
 #include "common/common_types.h"
+#include "common/util_format.h"
 
 namespace AudioCore {
 using CpuAddr = std::uintptr_t;

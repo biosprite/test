@@ -13,6 +13,7 @@
 #include "common/common_types.h"
 #include "common/swap.h"
 #include "common/uuid.h"
+#include "common/util_format.h"
 
 namespace Service::AM::Frontend {
 

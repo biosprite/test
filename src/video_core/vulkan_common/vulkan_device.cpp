@@ -22,6 +22,7 @@
 #include "common/fs/fs.h"
 #include "common/fs/path_util.h"
 #include "common/literals.h"
+#include "common/util_format.h"
 #include <ranges>
 #include "common/settings.h"
 #include "common/settings_enums.h"

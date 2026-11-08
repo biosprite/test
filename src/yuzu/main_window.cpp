@@ -9813,7 +9813,7 @@ void MainWindow::UpdateWindowTitle(std::string_view title_name, std::string_view
 
     const auto override_build = std::vformat(std::string_view(Common::g_title_bar_format_idle),
                                              std::make_format_args(build_id));
-    const auto window_title = override_title.empty() ? yuzu_title : override_title;
+    const auto window_title = override_build.empty() ? yuzu_title : override_build;
 
     if (title_name.empty()) {
         setWindowTitle(QString::fromStdString(window_title));

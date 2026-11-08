@@ -20,7 +20,7 @@
 #include <unistd.h>
 #endif
 
-#include <format>
+#include <print>
 #include "video_core/vulkan_common/vulkan_instance.h"
 #include "video_core/vulkan_common/vulkan_library.h"
 #include "yuzu/startup_checks.h"

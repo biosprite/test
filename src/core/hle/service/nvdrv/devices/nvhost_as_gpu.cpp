@@ -147,7 +147,7 @@ NvResult nvhost_as_gpu::AllocAsEx(IoctlAllocAsEx& params) {
 
 NvResult nvhost_as_gpu::AllocateSpace(IoctlAllocSpace& params) {
     LOG_DEBUG(Service_NVDRV, "called, pages={:X}, page_size={:X}, flags={:X}", params.pages,
-              params.page_size, params.flags);
+              params.page_size, std::to_underlying(params.flags));
 
     std::scoped_lock lock(mutex);
 
@@ -301,7 +301,7 @@ NvResult nvhost_as_gpu::MapBufferEx(IoctlMapBufferEx& params) {
     LOG_DEBUG(Service_NVDRV,
               "called, flags={:X}, nvmap_handle={:X}, buffer_offset={}, mapping_size={}"
               ", offset={:#x}",
-              params.flags, params.handle, params.buffer_offset, params.mapping_size,
+              std::to_underlying(params.flags), params.handle, params.buffer_offset, params.mapping_size,
               params.offset);
 
     std::scoped_lock lock(mutex);

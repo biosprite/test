@@ -68,7 +68,7 @@ void ISaveDataInfoReader::FindAllSaves(FileSys::SaveDataSpaceId space) {
     const auto result = save_data_controller->OpenSaveDataSpace(&save_root, space);
 
     if (result != ResultSuccess || save_root == nullptr) {
-        LOG_ERROR(Service_FS, "The save root for the space_id={:02X} was invalid!", space);
+        LOG_ERROR(Service_FS, "The save root for the space_id={:02X} was invalid!", std::to_underlying(space));
         return;
     }
 
