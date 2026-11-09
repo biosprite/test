@@ -13,6 +13,7 @@ class SubmenuSetting(
     @StringRes descriptionId: Int = 0,
     descriptionString: String = "",
     @DrawableRes val iconId: Int = 0,
+    val showChevron: Boolean = false,
     val menuKey: Settings.MenuTag
 ) : SettingsItem(emptySetting, titleId, titleString, descriptionId, descriptionString) {
     override val type = TYPE_SUBMENU
