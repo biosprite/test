@@ -404,3 +404,15 @@ endif()
 if (DYNARMIC_ENABLE_NO_EXECUTE_SUPPORT)
     target_compile_definitions(dynarmic PRIVATE DYNARMIC_ENABLE_NO_EXECUTE_SUPPORT=1)
 endif()
+
+# need to link to stdc++exp (on glibc++ only) for std::print on mingw
+if (MINGW)
+    include(CheckCXXSymbolExists)
+
+    check_cxx_symbol_exists(__GLIBCXX__ "version" HAS_LIBSTDCXX)
+
+    if(HAS_LIBSTDCXX)
+        message(STATUS "[dynarmic] MinGW libstdc++ needs stdc++exp")
+        target_link_libraries(dynarmic PUBLIC stdc++exp)
+    endif()
+endif()
