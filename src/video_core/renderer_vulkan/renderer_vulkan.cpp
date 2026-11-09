@@ -362,6 +362,8 @@ void RendererVulkan::RenderAppletCaptureLayer(
     scheduler.RequestOutsideRenderPassOperationContext();
     blit_applet.DrawToFrame(device, rasterizer, &applet_frame, capture_layers, VideoCore::Capture::Layout, 1,
                             CaptureFormat);
+    // The game keeps recording in this command buffer when the window is not shown
+    scheduler.InvalidateState();
 }
 
 } // namespace Vulkan

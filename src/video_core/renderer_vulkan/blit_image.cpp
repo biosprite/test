@@ -700,6 +700,9 @@ void BlitImageHelper::BlitColor(const Framebuffer* dst_framebuffer, VkImageView 
         cmdbuf.Draw(3, 1, 0, 0);
         cmdbuf.EndRenderPass();
     });
+    // It bound its own pipeline in the game's command buffer: a following draw with the same
+    // pipeline as before must not skip binding it
+    scheduler.InvalidateState();
 }
 
 void BlitImageHelper::BlitImpl(const Framebuffer* dst_framebuffer,
