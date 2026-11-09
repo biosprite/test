@@ -12,7 +12,7 @@ No formal fuzzing or formal verification has been done on the emulator as a whol
 
 ## src/android/
 
-Entire Android frontend, written mostly in Kotlin and generally having asinine hacks (thanks Android) due to the particularly horrific (in a particular way) to do things.
+Entire Android frontend, written mostly in Kotlin and generally having asinine hacks (thanks Android) due to the particularly horrific (and particular way) to do things.
 
 ## src/audio_core/
 

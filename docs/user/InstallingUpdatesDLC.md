@@ -14,7 +14,7 @@ Use this guide when you want to install Updates or DLC for your games in Eden.
 
 ### Pre-Requisites
 
-1. Eden is already set up and configured for your platform.
+1. Eden already setup and configured for your platform.
 2. The Update/DLC file(s) you want to install
 
 ---
