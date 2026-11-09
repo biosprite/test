@@ -131,7 +131,7 @@ When fetching from a Git repository, there are generally three methods of versio
 - Git tags
 - Release artifacts
 
-When `repo` is set, `version` field can be set to any commitish value, including commit hashes or Git tags. In the case of artifacts, `version` must be a Git tag, and `artifact` must be set to a release artifact attached to that tag. Many repositories intentionally version the filenames of their release artifacts; for this purpose, CPMUtil allows you to insert the version number into the artifact name. To do so, add `%VERSION%` to the artifact name; CPMUtil will then automatically replace `%VERSION%` with the `version` field. This means that when changing versions, you only need to update the version, not the artifact!
+When `repo` is set, `version` field can be set to any commitish value, including commit hashes or Git tags. In the case of artifacts, `version` must be a Git tag, and `artifact` must be set to a release artifact attached to that tag. Many repositories intentionally version the filenames of their release artifacts; for this purpose, CPMUtil allows you to implant the version number into the artifact name. To do so, add `%VERSION%` to the artifact name; CPMUtil will then automatically replace `%VERSION%` with the `version` field. This means that when changing versions, you only need to update the version, not the artifact!
 
 Take Boost as an example. The artifact for Boost 1.90.0 is `boost-1.90.0-cmake.tar.xz`, and the tag is `boost-1.90.0`. Thus, we can set the artifact to `%VERSION%-cmake.tar.xz`:
 
