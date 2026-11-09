@@ -44,7 +44,7 @@ FakeCall AxxEmitX64::FastmemCallback(u64 rip_) {
         }
         return result;
     }
-    std::println(std::cerr, "dynarmic: Segfault happened within JITted code at rip = {:016x}\n"
+    std::println(stderr, "dynarmic: Segfault happened within JITted code at rip = {:016x}\n"
         "Segfault wasn't at a fastmem patch location!", rip_);
     UNREACHABLE(); //("iter != fastmem_patch_info.end()");
 }
