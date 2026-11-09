@@ -106,16 +106,14 @@ std::string BuildCommaSeparatedExtensions(
     const std::set<std::string, std::less<>>& available_extensions) {
     std::string joined;
 
-    std::size_t i = 0;
     for (const auto &s : available_extensions) {
-        if (i > 0) {
+        if (joined.empty())
             joined += ',';
-        }
 
         joined += s;
-        ++i;
     }
-    return std::format("{}", joined);
+
+    return joined;
 }
 
 } // Anonymous namespace

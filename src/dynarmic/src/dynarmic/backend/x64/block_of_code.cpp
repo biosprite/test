@@ -20,6 +20,7 @@
 #ifdef __APPLE__
 #    include <errno.h>
 #    include <sys/sysctl.h>
+#    include <print>
 #endif
 
 #include <array>
