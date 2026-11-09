@@ -375,7 +375,7 @@ endif()
 # Configure C++ standard
 # ===========================
 
-set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Output binaries to bin/
