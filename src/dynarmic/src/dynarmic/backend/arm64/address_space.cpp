@@ -9,6 +9,7 @@
 #include <cstdio>
 
 #include <bit>
+#include <print>
 
 #include "dynarmic/backend/arm64/a64_address_space.h"
 #include "dynarmic/backend/arm64/a64_jitstate.h"

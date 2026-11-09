@@ -14,10 +14,11 @@
 
 #include "common/dynamic_library.h"
 
+#include <format>
+
 #ifdef _WIN32
 #include <windows.h>
 #else
-#include <format>
 #include <dlfcn.h>
 #endif
 
