@@ -270,16 +270,12 @@ object OverlayColors {
         val primary = ThemeHelper.resolveColorPrimary(themeContext)
         val container = ThemeHelper.resolveColorPrimaryContainer(themeContext)
         val secondary = ThemeHelper.resolveColorSecondary(themeContext)
-        val tertiary = ThemeHelper.resolveColorTertiary(themeContext)
 
         val overrides = linkedMapOf<String, Int>()
         val primaryRgb = primary and 0xFFFFFF
         if ((secondary and 0xFFFFFF) != primaryRgb) {
             overrides[OverlayControl.STICK_L.id] = secondary
             overrides[OverlayControl.STICK_R.id] = secondary
-        }
-        if ((tertiary and 0xFFFFFF) != primaryRgb) {
-            overrides[OverlayControl.COMBINED_DPAD.id] = tertiary
         }
 
         val previewColors = when {
