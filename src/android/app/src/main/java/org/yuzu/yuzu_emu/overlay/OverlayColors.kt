@@ -261,6 +261,11 @@ object OverlayColors {
     )
 
     private fun resolveAppThemeOverlay(context: Context): ResolvedAppTheme {
+        if (ThemeHelper.activeThemeStyleRes() == R.style.Theme_Eden_Main) {
+            val eden = staticPalettes.first { it.key == "eden" }
+            return ResolvedAppTheme(eden.body, eden.overrides, eden.preview)
+        }
+
         val themeContext = ThemeHelper.themedContext(context)
         val primary = ThemeHelper.resolveColorPrimary(themeContext)
         val container = ThemeHelper.resolveColorPrimaryContainer(themeContext)
